@@ -1,0 +1,74 @@
+[
+  {
+    "game_id": "20251115_011133_522512",
+    "start_time": "2025-11-15T01:11:33.522512",
+    "score": 2940,
+    "best_score": 2940,
+    "is_completed": false,
+    "last_updated": "2025-11-15T01:16:45.692189"
+  },
+  {
+    "game_id": "20251115_011706_253902",
+    "start_time": "2025-11-15T01:17:06.253902",
+    "score": 12060,
+    "best_score": 12060,
+    "is_completed": true,
+    "last_updated": "2025-11-15T02:21:45.295691"
+  },
+  {
+    "game_id": "20251115_022146_599379",
+    "start_time": "2025-11-15T02:21:46.599379",
+    "score": 24,
+    "best_score": 12060,
+    "is_completed": false,
+    "last_updated": "2025-11-15T02:21:58.082265"
+  },
+  {
+    "game_id": "20251115_022205_153317",
+    "start_time": "2025-11-15T02:22:05.153317",
+    "score": 4036,
+    "best_score": 12060,
+    "is_completed": true,
+    "last_updated": "2025-11-15T02:27:47.443430"
+  },
+  {
+    "game_id": "20251115_022750_959447",
+    "start_time": "2025-11-15T02:27:50.959447",
+    "score": 1164,
+    "best_score": 12060,
+    "is_completed": true,
+    "last_updated": "2025-11-15T02:33:44.991410"
+  },
+  {
+    "game_id": "20251115_184423_875772",
+    "start_time": "2025-11-15T18:44:23.875772",
+    "score": 1476,
+    "best_score": 12060,
+    "is_completed": true,
+    "last_updated": "2025-11-15T23:29:19.700133"
+  },
+  {
+    "game_id": "20251115_232953_380905",
+    "start_time": "2025-11-15T23:29:53.391944",
+    "score": 4444,
+    "best_score": 12060,
+    "is_completed": true,
+    "last_updated": "2025-11-15T23:33:56.521147"
+  },
+  {
+    "game_id": "20251115_233401_874671",
+    "start_time": "2025-11-15T23:34:01.874671",
+    "score": 5344,
+    "best_score": 12060,
+    "is_completed": true,
+    "last_updated": "2025-11-15T23:38:16.627186"
+  },
+  {
+    "game_id": "20251115_233819_288933",
+    "start_time": "2025-11-15T23:38:19.288933",
+    "score": 1200,
+    "best_score": 12060,
+    "is_completed": true,
+    "last_updated": "2025-11-15T23:40:05.721670"
+  }
+]
