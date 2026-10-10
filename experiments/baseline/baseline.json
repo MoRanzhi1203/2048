@@ -1,0 +1,56 @@
+{
+  "phase": "A",
+  "generated_by": "experiments/baseline_record.py",
+  "python": "3.9.21",
+  "numpy": "2.0.2",
+  "platform": "Windows-10-10.0.19042-SP0",
+  "official_model_path": "v5_pyqt_2048_solver\\rl_model.npz",
+  "official_model_sha256": "724c4eea877421cf728fdaa56b7e8c710d98accf6c8a13ea69d9c0aa5ee9f4f9",
+  "baseline_copy_path": "experiments\\baseline\\rl_model_v1.npz",
+  "baseline_copy_sha256": "724c4eea877421cf728fdaa56b7e8c710d98accf6c8a13ea69d9c0aa5ee9f4f9",
+  "weight_shapes": {
+    "W1": [
+      128,
+      256
+    ],
+    "b1": [
+      128
+    ],
+    "W2": [
+      4,
+      128
+    ],
+    "b2": [
+      4
+    ],
+    "Wv": [
+      1,
+      128
+    ],
+    "bv": [
+      1
+    ]
+  },
+  "baseline_eval": {
+    "games": 200,
+    "seed": 20260101,
+    "avg": 1601.38,
+    "median": 1444,
+    "best": 6020,
+    "max_tile": 512,
+    "hit512_rate": 0.015,
+    "hit1024_rate": 0.0,
+    "hit2048_rate": 0.0
+  },
+  "budget_semantics": {
+    "heuristic": "无预算（单步贪心）",
+    "rollout": "次数预算 rollouts × rollout_depth（无墙钟）",
+    "expectimax": "时间预算 time_limit（软：迭代加深 + 硬上限 MAX_TIME_LIMIT=2.0s）",
+    "mcts": "模拟次数 + 时间预算 双上限",
+    "rl": "一次前向，无搜索预算"
+  },
+  "chance_model": {
+    "spawn": "每个空位等概率 1/E；值 2 概率 0.9，值 4 概率 0.1",
+    "order": "玩家先移动(得合并分) -> 再生成新块 -> 进入下一玩家回合"
+  }
+}

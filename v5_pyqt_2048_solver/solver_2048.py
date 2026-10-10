@@ -90,13 +90,21 @@ PRUNE_DEFAULTS = {
 }
 
 # 启发式权重（可调；数值参考常见 Expectimax 2048 实现）
+# 前 5 项为原有权重（baseline，保持不变）；snake / danger 为 Phase E 新增的可选特征，
+# 默认权重 0 = 关闭，只有消融实验证明有效时才建议启用。
 DEFAULT_WEIGHTS = {
     'empty': 2.7,          # 空格数
     'monotonicity': 1.0,   # 单调性
     'smoothness': 0.10,    # 平滑度
     'merge': 1.0,          # 合并潜力（相邻可合并对数）
     'corner': 0.30,        # 最大块在角落
+    'snake': 0.0,          # 蛇形位置权重（越靠蛇形路径前段的大块越有利），默认关闭
+    'danger': 0.0,         # 危险度惩罚（空位少 + 相邻异值对多），默认关闭
 }
+
+# 蛇形路径（Phase E / H02）：从左上角出发逐行蛇形
+_SNAKE_ORDER = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 3), (1, 2), (1, 1), (1, 0),
+                (2, 0), (2, 1), (2, 2), (2, 3), (3, 3), (3, 2), (3, 1), (3, 0)]
 
 RL_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rl_model.npz')
 
@@ -183,15 +191,25 @@ def legal_moves(grid):
 
 def spawn(grid, rng, value=None):
     """在随机空位生成一个新方块（90% 2 / 10% 4）；返回新网格（不修改入参）。"""
+    new_grid, _cell, _v = sample_spawn(grid, rng, value)
+    return new_grid
+
+
+def sample_spawn(grid, rng, value=None):
+    """按环境真实分布生成新方块，返回 (新网格, (row, col), value)。
+
+    约定（与游戏主体一致）：每个空位等概率 1/E；值 2 概率 0.9、值 4 概率 0.1。
+    供 MCTS 机会节点与强化学习自对弈共用，保证概率口径唯一。
+    """
     cells = empty_cells(grid)
     if not cells:
-        return [row[:] for row in grid]
+        return [row[:] for row in grid], None, 0
     i, j = rng.choice(cells)
     if value is None:
         value = 2 if rng.random() < 0.9 else 4
     new_grid = [row[:] for row in grid]
     new_grid[i][j] = value
-    return new_grid
+    return new_grid, (i, j), value
 
 
 # =====================================================================
@@ -270,14 +288,49 @@ def _max_in_corner(grid):
     return 0.0
 
 
+def _snake_value(grid):
+    """蛇形位置特征（Phase E/H02）：大块越靠蛇形路径前段得分越高，输出范围 [0, 100]。"""
+    num = den = 0.0
+    for idx, (i, j) in enumerate(_SNAKE_ORDER):
+        w = 0.5 ** idx
+        num += w * _log2(grid[i][j])
+        den += w * 15.0
+    return 100.0 * num / den if den else 0.0
+
+
+def _danger_penalty(grid):
+    """危险度惩罚（Phase E/H02）：空位越少、相邻异值对越多越危险；输出 <= 0。"""
+    empties = len(empty_cells(grid))
+    size = len(grid)
+    distinct = 0
+    for i in range(size):
+        for j in range(size):
+            v = grid[i][j]
+            if v <= 0:
+                continue
+            if j + 1 < size and grid[i][j + 1] > 0 and grid[i][j + 1] != v:
+                distinct += 1
+            if i + 1 < size and grid[i + 1][j] > 0 and grid[i + 1][j] != v:
+                distinct += 1
+    return -60.0 * (1.0 - empties / 16.0) - 0.6 * distinct
+
+
 def evaluate(grid, weights=None):
-    """启发式综合打分：权重 · 特征。分数越高代表局面越好。"""
+    """启发式综合打分：权重 · 特征。分数越高代表局面越好。
+
+    前 5 项为原有权重；snake / danger 为可选特征（权重默认 0 = 关闭，baseline 行为不变）。
+    """
     w = weights or DEFAULT_WEIGHTS
-    return (w['empty'] * len(empty_cells(grid))
-            + w['monotonicity'] * _monotonicity(grid)
-            + w['smoothness'] * _smoothness(grid)
-            + w['merge'] * _merge_potential(grid)
-            + w['corner'] * _max_in_corner(grid))
+    score = (w['empty'] * len(empty_cells(grid))
+             + w['monotonicity'] * _monotonicity(grid)
+             + w['smoothness'] * _smoothness(grid)
+             + w['merge'] * _merge_potential(grid)
+             + w['corner'] * _max_in_corner(grid))
+    if w.get('snake', 0.0):
+        score += w['snake'] * _snake_value(grid)
+    if w.get('danger', 0.0):
+        score += w['danger'] * _danger_penalty(grid)
+    return score
 
 
 def evaluate_features(grid):
@@ -347,8 +400,13 @@ def _heuristic_decision(grid, weights=None):
 # =====================================================================
 # 策略二：贪心模拟 / 随机模拟（lookahead with rollout，低成本）
 # =====================================================================
-def _rollout_score(grid_after_move, gained, depth, weights, rng):
-    """从“移动后、尚未生成新块”的盘面做一次随机 rollout，返回累计收益。"""
+def _rollout_score(grid_after_move, gained, depth, weights, rng,
+                   policy='random', epsilon=0.2):
+    """从“移动后、尚未生成新块”的盘面做一次 rollout，返回累计收益（含即时合并分）。
+
+    policy='random'：纯随机续玩（baseline，用于对照）。
+    policy='heuristic_biased'：每一步以 (1-epsilon) 概率走启发式最优方向，否则随机。
+    """
     g = grid_after_move
     score = gained
     for _ in range(depth):
@@ -360,28 +418,58 @@ def _rollout_score(grid_after_move, gained, depth, weights, rng):
         moves = legal_moves(g)
         if not moves:
             break
-        g, gain, _ = move_grid(g, rng.choice(moves))
+        if policy == 'heuristic_biased' and rng.random() >= epsilon:
+            best, best_v = moves[0], -float('inf')
+            for cand in moves:
+                ng, _gn, _m = move_grid(g, cand)
+                val = evaluate(ng, weights)
+                if val > best_v:
+                    best_v, best = val, cand
+            move = best
+        else:
+            move = rng.choice(moves)
+        g, gain, _ = move_grid(g, move)
         score += gain
     return score + evaluate(g, weights)        # 累计得分 + 终局启发式估值
 
 
-def _rollout_decision(grid, rollouts=20, rollout_depth=16, weights=None, seed=DEFAULT_SEED):
+def _rollout_decision(grid, rollouts=20, rollout_depth=16, weights=None, seed=DEFAULT_SEED,
+                      policy='random', epsilon=0.2, paired=True):
+    """贪心模拟 / lookahead with rollout：对每个候选方向做 N 次续玩模拟，取平均收益。
+
+    policy：'random'（纯随机，baseline）| 'heuristic_biased'（启发式偏置续玩，Phase E/G01）
+    epsilon：heuristic_biased 时的随机探索比例
+    paired：True 时各候选方向共用同一随机数序列（共同随机数，降低候选间比较噪声，Phase E/G02）
+    结果 extra.details 给出各方向的 mean/std/SE（供基准脚本报告置信区间）。
+    """
     start = time.time()
-    rng = random.Random(seed)
+    weights = weights or DEFAULT_WEIGHTS
     nodes = 0
     evaluations = {}
+    details = {}
     best_dir, best_value = None, -float('inf')
     for d, after_move, gain in _ordered_moves(grid, weights, order=True):
-        total = 0.0
+        if paired:
+            rng = random.Random(seed)
+        else:
+            idx = DIRECTIONS.index(d)
+            rng = random.Random((seed * 1000003 + idx * 7919) & 0xFFFFFFFF)
+        sims = []
         for _ in range(max(1, rollouts)):
-            total += _rollout_score(after_move, gain, max(1, rollout_depth), weights, rng)
+            sims.append(_rollout_score(after_move, gain, max(1, rollout_depth),
+                                       weights, rng, policy, epsilon))
             nodes += 1
-        value = total / max(1, rollouts)
-        evaluations[d] = value
-        if value > best_value:
-            best_value, best_dir = value, d
+        mean = sum(sims) / len(sims)
+        var = sum((x - mean) ** 2 for x in sims) / max(1, len(sims) - 1)
+        evaluations[d] = mean
+        details[d] = {'mean': round(mean, 3), 'std': round(math.sqrt(var), 3),
+                      'se': round(math.sqrt(var / len(sims)), 3), 'n': len(sims)}
+        if mean > best_value:
+            best_value, best_dir = mean, d
     return _result('rollout', best_dir, evaluations, max(1, rollout_depth), nodes, start,
-                   extra={'rollouts': rollouts})
+                   extra={'rollouts': rollouts, 'policy': policy, 'paired': bool(paired),
+                          'epsilon': epsilon if policy == 'heuristic_biased' else None,
+                          'details': details})
 
 
 # =====================================================================
@@ -389,101 +477,134 @@ def _rollout_decision(grid, rollouts=20, rollout_depth=16, weights=None, seed=DE
 # =====================================================================
 def _expectimax_decision(grid, max_depth, time_limit, weights=None, prune=True,
                          sample_limit=None, use_tt=True, prob_cutoff=None,
-                         move_order=True, seed=DEFAULT_SEED):
-    """带期望分支的搜索；prune=True 时启用四类剪枝（见 PRUNE_DEFAULTS）。
+                         move_order=True, seed=DEFAULT_SEED, score_weight=0.0):
+    """带期望分支的搜索（迭代加深 + 时间预算 + 可选剪枝）。
 
-    剪枝思路：
-        1) 转置表(TT)：相同盘面 + 相同剩余深度只算一次（去重，收益最大）；
-        2) 空位采样：空位多于 sample_limit 时，只按固定种子随机取 sample_limit 个位置
-           展开（分支从 2E 降到 2·sample_limit），是有偏但可控的近似；
-        3) 累积概率截断：沿路径累积概率 < prob_cutoff 的深层子树，直接用启发式估值外推；
-        4) 移动排序：max 节点先探索启发式估值高的方向，配合时间预算优先得到好结果。
+    目标口径（显式声明，见文档 5.4）：
+        value(max 节点) = score_weight * 本步合并得分 + 后续期望价值
+        value(叶子)     = evaluate(board)
+        score_weight=0.0（默认）表示“不含即时合并分”，与经典 Expectimax 一致。
+
+    机会节点期望（与精确参考实现完全一致，Phase B1）：
+        V(chance) = (1/E) * Σ_cells [ 0.9 * V(该格生成2) + 0.1 * V(该格生成4) ]
+    路径概率 p 表示“从根到达该节点的概率”，每下降一层 spawn 分支：
+        p_child = p * (1/E) * p_value      （不会在 MAX 节点被重置为 1）
+
+    剪枝（仅 prune=True 且各项开启时生效，且一律发生在子树展开“之前”）：
+        - TT：键含 (盘面, 剩余深度, 节点类型)，若启用概率截断则额外含路径概率 p，
+              保证缓存不含隐藏上下文依赖；超时导致未完成的子树不写入 TT；
+        - 概率截断：p_child < prob_cutoff 的分支不再递归，直接用启发式近似其子价值，
+              但 0.9/0.1 与 1/E 的概率权重完整保留（不丢概率质量、不用错误分母）；
+        - 空位采样：空位 > sample_limit 时用“无放回均匀子样”的均值作为期望估计
+              （无偏但有方差，固定 seed 可复现；误差在报告中量化）；
+        - 移动排序：仅在时间预算下优先探索启发式估值高的方向——这是启发式次序，
+              不改变“完全搜索”（prune=False）的结果，也不能宣称无损降低复杂度。
     """
     start = time.time()
-    ctx = {'nodes': 0, 'timed_out': False}
+    ctx = {'nodes': 0, 'leaf': 0, 'cache_hits': 0, 'cutoffs': 0,
+           'sampled_chance': 0, 'chance_nodes': 0, 'timed_out': False}
     tt = {}
     rng = random.Random(seed)
     if sample_limit is None:
         sample_limit = PRUNE_DEFAULTS['sample_limit']
     if prob_cutoff is None:
         prob_cutoff = PRUNE_DEFAULTS['prob_cutoff']
+    use_cutoff = bool(prune) and bool(prob_cutoff) and prob_cutoff > 0.0
+    use_sample = bool(prune) and bool(sample_limit) and sample_limit > 0
+    use_tt = bool(prune) and bool(use_tt)
 
     def expired():
         return (time.time() - start) > time_limit
 
-    def key(g, depth, kind):
-        return (tuple(tuple(row) for row in g), depth, kind)
+    def leaf(g):
+        ctx['leaf'] += 1
+        return evaluate(g, weights)
 
-    def max_node(g, depth):
+    def state_key(g):
+        return tuple(tuple(row) for row in g)
+
+    def tt_key(g, depth, kind, p):
+        if use_cutoff:
+            return (state_key(g), depth, kind, round(p, 9))   # 含路径概率，避免隐藏上下文依赖
+        return (state_key(g), depth, kind)
+
+    def max_node(g, depth, p):
         if depth <= 0:
-            ctx['nodes'] += 1
-            return evaluate(g, weights)
+            return leaf(g)
         if expired():
             ctx['timed_out'] = True
-            ctx['nodes'] += 1
-            return evaluate(g, weights)
-        if prune and use_tt:
-            k = key(g, depth, 'max')
-            hit = tt.get(k)
+            return leaf(g)                                    # 超时：不写 TT
+        key = None
+        if use_tt:
+            key = tt_key(g, depth, 'M', p)
+            hit = tt.get(key)
             if hit is not None:
+                ctx['cache_hits'] += 1
                 return hit
-
+        ctx['nodes'] += 1
         best = -float('inf')
         any_move = False
-        for _d, new_grid, _gain in _ordered_moves(g, weights, order=(prune and move_order)):
+        for _d, new_grid, gain in _ordered_moves(g, weights, order=(bool(prune) and move_order)):
             any_move = True
-            value = chance_node(new_grid, depth - 1, 1.0)
+            value = score_weight * gain + chance_node(new_grid, depth - 1, p)
             if value > best:
                 best = value
             if ctx['timed_out']:
                 break
         if not any_move:
-            best = evaluate(g, weights)
-        if prune and use_tt:
-            tt[key(g, depth, 'max')] = best
+            best = leaf(g)
+        if use_tt and key is not None and not ctx['timed_out']:
+            tt[key] = best
         return best
 
-    def chance_node(g, depth, path_prob):
+    def chance_node(g, depth, p):
+        # g：玩家移动之后、尚未生成新方块的盘面
         if depth <= 0:
-            ctx['nodes'] += 1
-            return evaluate(g, weights)
-        if prune and path_prob < prob_cutoff:
-            ctx['nodes'] += 1
-            return evaluate(g, weights)          # 概率过低的深层分支：启发式外推
+            return leaf(g)
         if expired():
             ctx['timed_out'] = True
-            ctx['nodes'] += 1
-            return evaluate(g, weights)
-
+            return leaf(g)
         cells = empty_cells(g)
         if not cells:
-            ctx['nodes'] += 1
-            return evaluate(g, weights)
-        if prune and use_tt:
-            k = key(g, depth, 'chance')
-            hit = tt.get(k)
+            return leaf(g)
+        ctx['chance_nodes'] += 1
+        key = None
+        if use_tt:
+            key = tt_key(g, depth, 'C', p)
+            hit = tt.get(key)
             if hit is not None:
+                ctx['cache_hits'] += 1
                 return hit
 
-        if prune and len(cells) > sample_limit:
-            cells = rng.sample(cells, sample_limit)   # 空位采样（位置剪枝）
+        total_cells = len(cells)
+        cells_used = cells
+        if use_sample and total_cells > sample_limit:
+            cells_used = rng.sample(cells, sample_limit)       # 无放回均匀子样
+            ctx['sampled_chance'] += 1
 
+        inv_e = 1.0 / total_cells
         total = 0.0
-        for (i, j) in cells:
-            for value, prob in ((2, 0.9), (4, 0.1)):
-                if expired():
-                    ctx['timed_out'] = True
-                    ctx['nodes'] += 1
-                    return evaluate(g, weights)
-                child = [row[:] for row in g]
-                child[i][j] = value
-                total += prob * max_node(child, depth - 1)
-                if prune and path_prob * prob < prob_cutoff:
-                    # 该分支后续会被截断：用启发式估值近似其子价值，避免继续展开
-                    continue
-        result = total / len(cells)
-        if prune and use_tt:
-            tt[key(g, depth, 'chance')] = result
+        for (i, j) in cells_used:
+            p_cell = p * inv_e
+            child2 = [row[:] for row in g]
+            child2[i][j] = 2
+            if use_cutoff and (p_cell * 0.9) < prob_cutoff:
+                ctx['cutoffs'] += 1
+                total += 0.9 * leaf(child2)                     # 概率权重保留，仅子树用启发式外推
+            else:
+                total += 0.9 * max_node(child2, depth - 1, p_cell * 0.9)
+            child4 = [row[:] for row in g]
+            child4[i][j] = 4
+            if use_cutoff and (p_cell * 0.1) < prob_cutoff:
+                ctx['cutoffs'] += 1
+                total += 0.1 * leaf(child4)
+            else:
+                total += 0.1 * max_node(child4, depth - 1, p_cell * 0.1)
+            if ctx['timed_out']:
+                break
+        result = total / len(cells_used)                       # 采样时用子样均值（期望的无偏估计）
+        if use_tt and key is not None and not ctx['timed_out']:
+            tt[key] = result
         return result
 
     best_result = None
@@ -495,7 +616,8 @@ def _expectimax_decision(grid, max_depth, time_limit, weights=None, prune=True,
         evaluations = {}
         best_dir, best_value = None, -float('inf')
         completed = True
-        for direction, new_grid, _gain in _ordered_moves(grid, weights, order=(prune and move_order)):
+        for direction, new_grid, _gain in _ordered_moves(grid, weights,
+                                                         order=(bool(prune) and move_order)):
             value = chance_node(new_grid, d - 1, 1.0)
             if ctx['timed_out']:
                 completed = False
@@ -506,15 +628,18 @@ def _expectimax_decision(grid, max_depth, time_limit, weights=None, prune=True,
         for direction in DIRECTIONS:                 # 非法方向补 None，保持结构一致
             evaluations.setdefault(direction, None)
 
+        stats = {'pruned': bool(prune), 'tt_entries': len(tt),
+                 'cache_hits': ctx['cache_hits'], 'cutoffs': ctx['cutoffs'],
+                 'sampled_chance': ctx['sampled_chance'],
+                 'chance_nodes': ctx['chance_nodes'], 'leaf_evals': ctx['leaf']}
         if completed and best_dir is not None:
             reached = d
             best_result = _result('expectimax', best_dir, evaluations, reached,
-                                  ctx['nodes'], start, extra={'pruned': bool(prune)})
+                                  ctx['nodes'], start, extra=dict(stats))
         else:
             if best_result is None and best_dir is not None:
                 best_result = _result('expectimax', best_dir, evaluations, 0,
-                                      ctx['nodes'], start, timed_out=True,
-                                      extra={'pruned': bool(prune)})
+                                      ctx['nodes'], start, timed_out=True, extra=dict(stats))
             break
         if expired():
             ctx['timed_out'] = True
@@ -524,14 +649,20 @@ def _expectimax_decision(grid, max_depth, time_limit, weights=None, prune=True,
         fallback = _heuristic_decision(grid, weights)
         fallback.update({'strategy': 'expectimax', 'timed_out': True, 'depth_reached': 0,
                          'elapsed_ms': round((time.time() - start) * 1000.0, 3),
-                         'pruned': bool(prune)})
+                         'pruned': bool(prune), 'cache_hits': ctx['cache_hits'],
+                         'cutoffs': ctx['cutoffs'], 'sampled_chance': ctx['sampled_chance'],
+                         'chance_nodes': ctx['chance_nodes'], 'leaf_evals': ctx['leaf']})
         return fallback
 
     best_result['timed_out'] = bool(ctx['timed_out'])
     best_result['nodes'] = ctx['nodes']
     best_result['elapsed_ms'] = round((time.time() - start) * 1000.0, 3)
-    if prune:
-        best_result['tt_entries'] = len(tt)
+    best_result['tt_entries'] = len(tt)
+    best_result['cache_hits'] = ctx['cache_hits']
+    best_result['cutoffs'] = ctx['cutoffs']
+    best_result['sampled_chance'] = ctx['sampled_chance']
+    best_result['chance_nodes'] = ctx['chance_nodes']
+    best_result['leaf_evals'] = ctx['leaf']
     return best_result
 
 
@@ -539,70 +670,55 @@ def _expectimax_decision(grid, max_depth, time_limit, weights=None, prune=True,
 # 策略四：MCTS（UCT + 渐进加宽 + rollout 截断）
 # =====================================================================
 class _MCTSNode(object):
-    __slots__ = ('grid', 'is_max', 'parent', 'move', 'children', 'visits',
-                 'value', 'untried')
+    """MCTS 树节点。kind: 'P'=玩家（max）节点；'C'=机会（随机生成）节点。"""
 
-    def __init__(self, grid, is_max, parent=None, move=None, untried=None):
+    __slots__ = ('grid', 'kind', 'parent', 'move', 'edge_gain', 'children',
+                 'child_index', 'untried', 'visits', 'total_return')
+
+    def __init__(self, grid, kind, parent=None, move=None, untried=None, edge_gain=0.0):
         self.grid = grid
-        self.is_max = is_max
+        self.kind = kind                    # 'P' | 'C'
         self.parent = parent
-        self.move = move
+        self.move = move                    # 由父节点到达本节点的动作（P 子节点才有）
+        self.edge_gain = edge_gain          # 该边对应的即时合并得分（同口径累计）
         self.children = []
-        self.visits = 0
-        self.value = 0.0
+        self.child_index = {}               # chance 子节点的状态键 -> 子节点（重复采样复用）
         self.untried = untried
+        self.visits = 0
+        self.total_return = 0.0
 
 
 def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
-                   weights=None, seed=DEFAULT_SEED, c=1.4, max_chance_width=8):
-    """UCT 搜索：max 节点用 UCB1 选择，chance 节点均匀采样（无偏估计期望）。
+                   weights=None, seed=DEFAULT_SEED, c=1.4, max_chance_width=8,
+                   trace=None):
+    """MCTS（UCT + 渐进加宽 + rollout 截断）。
 
-    剪枝/近似：
-        - 渐进加宽：chance 节点最多展开 max_chance_width 个“空位×数值”子节点；
-        - rollout 截断：模拟深度上限 rollout_depth；
-        - 模拟次数 + 时间双预算。
+    状态与顺序（显式区分，不做局面猜测）：
+        根与“移动后”的节点是 PLAYER 节点；PLAYER 先移动（得到合并分），再生成新方块，
+        生成后的局面（含新块）是 CHANCE 节点的子节点，且 child.kind='P'（下一回合由玩家行动）。
+    机会节点（M01/M02 修复）：
+        每次按**真实转移分布**采样一次 (空位均匀 1/E × 0.9/0.1)，用“结果局面”作为子节点 key：
+        命中已缓存子节点则复用（不重复加不等价权重），未命中才新增（受 max_chance_width 限制）。
+    收益口径（M03 修复）：
+        统一为“从根到叶/截断点的累计合并分 + 截断处启发式估值”，所有候选动作同一尺度，
+        回传时把同一 return 累加到整条路径（不做跨深度的口径混用）。
     """
     start = time.time()
     rng = random.Random(seed)
-    nodes_counter = {'n': 0}
+    stats = {'tree_nodes': 0, 'chance_nodes': 0, 'chance_children': 0,
+             'rollout_steps': 0, 'reused_children': 0, 'no_spawn_leaves': 0}
 
     def ucb(parent, child):
         if child.visits == 0:
             return float('inf')
-        return child.value / child.visits + c * math.sqrt(
+        return child.total_return / child.visits + c * math.sqrt(
             math.log(max(1, parent.visits)) / child.visits)
 
-    def select(node):
-        while True:
-            if node.is_max:
-                if node.untried:
-                    d = node.untried.pop(0)
-                    child_grid, _gain, _moved = move_grid(node.grid, d)
-                    child = _MCTSNode(child_grid, False, node, d, untried=None)
-                    node.children.append(child)
-                    return child
-                if not node.children:
-                    return node
-                node = max(node.children, key=lambda ch: ucb(node, ch))
-            else:
-                # chance 节点：均匀采样子节点（无偏估计期望）
-                if len(node.children) < max_chance_width:
-                    cells = empty_cells(node.grid)
-                    if not cells:
-                        return node
-                    i, j = rng.choice(cells)
-                    value = 2 if rng.random() < 0.9 else 4
-                    child_grid = [row[:] for row in node.grid]
-                    child_grid[i][j] = value
-                    child = _MCTSNode(child_grid, True, node, None,
-                                      untried=_ordered_dirs(child_grid, weights))
-                    node.children.append(child)
-                    return child
-                return rng.choice(node.children)
-
-    def rollout(node):
-        g = node.grid
-        score = 0.0
+    def rollout(g, kind, acc):
+        """按节点类型正确起步：CHANCE 先按分布生成新块；PLAYER 先移动再生成。
+        之后循环“移动（得合并分）→ 生成新块”，返回 累计分 + 截断处启发式估值。"""
+        if kind == 'C':
+            g, _cell, _value = sample_spawn(g, rng)      # 机会节点：先生成新块
         for _ in range(max(1, rollout_depth)):
             if is_game_over(g):
                 break
@@ -610,20 +726,64 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
             if not moves:
                 break
             g, gain, _ = move_grid(g, rng.choice(moves))
-            score += gain
+            acc += gain
             g = spawn(g, rng)
-        return score + evaluate(g, weights)
+            stats['rollout_steps'] += 1
+        return acc + evaluate(g, weights)
 
-    root = _MCTSNode([row[:] for row in grid], True, untried=_ordered_dirs(grid, weights))
+    def descend(node, acc):
+        """选择 + 扩展，返回 (叶子节点, 到达该节点的累计分)。"""
+        while True:
+            if node.kind == 'P':
+                if node.untried:
+                    d = node.untried.pop(0)
+                    child_grid, gain, _moved = move_grid(node.grid, d)
+                    child = _MCTSNode(child_grid, 'C', node, d, untried=None,
+                                      edge_gain=gain)
+                    node.children.append(child)
+                    stats['tree_nodes'] += 1
+                    stats['chance_nodes'] += 1
+                    if trace is not None:
+                        trace.append(('P', d, node.kind))
+                    return child, acc + gain
+                if not node.children:
+                    return node, acc
+                nxt = max(node.children, key=lambda ch: ucb(node, ch))
+                acc += nxt.edge_gain            # 补上该边的即时合并分（统一累计口径）
+                node = nxt
+            else:  # 'C' 机会节点
+                cells = empty_cells(node.grid)
+                if not cells:
+                    stats['no_spawn_leaves'] += 1
+                    return node, acc
+                child_grid, cell, value = sample_spawn(node.grid, rng)
+                if trace is not None:
+                    trace.append(('C', cell, value, node.kind))
+                key = tuple(tuple(row) for row in child_grid)
+                child = node.child_index.get(key)
+                if child is None:
+                    if len(node.children) >= max_chance_width:
+                        # 渐进加宽上限：不再新增节点，直接对该局面 rollout（不破坏概率）
+                        return _MCTSNode(child_grid, 'P'), acc
+                    child = _MCTSNode(child_grid, 'P', node, None,
+                                      untried=_ordered_dirs(child_grid, weights))
+                    node.children.append(child)
+                    node.child_index[key] = child
+                    stats['tree_nodes'] += 1
+                    stats['chance_children'] += 1
+                else:
+                    stats['reused_children'] += 1
+                node = child
+
+    root = _MCTSNode([row[:] for row in grid], 'P', untried=_ordered_dirs(grid, weights))
     sims = 0
     while sims < max(1, simulations) and (time.time() - start) <= time_limit:
-        leaf = select(root)
-        value = rollout(leaf)
-        nodes_counter['n'] += 1
+        leaf, acc = descend(root, 0.0)
+        value = rollout(leaf.grid, leaf.kind, acc)
         node = leaf
         while node is not None:
             node.visits += 1
-            node.value += value
+            node.total_return += value
             node = node.parent
         sims += 1
 
@@ -632,7 +792,7 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
     for child in root.children:
         if child.visits == 0:
             continue
-        mean = child.value / child.visits
+        mean = child.total_return / child.visits
         evaluations[child.move] = mean
         if mean > best_value:
             best_value, best_dir = mean, child.move
@@ -640,8 +800,14 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
         evaluations.setdefault(d, None)
 
     timed_out = sims < max(1, simulations)
-    return _result('mcts', best_dir, evaluations, rollout_depth, nodes_counter['n'], start,
-                   timed_out=timed_out, extra={'simulations': sims})
+    return _result('mcts', best_dir, evaluations, rollout_depth, stats['tree_nodes'], start,
+                   timed_out=timed_out,
+                   extra={'simulations': sims, 'rollout_depth': rollout_depth,
+                          'chance_nodes': stats['chance_nodes'],
+                          'chance_children': stats['chance_children'],
+                          'reused_chance_children': stats['reused_children'],
+                          'rollout_steps': stats['rollout_steps'],
+                          'max_chance_width': max_chance_width, 'uct_c': c})
 
 
 def _ordered_dirs(grid, weights):
@@ -720,15 +886,21 @@ def solve(grid, strategy='expectimax', **options):
                 rollouts=int(options.get('rollouts', 20)),
                 rollout_depth=int(options.get('rollout_depth', 16)),
                 weights=weights,
-                seed=int(options.get('seed', DEFAULT_SEED)))
+                seed=int(options.get('seed', DEFAULT_SEED)),
+                policy=str(options.get('rollout_policy', 'random')),
+                epsilon=float(options.get('rollout_epsilon', 0.2)),
+                paired=bool(options.get('paired', True)))
         if strategy == 'expectimax':
             time_limit = max(0.001, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT))
             return _expectimax_decision(
                 grid, int(options.get('depth', 4)), time_limit, weights,
                 prune=bool(options.get('prune', True)),
                 sample_limit=options.get('sample_limit'),
+                use_tt=bool(options.get('use_tt', True)),
                 prob_cutoff=options.get('prob_cutoff'),
-                seed=int(options.get('seed', DEFAULT_SEED)))
+                move_order=bool(options.get('move_order', True)),
+                seed=int(options.get('seed', DEFAULT_SEED)),
+                score_weight=float(options.get('score_weight', 0.0)))
         if strategy == 'mcts':
             time_limit = max(0.001, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT))
             return _mcts_decision(
@@ -737,7 +909,10 @@ def solve(grid, strategy='expectimax', **options):
                 time_limit=time_limit,
                 rollout_depth=int(options.get('rollout_depth', 16)),
                 weights=weights,
-                seed=int(options.get('seed', DEFAULT_SEED)))
+                seed=int(options.get('seed', DEFAULT_SEED)),
+                c=float(options.get('c', 1.4)),
+                max_chance_width=int(options.get('max_chance_width', 8)),
+                trace=options.get('trace'))
         if strategy == 'rl':
             return _rl_decision(grid, model_path=options.get('model_path'), weights=weights)
         return _error_result(strategy, '未知策略：%s' % strategy)

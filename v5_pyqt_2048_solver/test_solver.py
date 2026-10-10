@@ -231,6 +231,10 @@ class SolverGuiTest(unittest.TestCase):
     def setUpClass(cls):
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
         cls.app = QApplication.instance() or QApplication(sys.argv[:1])
+        # 隔离真实存档目录（在创建窗口之前设置）：
+        #   1) 不触碰用户真实存档与单实例锁；
+        #   2) 离屏平台下模态弹窗无法关闭，隔离后不会误触发“只读运行”提示。
+        os.environ["2048_HISTORY_DIR"] = tempfile.mkdtemp(prefix="v5_test_hist_root_")
         import v5_pyqt_2048_solver as v5
         cls.v5 = v5
 
