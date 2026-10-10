@@ -29,6 +29,12 @@
 │   └── game_history/                 #   对局存档（运行时生成）
 ├── tools/capture_gui.py              # 统一 GUI 截图入口（见 docs/GUI_SCREENSHOT_STANDARD.md）
 ├── docs/GUI_SCREENSHOT_STANDARD.md   # GUI 截图与视觉验收规范（强制）
+├── safe_store.py                     # 跨版本安全存档工具（原子写入/校验/备份/单实例锁，v2–v5 共用）
+├── ui_theme.py                       # 跨版本主题化弹窗组件（暖棕配色，v4/v5 共用）
+├── tests/                            # 跨版本测试
+│   ├── test_cross_version.py         #   v2–v5 异常退出存档恢复测试（真实 taskkill /F）
+│   ├── test_popups.py                #   v4/v5 主题化弹窗回归测试
+│   └── _driver.py                    #   测试驱动（子进程内构造各版本模型）
 ├── AGENTS.md / .trae/rules/          # 项目级 Agent 规则（含截图强制规范）
 ├── blog/                             # 系列博客
 │   ├── 1.Python 实现：从数学模型到完整控制台版《2048》游戏.md
@@ -111,8 +117,15 @@ python simple_ai_demo.py
 
 - `<game_id>/history.csv` —— 每一步操作（步数、操作类型、分数、网格状态）
 - `<game_id>/game_state.json` —— 当前完整状态，用于「继续上一局」
+- `<game_id>/game_state.json.bak` —— 上一份**有效**存档的备份（主档损坏时自动回退）
 - `index.json` —— 对局索引（分数、是否完成、更新时间）
 - `best_score.json` —— 历史最高分
+- `.instance.lock` —— 单实例锁（同版本已有活动进程时，新进程只读运行，避免互相覆盖）
+
+存档写入统一走 [safe_store.py](safe_store.py)：**原子写入**（同目录临时文件 + fsync + `os.replace`）、
+**加载校验**（4×4 棋盘 / 方块值 / 分数 / 布尔字段）、**版本标记**（`schema`/`version`）、
+**异常退出恢复**（崩溃/`taskkill /F` 后能恢复最后一次成功保存的完整对局）。存档目录可用环境变量
+`2048_HISTORY_DIR` 覆盖（按版本隔离到子目录），便于测试与多环境部署。
 
 第 5 版另在 `v5_pyqt_2048_solver/solver_results/` 下保存求解结果：
 
@@ -138,10 +151,20 @@ python simple_ai_demo.py
 - **统一截图入口**：`python tools/capture_gui.py --version v5|v4|v3 --scene <scene>`，正式图输出到各版本 `screenshots/full_<scene>.png`。
 
 ```bash
-python tools/capture_gui.py --version v5 --scene game    # v5 支持 start | game | solver | suggest
-python tools/capture_gui.py --version v4 --scene start   # v4 支持 start | game | hover | merge
-python tools/capture_gui.py --version v3 --scene game    # v3 支持 start | game
+python tools/capture_gui.py --version v5 --scene game       # v5: start|game|solver|suggest|gameover|export|results|recover
+python tools/capture_gui.py --version v4 --scene start      # v4: start|game|hover|merge|gameover|won|recover
+python tools/capture_gui.py --version v3 --scene game       # v3: start|game|recover
 ```
+
+## 测试
+
+```bash
+python tests/test_cross_version.py     # v2–v5 异常退出存档恢复（真实 taskkill /F 强杀后重载校验）
+python tests/test_popups.py            # v4/v5 主题化弹窗回归（外观/返回值/键盘/焦点/高 DPI）
+python v5_pyqt_2048_solver/test_solver.py   # 第 5 版求解器与界面测试
+```
+
+> 恢复测试全程使用隔离的临时存档目录（`2048_HISTORY_DIR`），不会触碰真实用户存档。
 
 ## 系列博客
 

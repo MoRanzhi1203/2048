@@ -19,7 +19,7 @@ import math
 import random
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton,
-                             QMessageBox, QVBoxLayout, QHBoxLayout, QStackedWidget,
+                             QVBoxLayout, QHBoxLayout, QStackedWidget,
                              QFrame, QGraphicsDropShadowEffect)
 from PyQt5.QtCore import Qt, QTimer, QRectF, QRect, QPoint, QPointF, pyqtSignal, QEvent
 from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen, QIcon, QCursor, QFontMetrics
@@ -28,10 +28,14 @@ from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen, QIcon, QCursor, 
 # 复用第 3 篇的 Model（GameCore）：动画版不改动任何棋盘逻辑
 # =====================================================================
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
 _V3_DIR = os.path.join(os.path.dirname(_HERE), "v3_pyqt_2048")
-if _V3_DIR not in sys.path:
-    sys.path.insert(0, _V3_DIR)
+for _p in (_ROOT, _V3_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 from v3_pyqt_2048_with_history import GameCore, DIRECTION_NAMES  # noqa: E402
+import safe_store as _store                                      # noqa: E402
+import ui_theme as _theme                                        # noqa: E402
 
 
 # =====================================================================
@@ -216,14 +220,33 @@ class AnimatedGameCore(GameCore):
 
     def __init__(self, grid_size=4):
         super().__init__(grid_size)
-        # 第 4 篇使用自己的存档目录，避免与第 3 篇的对局混在一起
-        self.history_dir = os.path.join(_HERE, "game_history")
-        os.makedirs(self.history_dir, exist_ok=True)
-        self.best_score = 0
-        self.load_best_score()
+        # 第 4 篇使用自己的存档目录，避免与第 3 篇的对局混在一起；
+        # 同时把存档版本标记为 v4 并重新绑定单实例锁（跨版本隔离）。
+        self.set_history_dir(
+            _store.resolve_history_dir(os.path.join(_HERE, "game_history"), "v4"), "v4")
 
         self.last_transitions = []   # [(src(r,c), dst(r,c), 滑动时显示的数值, 是否合并)]
         self.last_spawn = None       # 本次随机新方块的坐标
+
+    # ---- 撤销/重做条目序列化：额外保存过渡动画信息，恢复后撤销/重做动画一致 ----
+    def _serialize_undo_entry(self, entry):
+        spawn = entry.get("spawn")
+        return {
+            "snapshot": entry["snapshot"],
+            "transitions": [[list(src), list(dst), int(value), bool(merged)]
+                            for (src, dst, value, merged) in entry.get("transitions", [])],
+            "spawn": list(spawn) if spawn else None,
+        }
+
+    def _deserialize_undo_entry(self, data):
+        spawn = data.get("spawn")
+        return {
+            "snapshot": data["snapshot"],
+            "transitions": [((int(t[0][0]), int(t[0][1])),
+                             (int(t[1][0]), int(t[1][1])), int(t[2]), bool(t[3]))
+                            for t in data.get("transitions", [])],
+            "spawn": (int(spawn[0]), int(spawn[1])) if spawn else None,
+        }
 
     # ---- 记录新生方块位置 ----
     def add_new_tile(self):
@@ -1370,6 +1393,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.model = AnimatedGameCore(4)
         self.win_announced = False
+        self._game_over_notified = False      # 同一局“游戏结束”提示只弹一次
         self._hover_shard_toggle = 0          # 悬停主碎片在主色/辅助色间交替
         self.init_ui()
         self.startup()
@@ -1696,6 +1720,8 @@ class MainWindow(QMainWindow):
         self._render_score(self.score_label, "分数", self.model.score)
         self._render_score(self.best_label, "最高分", self.model.best_score)
         self._sync_history_buttons()
+        if not self.model.game_over:          # 撤销/继续后允许再次提示“游戏结束”
+            self._game_over_notified = False
 
     # ---------------- 键盘事件 ----------------
     def keyPressEvent(self, event):
@@ -1796,6 +1822,13 @@ class MainWindow(QMainWindow):
             self.stack.setCurrentIndex(START_PAGE)
             (self.continue_start_button if self.continue_start_button.isEnabled()
              else self.new_game_start_button).setFocus()
+        if not getattr(self.model, "can_save", True):
+            QTimer.singleShot(300, self._warn_readonly)
+
+    def _warn_readonly(self):
+        _theme.show_warning(self, "只读模式",
+                            "检测到同一版本已有另一个进程在运行。\n"
+                            "为避免覆盖存档，本次运行不会写入磁盘。")
 
     def _render_last_game(self, info):
         if info is None:
@@ -1811,19 +1844,34 @@ class MainWindow(QMainWindow):
 
     def on_continue_clicked(self):
         recent = self.model.get_recent_game()
-        if recent and self.model.load_game_state(recent):
+        if not recent:
+            return
+        if self.model.load_game_state(recent):
             self.win_announced = self.model.won
+            self._game_over_notified = self.model.game_over
             self.refresh()
             self._reset_start_hover()
             self.stack.setCurrentIndex(GAME_PAGE)
             self.setFocus()
+            if self.model.last_load_used_backup:
+                _theme.show_info(self, "存档已恢复", "主存档损坏，已自动从备份恢复。",
+                                 badge="success")
+        else:
+            self._reset_start_hover()
+            _theme.show_error(self, "无法继续上一局",
+                              "存档不可用：%s" % (self.model.last_load_error or "未知原因"))
 
     def on_new_game_clicked(self):
+        # 明确选择“开始新游戏”：先把被放弃的上一局结算为已结束，避免旧档残留为可续玩
+        pending = self.model.get_recent_game_info()
+        if pending:
+            self.model.mark_game_completed(pending.get("game_id"))
         self.start_new_game()
 
     def start_new_game(self):
         self.model.start_new_game()
         self.win_announced = False
+        self._game_over_notified = False
         self.refresh()
         self._reset_start_hover()
         self.stack.setCurrentIndex(GAME_PAGE)
@@ -1836,17 +1884,27 @@ class MainWindow(QMainWindow):
             if button is not None:
                 button.stop_hover_emission()
 
-    # ---------------- 对话框 ----------------
+    # ---------------- 主题化弹窗（替换原生 QMessageBox） ----------------
     def show_game_over(self):
-        QMessageBox.information(self, "游戏结束",
-                                f"游戏结束！\n最终分数：{self.model.score}")
-        self.refresh()
+        if self._game_over_notified:
+            return                              # 同一局只提示一次，避免动画回调重复弹出
+        self._game_over_notified = True
+        choice = _theme.ask_choice(
+            self, "游戏结束", "本局已无可行移动。",
+            options=[("重新开始", "secondary"), ("关闭", "primary")],
+            default_index=1, escape_index=1, badge="info",
+            detail_lines=[("最终分数", self.model.score),
+                          ("历史最高分", self.model.best_score)])
+        if choice == 0:
+            self.start_new_game()               # 内部 refresh 会复位提示标志
 
     def show_game_won(self):
-        reply = QMessageBox.question(
-            self, "恭喜胜利！", "你已经达到 2048！是否继续挑战更高分数？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if reply == QMessageBox.No:
+        # 与原生 QMessageBox.question(Yes|No) 语义一致：否/取消=重新开始，是=继续挑战
+        choice = _theme.ask_choice(
+            self, "恭喜胜利", "你已经达到 2048！是否继续挑战更高分数？",
+            options=[("重新开始", "secondary"), ("继续挑战", "primary")],
+            default_index=1, escape_index=0, badge="success")
+        if choice == 0:
             self.start_new_game()
 
     def resizeEvent(self, event):
@@ -1862,6 +1920,7 @@ class MainWindow(QMainWindow):
             layer.shutdown()
         self.model.save_game_state()
         self.model.update_index()
+        self.model.release_lock()
         event.accept()
 
 

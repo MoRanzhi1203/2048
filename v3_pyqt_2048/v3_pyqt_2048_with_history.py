@@ -22,8 +22,14 @@ from copy import deepcopy
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QGridLayout,
                              QLabel, QPushButton, QMessageBox, QVBoxLayout,
                              QHBoxLayout, QStackedWidget, QFrame)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFont
+
+# 跨版本共享的安全存档工具（原子写入 / 校验 / 备份 / 单实例锁）
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+import safe_store as _store                                     # noqa: E402
 
 
 # 方向 -> 中文名，用于写入历史记录
@@ -119,34 +125,74 @@ class GameCore:
         self.current_move = 0
         self.history_rows = []      # 已写入的 CSV 数据行（保留被撤销的“未来行”供重做恢复）
         self.history_count = 0      # 当前生效的历史行数（撤销/重做时收缩/扩张）
-        self.history_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "game_history")
+        self.history_dir = _store.resolve_history_dir(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "game_history"), "v3")
         os.makedirs(self.history_dir, exist_ok=True)
 
         # 撤销 / 重做栈，保存的是状态快照
         self.undo_stack = []
         self.redo_stack = []
 
+        # ---- 安全存档相关（原子写入 / 校验 / 备份 / 单实例锁）----
+        self.storage_version = "v3"       # 存档版本标记（各版本隔离）
+        self.undo_redo_cap = 300          # 持久化撤销/重做的最大步数（控制存档体积）
+        self.last_load_error = None       # 最近一次加载失败原因（供界面提示）
+        self.last_load_used_backup = False
+        self.lock = None
+        self.can_save = True
+        self.readonly_reason = ""
+        self._bind_lock()
+
+        self.load_best_score()
+
+    def storage_tag(self):
+        """存档版本标记：子类可覆盖（v4/v5 各自隔离）。"""
+        return self.storage_version
+
+    def _bind_lock(self):
+        """按当前 history_dir 绑定单实例锁（存档目录变化后需重新绑定）。"""
+        if self.lock is not None:
+            self.lock.release()
+        self.lock = _store.InstanceLock(os.path.join(self.history_dir, ".instance.lock"))
+        self.can_save = self.lock.acquire()
+        self.readonly_reason = "" if self.can_save else "检测到同一版本已有另一个进程在运行"
+
+    def release_lock(self):
+        """释放单实例锁（窗口关闭 / 进程退出时调用）。"""
+        try:
+            if self.lock is not None:
+                self.lock.release()
+        except Exception:                                        # noqa: BLE001
+            pass
+
+    def set_history_dir(self, history_dir, version_tag=None):
+        """切换存档目录（各版本隔离）：重建目录、重绑单实例锁、重载最高分。"""
+        self.history_dir = history_dir
+        if version_tag:
+            self.storage_version = version_tag
+        _store.safe_makedirs(self.history_dir)
+        self._bind_lock()
+        self.best_score = 0
         self.load_best_score()
 
     # ---------------- 历史记录持久化 ----------------
     def load_best_score(self):
-        """读取历史最高分"""
-        best_score_file = os.path.join(self.history_dir, "best_score.json")
-        if os.path.exists(best_score_file):
-            try:
-                with open(best_score_file, 'r', encoding='utf-8') as f:
-                    self.best_score = json.load(f).get('best_score', 0)
-            except (json.JSONDecodeError, IOError):
-                pass
+        """读取历史最高分（校验合法性，损坏时忽略）"""
+        path = os.path.join(self.history_dir, "best_score.json")
+        ok, data, _err = _store.read_json(path)
+        if ok and isinstance(data, dict):
+            value = data.get("best_score", 0)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                self.best_score = value
 
     def save_best_score(self):
-        """保存历史最高分"""
-        best_score_file = os.path.join(self.history_dir, "best_score.json")
+        """保存历史最高分（原子写入）"""
+        if not self.can_save:
+            return
+        path = os.path.join(self.history_dir, "best_score.json")
         try:
-            with open(best_score_file, 'w', encoding='utf-8') as f:
-                json.dump({'best_score': self.best_score}, f, ensure_ascii=False)
-        except IOError:
+            _store.atomic_write_json(path, {"best_score": self.best_score})
+        except OSError:
             pass
 
     def start_new_game(self):
@@ -157,10 +203,13 @@ class GameCore:
             self.update_index(is_completed=True)
 
         self.game_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        game_dir = os.path.join(self.history_dir, self.game_id)
-        os.makedirs(game_dir, exist_ok=True)
-
-        self.history_file = os.path.join(game_dir, "history.csv")
+        if self.can_save:
+            game_dir = os.path.join(self.history_dir, self.game_id)
+            os.makedirs(game_dir, exist_ok=True)
+            self.history_file = os.path.join(game_dir, "history.csv")
+        else:
+            # 只读模式（同版本已有其他活动进程）：不创建/覆盖存档
+            self.history_file = None
 
         self.grid = [[0] * self.grid_size for _ in range(self.grid_size)]
         self.score = 0
@@ -193,13 +242,15 @@ class GameCore:
         self.save_game_state()
 
     def _write_history_file(self):
-        """按当前生效的历史行重写 CSV，保证撤销/重做后与棋盘状态一致"""
-        if not self.history_file:
+        """按当前生效的历史行重写 CSV（原子写入），保证撤销/重做后与棋盘状态一致"""
+        if not self.history_file or not self.can_save:
             return
-        with open(self.history_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["步数", "操作类型", "当前分数", "网格状态"])
-            writer.writerows(self.history_rows[:self.history_count])
+        try:
+            _store.atomic_write_csv(self.history_file,
+                                    ["步数", "操作类型", "当前分数", "网格状态"],
+                                    self.history_rows[:self.history_count])
+        except OSError:
+            pass
 
     def _read_history_rows(self):
         """从历史 CSV 读回数据行（不含表头），用于恢复存档后继续撤销/重做"""
@@ -209,28 +260,47 @@ class GameCore:
             with open(self.history_file, 'r', newline='', encoding='utf-8') as f:
                 reader = csv.reader(f)
                 next(reader, None)  # 跳过表头
-                return [row for row in reader]
-        except IOError:
+                return [row for row in reader if row]
+        except (IOError, csv.Error, UnicodeDecodeError):
             return []
 
+    # ---- 撤销/重做条目序列化（子类 v4/v5 覆盖以保存过渡动画信息）----
+    def _serialize_undo_entry(self, entry):
+        return entry
+
+    def _deserialize_undo_entry(self, data):
+        return data
+
     def save_game_state(self):
-        """保存完整状态，用于下次启动时恢复"""
-        if not self.game_id:
+        """保存完整状态：原子写入 + 备份上一份“有效”存档 + 版本标记 + 撤销/重做。"""
+        if not self.game_id or not self.can_save:
             return
-        state_file = os.path.join(self.history_dir, self.game_id, "game_state.json")
-        game_state = {
-            "grid": self.grid,
+        game_dir = os.path.join(self.history_dir, self.game_id)
+        state_file = os.path.join(game_dir, "game_state.json")
+        backup_file = state_file + ".bak"
+
+        state = {
+            "grid": [row[:] for row in self.grid],
             "score": self.score,
             "best_score": self.best_score,
             "game_over": self.game_over,
             "won": self.won,
             "current_move": self.current_move,
-            "last_updated": datetime.datetime.now().isoformat()
+            "history_count": self.history_count,
+            "undo_stack": [self._serialize_undo_entry(e)
+                           for e in self.undo_stack[-self.undo_redo_cap:]],
+            "redo_stack": [self._serialize_undo_entry(e)
+                           for e in self.redo_stack[-self.undo_redo_cap:]],
+            "last_updated": datetime.datetime.now().isoformat(),
         }
+        state = _store.wrap_state(state, self.storage_tag())
         try:
-            with open(state_file, 'w', encoding='utf-8') as f:
-                json.dump(game_state, f, ensure_ascii=False, indent=2)
-        except IOError:
+            # 仅当现有主文件“有效”时才备份，避免损坏文件覆盖有效备份
+            ok, old, _err = _store.read_json(state_file)
+            if ok and _store.validate_game_state(old, self.grid_size)[0]:
+                _store.backup_copy(state_file, backup_file)
+            _store.atomic_write_json(state_file, state)
+        except OSError:
             pass
 
     def update_index(self, is_completed=None):
@@ -240,13 +310,9 @@ class GameCore:
         （用于开新局前把被放弃的上一局结算为已结束）。
         """
         index_file = os.path.join(self.history_dir, "index.json")
-        index_data = []
-        if os.path.exists(index_file):
-            try:
-                with open(index_file, 'r', encoding='utf-8') as f:
-                    index_data = json.load(f)
-            except (json.JSONDecodeError, IOError):
-                index_data = []
+        ok, index_data, _err = _store.read_json(index_file)
+        if not ok or not isinstance(index_data, list):
+            index_data = []
 
         completed = is_completed if is_completed is not None else (self.game_over or self.won)
         now = datetime.datetime.now().isoformat()
@@ -271,27 +337,56 @@ class GameCore:
                 "last_updated": now,
             })
 
+        if not self.can_save:
+            return
         try:
-            with open(index_file, 'w', encoding='utf-8') as f:
-                json.dump(index_data, f, ensure_ascii=False, indent=2)
-        except IOError:
+            _store.atomic_write_json(index_file, index_data)
+        except OSError:
             pass
 
-    def get_recent_game_info(self):
-        """返回最近一局未完成游戏的索引信息（dict），没有则返回 None"""
+    def mark_game_completed(self, game_id):
+        """把指定对局在索引中标记为已完成（用于用户放弃续玩 / 主动开新局时结算旧档）。"""
+        if not game_id or not self.can_save:
+            return
         index_file = os.path.join(self.history_dir, "index.json")
-        if not os.path.exists(index_file):
+        ok, index_data, _err = _store.read_json(index_file)
+        if not ok or not isinstance(index_data, list):
+            return
+        changed = False
+        for info in index_data:
+            if isinstance(info, dict) and info.get("game_id") == game_id:
+                info["is_completed"] = True
+                info["last_updated"] = datetime.datetime.now().isoformat()
+                changed = True
+                break
+        if changed:
+            try:
+                _store.atomic_write_json(index_file, index_data)
+            except OSError:
+                pass
+
+    def get_recent_game_info(self):
+        """返回最近一局“未完成且存在可读状态文件”的索引信息（dict），没有则返回 None"""
+        index_file = os.path.join(self.history_dir, "index.json")
+        ok, index_data, _err = _store.read_json(index_file)
+        if not ok or not isinstance(index_data, list):
             return None
-        try:
-            with open(index_file, 'r', encoding='utf-8') as f:
-                index_data = json.load(f)
-            unfinished = [g for g in index_data if not g.get("is_completed", False)]
-            if not unfinished:
-                return None
-            return sorted(unfinished, key=lambda x: x.get("last_updated", ""),
-                          reverse=True)[0]
-        except (json.JSONDecodeError, IOError):
+
+        def _has_state(info):
+            gid = info.get("game_id")
+            if not gid:
+                return False
+            game_dir = os.path.join(self.history_dir, gid)
+            return (os.path.exists(os.path.join(game_dir, "game_state.json"))
+                    or os.path.exists(os.path.join(game_dir, "game_state.json.bak")))
+
+        unfinished = [g for g in index_data
+                      if isinstance(g, dict) and not g.get("is_completed", False)
+                      and _has_state(g)]
+        if not unfinished:
             return None
+        unfinished.sort(key=lambda x: x.get("last_updated", ""), reverse=True)
+        return unfinished[0]
 
     def get_recent_game(self):
         """返回最近一局未完成游戏的 game_id，没有则返回 None"""
@@ -299,30 +394,42 @@ class GameCore:
         return info["game_id"] if info else None
 
     def load_game_state(self, game_id):
-        """加载指定游戏的状态"""
+        """加载指定游戏的状态：校验 + 损坏时回退备份 + 恢复撤销/重做历史。"""
+        self.last_load_error = None
+        self.last_load_used_backup = False
         game_dir = os.path.join(self.history_dir, game_id)
         state_file = os.path.join(game_dir, "game_state.json")
-        if not os.path.exists(state_file):
+        backup_file = state_file + ".bak"
+
+        data, used_backup, err = _store.load_json_validated(
+            state_file, lambda s: _store.validate_game_state(s, self.grid_size), backup_file)
+        if data is None:
+            self.last_load_error = err or "存档不可用"
             return False
         try:
-            with open(state_file, 'r', encoding='utf-8') as f:
-                state = json.load(f)
             self.game_id = game_id
-            self.grid = state["grid"]
-            self.score = state["score"]
-            self.best_score = state["best_score"]
-            self.game_over = state["game_over"]
-            self.won = state["won"]
-            self.current_move = state["current_move"]
+            self.grid = [row[:] for row in data["grid"]]
+            self.score = int(data["score"])
+            self.best_score = max(int(data.get("best_score", 0)), self.best_score)
+            self.game_over = bool(data["game_over"])
+            self.won = bool(data["won"])
+            self.current_move = int(data["current_move"])
             self.history_file = os.path.join(game_dir, "history.csv")
             self.history_rows = self._read_history_rows()
             self.history_count = len(self.history_rows)
-            self.undo_stack.clear()
-            self.redo_stack.clear()
-            self.update_index()
-            return True
-        except (json.JSONDecodeError, IOError, KeyError):
+            self.undo_stack = [self._deserialize_undo_entry(e)
+                               for e in (data.get("undo_stack") or [])]
+            self.redo_stack = [self._deserialize_undo_entry(e)
+                               for e in (data.get("redo_stack") or [])]
+        except (KeyError, TypeError, ValueError) as exc:
+            self.last_load_error = "存档字段异常：%s" % exc
             return False
+
+        self.last_load_used_backup = used_backup
+        if used_backup:
+            self.save_game_state()          # 主文件损坏但备份可用：用备份内容自愈主文件
+        self.update_index()
+        return True
 
     # ---------------- 棋盘逻辑 ----------------
     def add_new_tile(self):
@@ -848,6 +955,13 @@ class MainWindow(QMainWindow):
             # 启动页键盘可达：默认聚焦「继续上一局」（无存档时聚焦「开始新游戏」）
             (self.continue_start_button if self.continue_start_button.isEnabled()
              else self.new_game_start_button).setFocus()
+        if not getattr(self.model, "can_save", True):
+            QTimer.singleShot(300, self._warn_readonly)
+
+    def _warn_readonly(self):
+        QMessageBox.warning(self, "只读模式",
+                            "检测到同一版本已有另一个进程在运行。\n"
+                            "为避免覆盖存档，本次运行不会写入磁盘。")
 
     def _render_last_game(self, info):
         if info is None:
@@ -864,14 +978,25 @@ class MainWindow(QMainWindow):
     def on_continue_clicked(self):
         """继续最近一局未完成的游戏，并切换到游戏页"""
         recent = self.model.get_recent_game()
-        if recent and self.model.load_game_state(recent):
+        if not recent:
+            return
+        if self.model.load_game_state(recent):
             self.win_announced = self.model.won
             self.refresh()
             self.stack.setCurrentIndex(GAME_PAGE)
             self.setFocus()
+            if self.model.last_load_used_backup:
+                QMessageBox.information(self, "存档已恢复",
+                                        "主存档损坏，已自动从备份恢复。")
+        else:
+            QMessageBox.warning(self, "无法继续上一局",
+                                "存档不可用：%s" % (self.model.last_load_error or "未知原因"))
 
     def on_new_game_clicked(self):
-        """开始新游戏，并切换到游戏页"""
+        """开始新游戏：先把被放弃的上一局结算为已结束，再开局"""
+        pending = self.model.get_recent_game_info()
+        if pending:
+            self.model.mark_game_completed(pending.get("game_id"))
         self.start_new_game()
 
     def start_new_game(self):
@@ -896,9 +1021,10 @@ class MainWindow(QMainWindow):
             self.start_new_game()
 
     def closeEvent(self, event):
-        """关闭窗口时保存当前状态"""
+        """关闭窗口时保存当前状态并释放单实例锁"""
         self.model.save_game_state()
         self.model.update_index()
+        self.model.release_lock()
         event.accept()
 
 

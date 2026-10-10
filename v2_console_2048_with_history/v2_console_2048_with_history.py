@@ -6,10 +6,19 @@
 
 import random
 import os
+import sys
 import msvcrt  # Windows下的键盘输入处理
 import csv
 import json
 import datetime
+
+# 跨版本共享的安全存档工具（原子写入 / 校验 / 备份 / 单实例锁）
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+import safe_store as _store                                     # noqa: E402
+
+HISTORY_HEADER = ["步数", "操作类型", "操作得分", "总分", "移动后的网格状态", "随机添加后的网格状态"]
 
 class Console2048WithHistory:
     def __init__(self, grid_size=4):
@@ -23,55 +32,72 @@ class Console2048WithHistory:
         self.game_id = None  # 游戏ID
         self.game_start_time = None  # 游戏开始时间
         self.history_file = None  # 历史记录文件路径
-        self.history_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "game_history")  # 历史记录目录
+        self.history_dir = _store.resolve_history_dir(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "game_history"), "v2")  # 历史记录目录
         self.current_move = 0  # 当前步数
-        
+        self.history_rows = []  # 已写入的 CSV 数据行（用于原子重写）
+
+        # ---- 安全存档相关（原子写入 / 校验 / 备份 / 单实例锁）----
+        self.storage_version = "v2"
+        self.last_load_error = None
+        self.last_load_used_backup = False
+
         # 确保历史记录目录存在
         if not os.path.exists(self.history_dir):
             os.makedirs(self.history_dir)
-            
+
+        self.lock = _store.InstanceLock(os.path.join(self.history_dir, ".instance.lock"))
+        self.can_save = self.lock.acquire()
+        self.readonly_reason = "" if self.can_save else "检测到同一版本已有另一个进程在运行"
+
         # 读取最高分
         self.load_best_score()
 
+    def release_lock(self):
+        """释放单实例锁（退出时调用）。"""
+        try:
+            self.lock.release()
+        except Exception:                                        # noqa: BLE001
+            pass
+
     def load_best_score(self):
-        """加载最高分"""
+        """加载最高分（校验合法性，损坏时忽略）"""
         best_score_file = os.path.join(self.history_dir, "best_score.json")
-        if os.path.exists(best_score_file):
-            try:
-                with open(best_score_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.best_score = data.get('best_score', 0)
-            except (json.JSONDecodeError, IOError) as e:
-                # 记录错误但继续运行
-                pass
+        ok, data, _err = _store.read_json(best_score_file)
+        if ok and isinstance(data, dict):
+            value = data.get('best_score', 0)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                self.best_score = value
 
     def save_best_score(self):
-        """保存最高分"""
+        """保存最高分（原子写入）"""
+        if not self.can_save:
+            return
         best_score_file = os.path.join(self.history_dir, "best_score.json")
         try:
-            with open(best_score_file, 'w', encoding='utf-8') as f:
-                json.dump({'best_score': self.best_score}, f, ensure_ascii=False)
-        except IOError as e:
-            # 记录错误但继续运行
+            _store.atomic_write_json(best_score_file, {'best_score': self.best_score})
+        except OSError:
             pass
 
     def start_new_game(self):
-        """开始新游戏"""
+        """开始新游戏：先结算上一局，再新建历史文件与状态"""
+        # 上一局无论是正常结束还是被放弃，都结算为已结束，避免残留为“幽灵活档”
+        if self.game_id:
+            self.update_index(is_completed=True)
+
         # 生成游戏ID（基于时间戳）
         self.game_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         # 记录游戏开始时间
         self.game_start_time = datetime.datetime.now()
-        
-        # 创建游戏历史记录文件
-        game_dir = os.path.join(self.history_dir, self.game_id)
-        os.makedirs(game_dir, exist_ok=True)
-        
-        # 创建历史记录CSV文件
-        self.history_file = os.path.join(game_dir, "history.csv")
-        with open(self.history_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            # 写入表头：步数,操作类型,当前分数,操作得分,移动后的网格状态,随机添加后的网格状态
-            writer.writerow(["步数", "操作类型", "操作得分", "总分", "移动后的网格状态", "随机添加后的网格状态"])
+        self.history_rows = []
+
+        if self.can_save:
+            game_dir = os.path.join(self.history_dir, self.game_id)
+            os.makedirs(game_dir, exist_ok=True)
+            self.history_file = os.path.join(game_dir, "history.csv")
+            self._write_history_file()
+        else:
+            self.history_file = None
 
         # 初始化游戏状态
         self.grid = [[0] * self.grid_size for _ in range(self.grid_size)]
@@ -79,59 +105,83 @@ class Console2048WithHistory:
         self.game_over = False
         self.won = False
         self.current_move = 0
-        
+
         # 添加两个初始方块
         for _ in range(2):
             self.add_new_tile()
-        
+
         # 记录初始状态
         self.record_move("初始状态", 0, self.grid, self.grid)
-        
+
         # 更新目录文档
         self.update_index()
 
+    def _write_history_file(self):
+        """按累积的行原子重写 CSV（避免崩溃时留下半行）"""
+        if not self.history_file or not self.can_save:
+            return
+        try:
+            _store.atomic_write_csv(self.history_file, HISTORY_HEADER, self.history_rows)
+        except OSError:
+            pass
+
+    def _read_history_rows(self):
+        """从历史 CSV 读回数据行（不含表头）"""
+        if not self.history_file or not os.path.exists(self.history_file):
+            return []
+        try:
+            with open(self.history_file, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                next(reader, None)
+                return [row for row in reader if row]
+        except (IOError, csv.Error, UnicodeDecodeError):
+            return []
+
     def record_move(self, move_type, move_score, after_move_grid, after_add_tile_grid):
-        """记录一步操作"""
+        """记录一步操作，并即时原子保存状态"""
         if not self.history_file:
             return
-        
+
         # 增加步数
         self.current_move += 1
-        
-        # 记录到CSV文件
-        with open(self.history_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            # 将网格转换为JSON字符串保存
-            after_move_grid_json = json.dumps(after_move_grid, ensure_ascii=False)
-            after_add_tile_grid_json = json.dumps(after_add_tile_grid, ensure_ascii=False)
-            writer.writerow([self.current_move, move_type, move_score, self.score, after_move_grid_json, after_add_tile_grid_json])
-        
+
+        # 将网格转换为JSON字符串保存，并累积后原子重写 CSV
+        after_move_grid_json = json.dumps(after_move_grid, ensure_ascii=False)
+        after_add_tile_grid_json = json.dumps(after_add_tile_grid, ensure_ascii=False)
+        self.history_rows.append([self.current_move, move_type, move_score, self.score,
+                                  after_move_grid_json, after_add_tile_grid_json])
+        self._write_history_file()
+
         # 保存游戏状态用于恢复
         self.save_game_state()
 
     def save_game_state(self):
-        """保存游戏完整状态用于恢复"""
-        if not self.game_id:
+        """保存游戏完整状态（原子写入 + 备份上一份有效存档 + 版本标记）"""
+        if not self.game_id or not self.can_save:
             return
-        
+
         game_dir = os.path.join(self.history_dir, self.game_id)
         state_file = os.path.join(game_dir, "game_state.json")
-        
+        backup_file = state_file + ".bak"
+
         game_state = {
-            "grid": self.grid,
+            "grid": [row[:] for row in self.grid],
             "score": self.score,
             "best_score": self.best_score,
             "game_over": self.game_over,
             "won": self.won,
             "current_move": self.current_move,
+            "history_count": len(self.history_rows),
             "last_updated": datetime.datetime.now().isoformat()
         }
-        
+        game_state = _store.wrap_state(game_state, self.storage_version)
         try:
-            with open(state_file, 'w', encoding='utf-8') as f:
-                json.dump(game_state, f, ensure_ascii=False, indent=2)
-        except IOError as e:
-            # 记录错误但继续运行
+            # 仅当现有主文件有效时才备份，避免损坏文件覆盖有效备份
+            ok, old, _err = _store.read_json(state_file)
+            if ok and _store.validate_game_state(old, self.grid_size)[0]:
+                _store.backup_copy(state_file, backup_file)
+            _store.atomic_write_json(state_file, game_state)
+        except OSError:
             pass
 
     def update_index(self, is_completed=None):
@@ -145,15 +195,11 @@ class Console2048WithHistory:
             self.save_best_score()
         
         index_file = os.path.join(self.history_dir, "index.json")
-        
+
         # 读取现有索引
-        index_data = []
-        if os.path.exists(index_file):
-            try:
-                with open(index_file, 'r', encoding='utf-8') as f:
-                    index_data = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
-                index_data = []
+        ok, index_data, _err = _store.read_json(index_file)
+        if not ok or not isinstance(index_data, list):
+            index_data = []
         
         # 确定is_completed状态：如果传入了参数则使用传入的值，否则使用游戏当前状态
         completed_status = is_completed if is_completed is not None else (self.game_over or self.won)
@@ -180,97 +226,105 @@ class Console2048WithHistory:
         else:
             index_data.append(game_info)
         
-        # 保存索引文件
-        try:
-            with open(index_file, 'w', encoding='utf-8') as f:
-                json.dump(index_data, f, ensure_ascii=False, indent=2)
-        except IOError as e:
-            # 记录错误但继续运行
-            pass
-            
-    def mark_game_completed(self, game_id):
-        """把指定对局在索引中标记为已完成（用于用户放弃续玩时结算旧档）"""
-        if not game_id:
-            return
-        index_file = os.path.join(self.history_dir, "index.json")
-        if not os.path.exists(index_file):
+        # 保存索引文件（原子写入）
+        if not self.can_save:
             return
         try:
-            with open(index_file, 'r', encoding='utf-8') as f:
-                index_data = json.load(f)
-            for info in index_data:
-                if info.get('game_id') == game_id:
-                    info['is_completed'] = True
-                    info['last_updated'] = datetime.datetime.now().isoformat()
-                    break
-            with open(index_file, 'w', encoding='utf-8') as f:
-                json.dump(index_data, f, ensure_ascii=False, indent=2)
-        except (json.JSONDecodeError, IOError) as e:
-            # 记录错误但继续运行
+            _store.atomic_write_json(index_file, index_data)
+        except OSError:
             pass
 
-    def get_last_unfinished_game(self):
-        """获取最后一个未完成且非游戏结束状态的游戏信息（活档）"""
+    def mark_game_completed(self, game_id):
+        """把指定对局在索引中标记为已完成（用于用户放弃续玩时结算旧档）"""
+        if not game_id or not self.can_save:
+            return
         index_file = os.path.join(self.history_dir, "index.json")
-        if not os.path.exists(index_file):
+        ok, index_data, _err = _store.read_json(index_file)
+        if not ok or not isinstance(index_data, list):
+            return
+        changed = False
+        for info in index_data:
+            if isinstance(info, dict) and info.get('game_id') == game_id:
+                info['is_completed'] = True
+                info['last_updated'] = datetime.datetime.now().isoformat()
+                changed = True
+                break
+        if changed:
+            try:
+                _store.atomic_write_json(index_file, index_data)
+            except OSError:
+                pass
+
+    def get_last_unfinished_game(self):
+        """获取最后一个“未完成且存在可读状态文件”的活档信息"""
+        index_file = os.path.join(self.history_dir, "index.json")
+        ok, index_data, _err = _store.read_json(index_file)
+        if not ok or not isinstance(index_data, list):
             return None
-        
-        try:
-            with open(index_file, 'r', encoding='utf-8') as f:
-                index_data = json.load(f)
-                
-            # 筛选真正的活档：未完成的游戏
-            unfinished_games = [game for game in index_data if not game.get('is_completed', False)]
-            if not unfinished_games:
-                return None
-                
-            # 按最后更新时间排序，获取最新的未完成游戏
-            unfinished_games.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
-            return unfinished_games[0]
-        except (json.JSONDecodeError, IOError) as e:
+
+        def _has_state(game):
+            gid = game.get('game_id')
+            if not gid:
+                return False
+            game_dir = os.path.join(self.history_dir, gid)
+            return (os.path.exists(os.path.join(game_dir, "game_state.json"))
+                    or os.path.exists(os.path.join(game_dir, "game_state.json.bak")))
+
+        unfinished_games = [g for g in index_data
+                            if isinstance(g, dict) and not g.get('is_completed', False)
+                            and _has_state(g)]
+        if not unfinished_games:
             return None
-            
+        unfinished_games.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
+        return unfinished_games[0]
+
     def load_game_state(self, game_id):
-        """加载指定游戏ID的游戏状态"""
+        """加载指定游戏ID的游戏状态：校验 + 损坏时回退备份（兼容旧格式）"""
+        self.last_load_error = None
+        self.last_load_used_backup = False
         game_dir = os.path.join(self.history_dir, game_id)
         state_file = os.path.join(game_dir, "game_state.json")
-        
-        if not os.path.exists(state_file):
+        backup_file = state_file + ".bak"
+
+        game_state, used_backup, err = _store.load_json_validated(
+            state_file, lambda s: _store.validate_game_state(s, self.grid_size), backup_file)
+        if game_state is None:
+            self.last_load_error = err or "存档不可用"
             return False
-        
+
         try:
-            with open(state_file, 'r', encoding='utf-8') as f:
-                game_state = json.load(f)
-                
-            # 恢复游戏状态
             self.game_id = game_id
-            self.grid = game_state.get('grid', [[0] * self.grid_size for _ in range(self.grid_size)])
-            self.score = game_state.get('score', 0)
-            self.best_score = game_state.get('best_score', 0)
-            self.game_over = game_state.get('game_over', False)
-            self.won = game_state.get('won', False)
-            self.current_move = game_state.get('current_move', 0)
-            
-            # 更新历史文件路径
+            self.grid = [row[:] for row in game_state['grid']]
+            self.score = int(game_state.get('score', 0))
+            self.best_score = max(int(game_state.get('best_score', 0)), self.best_score)
+            self.game_over = bool(game_state.get('game_over', False))
+            self.won = bool(game_state.get('won', False))
+            self.current_move = int(game_state.get('current_move', 0))
+
             self.history_file = os.path.join(game_dir, "history.csv")
-            
-            # 从索引中获取游戏开始时间
-            index_file = os.path.join(self.history_dir, "index.json")
-            if os.path.exists(index_file):
-                with open(index_file, 'r', encoding='utf-8') as f:
-                    index_data = json.load(f)
-                    for game in index_data:
-                        if game.get('game_id') == game_id:
-                            start_time_str = game.get('start_time', datetime.datetime.now().isoformat())
-                            self.game_start_time = datetime.datetime.fromisoformat(start_time_str)
-                            break
-            
-            if not self.game_start_time:
-                self.game_start_time = datetime.datetime.now()
-                
-            return True
-        except (json.JSONDecodeError, IOError, ValueError) as e:
+            self.history_rows = self._read_history_rows()
+        except (KeyError, TypeError, ValueError) as exc:
+            self.last_load_error = "存档字段异常：%s" % exc
             return False
+
+        # 从索引中获取游戏开始时间（缺失时用当前时间兜底）
+        ok, index_data, _err = _store.read_json(os.path.join(self.history_dir, "index.json"))
+        if ok and isinstance(index_data, list):
+            for game in index_data:
+                if isinstance(game, dict) and game.get('game_id') == game_id:
+                    try:
+                        self.game_start_time = datetime.datetime.fromisoformat(
+                            game.get('start_time'))
+                    except (TypeError, ValueError):
+                        pass
+                    break
+        if not self.game_start_time:
+            self.game_start_time = datetime.datetime.now()
+
+        self.last_load_used_backup = used_backup
+        if used_backup:
+            self.save_game_state()          # 用备份内容自愈主文件
+        return True
 
     def add_new_tile(self):
         """在随机空位置添加新方块（2或4）"""
@@ -378,6 +432,8 @@ class Console2048WithHistory:
 
     def run(self):
         """运行游戏主循环"""
+        if not self.can_save:
+            print("提示：%s。为避免覆盖存档，本次运行不会写入磁盘。" % self.readonly_reason)
         # 检查是否有未完成的游戏
         last_unfinished = self.get_last_unfinished_game()
         if last_unfinished:
@@ -401,7 +457,9 @@ class Console2048WithHistory:
                         input("按回车键继续...")
                         break
                     else:
-                        print("游戏加载失败，开始新游戏。")
+                        print("游戏加载失败（%s），开始新游戏。"
+                              % (self.last_load_error or "存档损坏或不可用"))
+                        self.mark_game_completed(last_unfinished.get('game_id'))
                         self.start_new_game()
                         break
                 elif choice == 'n':
@@ -432,6 +490,7 @@ class Console2048WithHistory:
                 print("感谢游玩！再见！")
                 # 退出时更新索引，标记为未完成
                 self.update_index(is_completed=False)
+                self.release_lock()
                 break
 
             if key in ('up', 'down', 'left', 'right'):  # 处理用户移动

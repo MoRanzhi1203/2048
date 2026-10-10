@@ -32,17 +32,20 @@ import time
 
 # ---- 复用第 4 版的界面与模型（v5 不改动它们） ----
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
 _V4_DIR = os.path.join(os.path.dirname(_HERE), "v4_pyqt_2048_animated")
-for _p in (_V4_DIR, _HERE):
+for _p in (_ROOT, _V4_DIR, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 import v4_pyqt_2048_animated as v4                                    # noqa: E402
 import solver_2048 as solver                                          # noqa: E402
+import ui_theme as _theme                                             # noqa: E402
+import safe_store as _store                                           # noqa: E402
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,   # noqa: E402
                              QVBoxLayout, QHBoxLayout, QComboBox, QListWidget,
-                             QListWidgetItem, QProgressBar, QMessageBox,
+                             QListWidgetItem, QProgressBar,
                              QDialog, QTableWidget, QTableWidgetItem,
                              QAbstractItemView, QHeaderView, QScrollArea, QFrame)
 from PyQt5.QtCore import Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot   # noqa: E402
@@ -208,14 +211,15 @@ class SolverResultsDialog(QDialog):
         self.sessions = sessions
         self.compare = compare
         self.setWindowTitle("求解结果对比" if compare else "查看求解结果")
-        self.setStyleSheet(f"QDialog {{ background-color: {v4.COLOR_BG}; }}")
+        self.setStyleSheet(_theme.content_dialog_qss())      # 统一暖棕主题
         self.resize(480, 420 if compare else 470)
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(8)
 
         caption = QLabel("各会话对比" if compare else "求解会话详情")
-        caption.setStyleSheet(f"color:{v4.COLOR_TEXT}; font-size:14px; font-weight:bold;")
+        caption.setStyleSheet(
+            "color:%s; font-size:14px; font-weight:bold;" % _theme.PALETTE["text"])
         root.addWidget(caption)
 
         if compare:
@@ -312,15 +316,16 @@ class SolverResultsDialog(QDialog):
 
         bar = QHBoxLayout()
         export_btn = QPushButton("导出对比 CSV")
-        export_btn.setStyleSheet(PANEL_BUTTON_QSS)
+        export_btn.setStyleSheet(_theme.secondary_button_qss())
         export_btn.setFixedHeight(30)
+        export_btn.setCursor(Qt.PointingHandCursor)
 
         def _export():
             path = self.parent().export_comparison(rows) if hasattr(self.parent(), "export_comparison") else None
             if path:
-                QMessageBox.information(self, "导出对比", "已导出：\n%s" % path)
+                _theme.show_info(self, "导出对比", "已导出：\n%s" % path, badge="success")
             else:
-                QMessageBox.warning(self, "导出对比", "导出失败。")
+                _theme.show_warning(self, "导出对比", "导出失败，请检查磁盘权限或路径。")
 
         export_btn.clicked.connect(_export)
         bar.addWidget(export_btn)
@@ -330,8 +335,9 @@ class SolverResultsDialog(QDialog):
 
     def _close_button(self):
         btn = QPushButton("关闭")
-        btn.setStyleSheet(PANEL_BUTTON_QSS)
-        btn.setFixedSize(80, 30)
+        btn.setStyleSheet(_theme.primary_button_qss())
+        btn.setFixedSize(84, 30)
+        btn.setCursor(Qt.PointingHandCursor)
         btn.clicked.connect(self.accept)
         wrapper = QHBoxLayout()
         wrapper.addStretch()
@@ -378,11 +384,9 @@ class SolverMainWindow(v4.MainWindow):
     def init_ui(self):
         super().init_ui()
 
-        # v5 使用自己的存档目录与最高分，避免与第 4 版混用
-        self.model.history_dir = os.path.join(_HERE, "game_history")
-        os.makedirs(self.model.history_dir, exist_ok=True)
-        self.model.best_score = 0
-        self.model.load_best_score()
+        # v5 使用自己的存档目录与版本标记（跨版本隔离），并重绑单实例锁
+        self.model.set_history_dir(
+            _store.resolve_history_dir(os.path.join(_HERE, "game_history"), "v5"), "v5")
 
         self._init_solver()
         self._build_solver_panel()
@@ -980,15 +984,17 @@ class SolverMainWindow(v4.MainWindow):
     def on_solver_export(self):
         session = self._current_session_for_export()
         if session is None:
-            QMessageBox.information(self, "导出结果", "当前没有可导出的求解结果。")
+            _theme.show_info(self, "导出结果", "当前没有可导出的求解结果。")
             return
         try:
             paths = self._export_session(session)
         except IOError as exc:
-            QMessageBox.warning(self, "导出结果", "导出失败：%s" % exc)
+            _theme.show_warning(self, "导出结果", "导出失败：%s" % exc)
             return
-        QMessageBox.information(self, "导出结果",
-                                "已导出：\n%s\n%s" % (paths["json"], paths["csv"]))
+        _theme.show_info(self, "导出结果",
+                         "已导出以下文件：",
+                         detail_lines=[("JSON", paths["json"]), ("CSV", paths["csv"])],
+                         badge="success")
 
     def _export_session(self, session):
         os.makedirs(EXPORT_DIR, exist_ok=True)

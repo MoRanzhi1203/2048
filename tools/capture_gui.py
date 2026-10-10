@@ -36,7 +36,11 @@ import time
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ANIM_DIR = os.path.join(PROJ, "v4_pyqt_2048_animated")
 SHOTS_DIR = os.path.join(ANIM_DIR, "screenshots")
-sys.path.insert(0, ANIM_DIR)
+for _p in (ANIM_DIR, PROJ):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import ui_theme                                                    # noqa: E402
 
 # ---------------------------------------------------------------- Win32 ---
 from ctypes import wintypes  # noqa: E402
@@ -262,7 +266,7 @@ def required_text_widgets(w, scene):
         if wdg is not None:
             items.append((name, wdg))
 
-    if scene in ("start", "hover"):
+    if scene in ("start", "hover", "recover"):
         add("主标题2048", find_label(start, "2048"))
         add("副标题", find_label(start, "合并数字，拼出 2048"))
         add("卡片标题", w.last_game_caption)
@@ -332,6 +336,19 @@ def find_label(page, text):
         if lb.text() == text:
             return lb
     return None
+
+
+def dialog_text_widgets(dlg):
+    """弹窗场景必需文字清单：全部标签 + 全部按钮。"""
+    from PyQt5.QtWidgets import QLabel, QPushButton
+    items = []
+    for lb in dlg.findChildren(QLabel):
+        if lb.text():
+            items.append(("弹窗文字:%s" % lb.text()[:12], lb))
+    for btn in dlg.findChildren(QPushButton):
+        if btn.text():
+            items.append(("弹窗按钮:%s" % btn.text(), btn))
+    return items
 
 
 # ------------------------------------------------------------ 场景准备 ---
@@ -512,7 +529,7 @@ V5_SCENES = {"start": v5_scene_start, "game": v5_scene_game,
 
 def v5_required_text_widgets(w, scene):
     """第 5 版必需文字：游戏页原有控件 + 求解面板控件"""
-    items = list(required_text_widgets(w, "start" if scene == "start" else "game"))
+    items = list(required_text_widgets(w, "start" if scene in ("start", "recover") else "game"))
     for name, wdg in (
         ("按钮-AI求解", getattr(w, "solver_ai_button", None)),
         ("求解标题", getattr(w, "solver_title", None)),
@@ -526,6 +543,149 @@ def v5_required_text_widgets(w, scene):
     return items
 
 
+# ------------------------------------------------ 主题化弹窗 / 恢复场景 ---
+def _attach_dialog(w, dlg, app, settle_ms):
+    """把弹窗设为截图目标（show() 便于自动化，弹窗本身仍带原生标题栏）。"""
+    dlg.show()
+    pump(app, max(settle_ms, 220))
+    w._capture_target = dlg
+    w._capture_texts = dialog_text_widgets(dlg)
+
+
+def v4_scene_gameover(w, app, settle_ms):
+    w.stack.setCurrentIndex(1)
+    w.model.grid = [[2, 4, 2, 4], [4, 2, 4, 2], [2, 4, 2, 4], [4, 2, 4, 2]]
+    w.model.score = 20148
+    w.model.best_score = 20148
+    w.board_view.render(w.model.grid)
+    w.refresh()
+    dlg = ui_theme.ThemedDialog(
+        w, "游戏结束", "本局已无可行移动。", badge="info",
+        detail_lines=[("最终分数", w.model.score), ("历史最高分", w.model.best_score)],
+        buttons=[("重新开始", "secondary"), ("关闭", "primary")],
+        default_index=1, escape_index=1)
+    _attach_dialog(w, dlg, app, settle_ms)
+    return "gameover"
+
+
+def v4_scene_won(w, app, settle_ms):
+    w.stack.setCurrentIndex(1)
+    w.model.grid = [[2048, 1024, 512, 256], [128, 64, 32, 16], [8, 4, 2, 0], [0, 0, 0, 0]]
+    w.model.score = 20148
+    w.model.best_score = 20148
+    w.board_view.render(w.model.grid)
+    w.refresh()
+    dlg = ui_theme.ThemedDialog(
+        w, "恭喜胜利", "你已经达到 2048！是否继续挑战更高分数？", badge="success",
+        buttons=[("重新开始", "secondary"), ("继续挑战", "primary")],
+        default_index=1, escape_index=0)
+    _attach_dialog(w, dlg, app, settle_ms)
+    return "won"
+
+
+def _prepare_recover(w):
+    w.model.start_new_game()
+    w.model.grid = [[2, 4, 8, 16], [32, 64, 128, 256], [512, 1024, 2048, 4096], [0, 0, 0, 0]]
+    w.model.score = 12345
+    w.model.best_score = 12345
+    w.model.save_game_state()
+    w.model.update_index()
+
+
+def v3_scene_recover(w, app, settle_ms):
+    _prepare_recover(w)
+    w._render_last_game(w.model.get_recent_game_info())
+    w.stack.setCurrentIndex(0)
+    pump(app, max(settle_ms, 320))
+    return "recover"
+
+
+def v4_scene_recover(w, app, settle_ms):
+    _prepare_recover(w)
+    w._render_last_game(w.model.get_recent_game_info())
+    w.stack.setCurrentIndex(0)
+    pump(app, max(settle_ms, 320))
+    return "recover"
+
+
+def v5_scene_recover(w, app, settle_ms):
+    _prepare_recover(w)
+    w._render_last_game(w.model.get_recent_game_info())
+    w.setFixedSize(500, 672)                 # 启动页与第 4 版同尺寸
+    w.stack.setCurrentIndex(0)
+    pump(app, max(settle_ms, 320))
+    return "recover"
+
+
+def v5_scene_gameover(w, app, settle_ms):
+    w.stack.setCurrentIndex(1)
+    w._grow_for_solver()
+    w.model.grid = [[2, 4, 2, 4], [4, 2, 4, 2], [2, 4, 2, 4], [4, 2, 4, 2]]
+    w.model.score = 20148
+    w.model.best_score = 20148
+    w.board_view.render(w.model.grid)
+    w.refresh()
+    dlg = ui_theme.ThemedDialog(
+        w, "游戏结束", "本局已无可行移动。", badge="info",
+        detail_lines=[("最终分数", w.model.score), ("历史最高分", w.model.best_score)],
+        buttons=[("重新开始", "secondary"), ("关闭", "primary")],
+        default_index=1, escape_index=1)
+    _attach_dialog(w, dlg, app, settle_ms)
+    return "gameover"
+
+
+def v5_scene_export(w, app, settle_ms):
+    w.stack.setCurrentIndex(1)
+    w._grow_for_solver()
+    dlg = ui_theme.ThemedDialog(
+        w, "导出结果", "已导出以下文件：", badge="success",
+        detail_lines=[("JSON", "solver_results/exports/session.json"),
+                      ("CSV", "solver_results/exports/session.csv")],
+        buttons=[("确定", "primary")])
+    _attach_dialog(w, dlg, app, settle_ms)
+    return "export"
+
+
+def v5_scene_results(w, app, settle_ms):
+    import importlib
+    v5mod = importlib.import_module("v5_pyqt_2048_solver")
+    w.stack.setCurrentIndex(1)
+    w._grow_for_solver()
+    sessions = [
+        {"id": "20260101_101010_000001", "strategy": "expectimax",
+         "strategy_name": "Expectimax", "depth_label": "标准", "time_limit": 0.3,
+         "mode": "auto", "mode_name": "自动连走", "started_at": "2026-01-01T10:10:10",
+         "elapsed_ms": 4200.0, "steps": [], "final_score": 5120, "final_max_tile": 512,
+         "game_over": True, "stopped_reason": "游戏结束", "timeout_count": 0},
+        {"id": "20260101_101500_000002", "strategy": "heuristic",
+         "strategy_name": "启发式", "depth_label": "快速", "time_limit": 0.1,
+         "mode": "auto", "mode_name": "自动连走", "started_at": "2026-01-01T10:15:00",
+         "elapsed_ms": 2100.0, "steps": [], "final_score": 3120, "final_max_tile": 256,
+         "game_over": True, "stopped_reason": "游戏结束", "timeout_count": 0},
+    ]
+    for s in sessions:
+        s["steps"] = [{"step": i + 1, "direction": "left", "name": "向左",
+                       "eval": 1200.5 - i * 3, "elapsed_ms": 35.0 + i,
+                       "depth_reached": 4, "timed_out": False,
+                       "score": 1000 + i * 120, "max_tile": 128}
+                      for i in range(6)]
+    dlg = v5mod.SolverResultsDialog(w, sessions, compare=True)
+    dlg.resize(480, 420)
+    _attach_dialog(w, dlg, app, settle_ms)
+    return "results"
+
+
+V4_SCENES = dict(SCENES)
+V4_SCENES.update({"gameover": v4_scene_gameover, "won": v4_scene_won,
+                  "recover": v4_scene_recover})
+
+V3_SCENES = {"start": v3_scene_start, "game": v3_scene_game, "recover": v3_scene_recover}
+
+V5_SCENES_ALL = dict(V5_SCENES)
+V5_SCENES_ALL.update({"gameover": v5_scene_gameover, "export": v5_scene_export,
+                      "results": v5_scene_results, "recover": v5_scene_recover})
+
+
 # 统一入口覆盖的版本：新增 GUI 版本时在此登记（模块目录 / 模块名 / 可用场景 / 出图目录）
 VERSIONS = {
     "v5": {
@@ -533,7 +693,7 @@ VERSIONS = {
         "dir": "v5_pyqt_2048_solver",
         "module": "v5_pyqt_2048_solver",
         "entry": "v5_pyqt_2048_solver.py",
-        "scenes": V5_SCENES,
+        "scenes": V5_SCENES_ALL,
         "texts": v5_required_text_widgets,
         "shots": os.path.join(PROJ, "v5_pyqt_2048_solver", "screenshots"),
     },
@@ -542,7 +702,7 @@ VERSIONS = {
         "dir": "v4_pyqt_2048_animated",
         "module": "v4_pyqt_2048_animated",
         "entry": "v4_pyqt_2048_animated.py",
-        "scenes": SCENES,
+        "scenes": V4_SCENES,
         "shots": os.path.join(PROJ, "v4_pyqt_2048_animated", "screenshots"),
     },
     "v3": {
@@ -550,7 +710,7 @@ VERSIONS = {
         "dir": "v3_pyqt_2048",
         "module": "v3_pyqt_2048_with_history",
         "entry": "v3_pyqt_2048_with_history.py",
-        "scenes": {"start": v3_scene_start, "game": v3_scene_game},
+        "scenes": V3_SCENES,
         "shots": os.path.join(PROJ, "v3_pyqt_2048", "screenshots"),
     },
 }
@@ -564,8 +724,8 @@ def main():
     ap.add_argument("--version", default="v5", choices=sorted(VERSIONS),
                     help="目标版本：v5=算法求解版，v4=动画版，v3=MVC/撤销重做版")
     ap.add_argument("--scene", required=True,
-                    help="场景，可用值随版本而定：v5=start|game|solver|suggest；"
-                         "v4=start|game|hover|merge；v3=start|game")
+                    help="场景，可用值随版本而定：v5=start|game|solver|suggest|gameover|export|results|recover；"
+                         "v4=start|game|hover|merge|gameover|won|recover；v3=start|game|recover")
     ap.add_argument("--out", default=None,
                     help="输出 PNG 路径（默认 <版本>/screenshots/full_<scene>.png）")
     ap.add_argument("--settle-ms", type=int, default=300, help="绘制完成后的稳定等待")
@@ -636,6 +796,12 @@ def main():
     try:
         scene_note = ver["scenes"][args.scene](w, app, args.settle_ms)
         pump(app, 120)
+        # 弹窗场景：场景函数会把要截图的弹窗挂到 w._capture_target
+        target = getattr(w, "_capture_target", None) or w
+        if target is not w:
+            hwnd = int(target.winId())
+            prepare_window(hwnd)
+            pump(app, 220)
         if not is_window_on_top(hwnd):           # 被遮挡则再置前一次
             force_foreground(hwnd)
             pump(app, 160)
@@ -647,29 +813,44 @@ def main():
             print(json.dumps(result, ensure_ascii=False))
             return 4
 
-        dpr = w.devicePixelRatioF()
-        client_h = int(round(w.height() * dpr))
+        dpr = target.devicePixelRatioF()
+        client_h = int(round(target.height() * dpr))
         frame_h = frame[3] - frame[1]
         variance = _image_variance(img)
 
-        # 主标题文字校验（真实字形而非空白）
-        page_index = 0 if args.scene in ("start", "hover") else 1
-        page = w.stack.widget(page_index)
-        title = find_label(page, "2048")
-        title_ratio = 0.0
-        if title is not None:
-            r = widget_rect_in_image(title, frame, dpr)
-            title_ratio = dark_ratio(img, r)
+        dialog_texts = getattr(w, "_capture_texts", None)
+        is_dialog = dialog_texts is not None
 
-        # 全部必需文字元素的对比度校验（不同版本可自带文字清单）
+        # 主标题文字校验（真实字形而非空白）
+        title_ratio = 0.0
+        if is_dialog and dialog_texts:
+            anchor = dialog_texts[0][1]
+            if anchor.isVisible():
+                r = widget_rect_in_image(anchor, frame, dpr)
+                title_ratio = dark_ratio(img, r)
+        else:
+            page_index = 0 if args.scene in ("start", "hover", "recover") else 1
+            page = w.stack.widget(page_index)
+            title = find_label(page, "2048")
+            if title is not None:
+                r = widget_rect_in_image(title, frame, dpr)
+                title_ratio = dark_ratio(img, r)
+
+        # 全部必需文字元素的对比度校验（不同版本/弹窗可自带文字清单）
         texts = {}
-        text_fn = ver.get("texts") or required_text_widgets
-        for name, wdg in text_fn(w, args.scene):
+        if is_dialog:
+            items = dialog_texts
+            min_texts = 3
+        else:
+            text_fn = ver.get("texts") or required_text_widgets
+            items = text_fn(w, args.scene)
+            min_texts = 7
+        for name, wdg in items:
             if not wdg.isVisible():
                 continue
             r = widget_rect_in_image(wdg, frame, dpr)
             texts[name] = round(text_contrast_ratio(img, r), 4)
-        texts_ok = (len(texts) >= 7) and all(v > 0.01 for v in texts.values())
+        texts_ok = (len(texts) >= min_texts) and all(v > 0.01 for v in texts.values())
 
         particles = 0
         if getattr(w, "particle_layer", None) is not None:
