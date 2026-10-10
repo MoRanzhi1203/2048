@@ -401,6 +401,17 @@ HOVER_SPAWN_JITTER = 10.0          # 鼠标附近生成时的位置扰动半径�
 HOVER_AREA_PAD_X = 0.18            # 安全区左右内边距比例（相对按钮宽度）
 HOVER_AREA_PAD_Y = 0.30            # 安全区上下内边距比例（相对按钮高度）
 
+# 合并粒子：三类区域混合采样（几何按目标方块实际绘制矩形推导，无写死像素）
+MERGE_CONTACT_RATIO = 0.40          # 合并接触区域（来源方块所在一侧）
+MERGE_INTERIOR_RATIO = 0.40         # 目标方块内部随机
+MERGE_EDGE_RATIO = 0.20             # 目标方块四周边缘窄带（避开四角）
+MERGE_ZONE_INSET = 0.10             # 采样区域避开最外侧 10% 边距
+MERGE_CONTACT_SPREAD = math.radians(80.0)   # 接触区域沿合并方向扩散的半角
+MERGE_EDGE_SPREAD = math.radians(45.0)      # 边缘区域向外扩散的半角
+# 接触侧 → 合并方向角（屏幕坐标 y 向下）：来源在右 ⇒ 方块向左移动
+_SIDE_MERGE_ANGLE = {"right": math.pi, "left": 0.0,
+                     "bottom": -math.pi / 2.0, "top": math.pi / 2.0}
+
 # 粒子配色映射：main = 主碎片（沿用数字方块自身背景色），accent = 辅助高光（同色系提亮）
 PARTICLE_COLORS = {
     2:    {"main": (238, 228, 218), "accent": (250, 244, 238)},
@@ -560,6 +571,69 @@ class ParticleEngine:
                     y + random.uniform(-jitter, jitter))
         return (x, y)
 
+    # ---- 区域混合发射（合并粒子：不做中心点爆发） ----
+    def emit_zones(self, preset_name, zones, main_rgb, accent_rgb):
+        """按区域比例混合发射：每个区域给出候选矩形、占比与方向策略。
+
+        zones: [{"rects": [QRectF, ...], "ratio": float,
+                 "angle": float|None, "spread": float, "outward": QPointF|None}]
+        主碎片与高光共用同一套区域采样，二者都不会固定生成在中心。
+        """
+        preset = get_preset(preset_name)
+        main_rgb = _as_rgb(main_rgb)
+        accent_rgb = _as_rgb(accent_rgb)
+        for _ in range(preset.main):
+            self._spawn_in_zones(preset, zones, main_rgb, preset.size_main,
+                                 "shard", preset.outline_shards)
+        for _ in range(preset.accent):
+            self._spawn_in_zones(preset, zones, accent_rgb, preset.size_accent,
+                                 "dot", True)
+        overflow = len(self.particles) - self.max_particles
+        if overflow > 0:                       # 上限保护：丢弃最旧的
+            del self.particles[:overflow]
+
+    @staticmethod
+    def _pick_zone(zones):
+        """按 ratio 加权随机选择一个区域"""
+        total = sum(z.get("ratio", 0.0) for z in zones)
+        if total <= 0.0:
+            return zones[0]
+        r = random.random() * total
+        acc = 0.0
+        for z in zones:
+            acc += z.get("ratio", 0.0)
+            if r <= acc:
+                return z
+        return zones[-1]
+
+    def _spawn_in_zones(self, preset, zones, rgb, size_range, shape, outlined):
+        zone = self._pick_zone(zones)
+        rects = zone.get("rects") or []
+        rect = random.choice(rects)
+        x = random.uniform(rect.left(), rect.right())
+        y = random.uniform(rect.top(), rect.bottom())
+
+        spread = float(zone.get("spread", 0.0))
+        outward = zone.get("outward")
+        if outward is not None:                      # 边缘：由方块中心指向出生点向外
+            base = math.atan2(y - outward.y(), x - outward.x())
+        elif zone.get("angle") is not None:          # 接触区：沿合并方向（含垂直向）
+            base = float(zone["angle"])
+        else:                                        # 内部随机：全向
+            base = random.uniform(0.0, 2.0 * math.pi)
+            spread = 0.0
+        angle = base + random.uniform(-spread, spread)
+
+        speed = random.uniform(*preset.speed)
+        self.particles.append(Particle(
+            x, y,
+            math.cos(angle) * speed,
+            math.sin(angle) * speed + preset.up_bias,
+            random.uniform(*preset.life), random.uniform(*size_range),
+            shape, rgb,
+            random.uniform(0.0, 2.0 * math.pi), random.uniform(-8.0, 8.0),
+            preset.gravity, preset.damping_k, outlined))
+
     def _spawn(self, x, y, preset, rgb, size_range, shape, outlined):
         angle = random.uniform(0.0, 2.0 * math.pi)
         speed = random.uniform(*preset.speed)
@@ -673,6 +747,33 @@ class ParticleOverlay(QWidget):
         if not self._timer.isActive():
             self._timer.start()
 
+    # ---- 供棋盘上报：区域混合发射（把控件局部矩形换算到本层坐标） ----
+    def _widget_pt_to_layer(self, widget, pt):
+        gp = widget.mapToGlobal(QPoint(int(round(pt.x())), int(round(pt.y()))))
+        return QPointF(self.mapFromGlobal(gp))
+
+    def _widget_rect_to_layer(self, widget, rect):
+        tl = self._widget_pt_to_layer(widget, rect.topLeft())
+        br = self._widget_pt_to_layer(widget, rect.bottomRight())
+        return QRectF(tl, br).normalized()
+
+    def emit_zones_from(self, widget, zones, main_rgb, accent_rgb, preset_name):
+        """区域混合发射：zones 中的矩形以 widget 局部坐标给出，逐一到本层坐标"""
+        conv = []
+        for z in zones:
+            outward = z.get("outward")
+            conv.append({
+                "rects": [self._widget_rect_to_layer(widget, r) for r in z.get("rects", [])],
+                "ratio": float(z.get("ratio", 0.0)),
+                "angle": z.get("angle"),
+                "spread": float(z.get("spread", 0.0)),
+                "outward": (self._widget_pt_to_layer(widget, outward)
+                            if outward is not None else None),
+            })
+        self.engine.emit_zones(preset_name, conv, main_rgb, accent_rgb)
+        if not self._timer.isActive():
+            self._timer.start()
+
     def is_active(self):
         return self.engine.is_active()
 
@@ -778,13 +879,22 @@ class BoardView(QWidget):
     def animate_move(self, final_grid, transitions, spawn):
         """播放一次移动：先滑行，再合并/新生放大"""
         moving = []
-        pop_cells = {}
+        pop_cells = {}          # 目标格 -> 来源方块所在侧集合（用于合并粒子的接触区）
         for src, dst, value, merged in transitions:
             sx, sy = self._cell_xy(*src)
             tx, ty = self._cell_xy(*dst)
             moving.append((value, sx, sy, tx, ty))
             if merged:
-                pop_cells[dst] = True
+                sides = pop_cells.setdefault(dst, set())
+                dr, dc = dst[0] - src[0], dst[1] - src[1]
+                if dr > 0:
+                    sides.add("top")       # 来源在上方 ⇒ 向下合并
+                elif dr < 0:
+                    sides.add("bottom")
+                if dc > 0:
+                    sides.add("left")
+                elif dc < 0:
+                    sides.add("right")
 
         self.anim = {
             "mode": "forward",
@@ -862,19 +972,75 @@ class BoardView(QWidget):
                                  COLOR_EMPTY_MAIN, COLOR_EMPTY_ACCENT, "click_empty")
         event.accept()
 
+    def _merge_zones(self, row, col, sides):
+        """按合并目标格的“实际绘制矩形”推导三类采样区域（均为控件局部坐标）。
+
+        三类区域：
+        1. 接触区（40%）：来源方块所在的一侧半幅，方向沿合并方向；
+        2. 内部区（40%）：方块内部随机（避开最外侧 10% 边距），方向随机；
+        3. 边缘区（20%）：四周内缩窄带（去掉四角），方向由中心向外。
+        来源方向未知时（如来源与目标同格）接触区退化为方块内部随机采样。
+        """
+        tile = self._cell_rect(row, col)
+        inset = TILE_SIZE * MERGE_ZONE_INSET
+        inner = tile.adjusted(inset, inset, -inset, -inset)
+        hw, hh = inner.width() / 2.0, inner.height() / 2.0
+
+        if sides:
+            contact_rects = []
+            for side in sides:
+                if side == "left":
+                    contact_rects.append(QRectF(inner.x(), inner.y(), hw, inner.height()))
+                elif side == "right":
+                    contact_rects.append(QRectF(inner.x() + hw, inner.y(), hw, inner.height()))
+                elif side == "top":
+                    contact_rects.append(QRectF(inner.x(), inner.y(), inner.width(), hh))
+                elif side == "bottom":
+                    contact_rects.append(QRectF(inner.x(), inner.y() + hh, inner.width(), hh))
+        else:
+            contact_rects = [inner]              # 回退：方向未知 ⇒ 方块内部随机
+
+        # 接触区方向：单一来源侧时沿合并方向；两侧或未知时改为随机方向
+        if len(sides) == 1:
+            dir_angle = _SIDE_MERGE_ANGLE.get(next(iter(sides)))
+        else:
+            dir_angle = None
+
+        # 边缘区：四周窄带，去掉四角（沿边只取中间 50%）
+        band = inset
+        edge_rects = [
+            QRectF(inner.x() + inner.width() * 0.25, tile.y(),
+                   inner.width() * 0.5, band),                                  # 上
+            QRectF(inner.x() + inner.width() * 0.25, inner.bottom(),
+                   inner.width() * 0.5, band),                                  # 下
+            QRectF(tile.x(), inner.y() + inner.height() * 0.25,
+                   band, inner.height() * 0.5),                                 # 左
+            QRectF(inner.right(), inner.y() + inner.height() * 0.25,
+                   band, inner.height() * 0.5),                                 # 右
+        ]
+
+        return [
+            {"rects": contact_rects, "ratio": MERGE_CONTACT_RATIO,
+             "angle": dir_angle, "spread": MERGE_CONTACT_SPREAD},
+            {"rects": [inner], "ratio": MERGE_INTERIOR_RATIO,
+             "angle": None, "spread": 0.0},
+            {"rects": edge_rects, "ratio": MERGE_EDGE_RATIO,
+             "angle": None, "spread": MERGE_EDGE_SPREAD,
+             "outward": QPointF(tile.center())},
+        ]
+
     def _emit_merge_fragments(self):
         """一步中的多组合并，各自在目标格释放一次碎片（pop 以目标格为键，天然去重）"""
         if self._particle_layer is None or not self.anim or not self.anim["pop"]:
             return
         target = self.anim["target"]
-        for (row, col) in self.anim["pop"]:
+        for (row, col), sides in self.anim["pop"].items():
             value = target[row][col]
             if not value:
                 continue
             main, accent = particle_colors_for(value)
-            x, y = self._cell_xy(row, col)
-            self._emit_particles(x + TILE_SIZE / 2.0, y + TILE_SIZE / 2.0,
-                                 main, accent, "merge")
+            zones = self._merge_zones(row, col, sides)
+            self._particle_layer.emit_zones_from(self, zones, main, accent, "merge")
 
     # ---------------- 逐帧推进 ----------------
     def _tick(self):
