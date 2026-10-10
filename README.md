@@ -22,9 +22,9 @@
 │   ├── 2.如何实现带历史记录功能的控制台2048游戏.md
 │   ├── 3.使用 PyQt5 实现 2048 桌面版游戏（MVC 架构与撤销重做）.md
 │   └── 目录.md                       #   系列总纲与里程碑
-├── ai_solver_2048.py                 # 求解器（Expectimax，当前整体注释、未启用）
-├── run_ai_2048.py                    # 求解器演示脚本（同上，未启用）
-└── simple_ai_demo.py                 # 求解器简化演示（同上，未启用）
+├── ai_solver_2048.py                 # 求解器核心（Expectimax + 启发式评估，可自动对局）
+├── run_ai_2048.py                    # 求解器交互脚本（演示模式 / 批量测试）
+└── simple_ai_demo.py                 # 求解器简化演示（固定步数，无需交互）
 ```
 
 ## 环境依赖
@@ -49,6 +49,12 @@ python console_2048_with_history/console_2048_with_history.py
 
 # 第 3 篇：PyQt5 桌面版
 python pyqt_2048/pyqt_2048_with_history.py
+
+# AI 求解器（Expectimax 自动对局：演示模式 / 批量测试）
+python run_ai_2048.py
+
+# AI 求解器简化演示（固定 10 步，无需交互）
+python simple_ai_demo.py
 ```
 
 ## 操作说明
@@ -58,6 +64,7 @@ python pyqt_2048/pyqt_2048_with_history.py
 | 控制台版 | 方向键 / `WASD` 移动；`Q` 退出 |
 | 桌面版 | 方向键 / `WASD` 移动；`Ctrl+Z` 撤销；`Ctrl+Y` 重做 |
 | 桌面版 · 启动页 | `Tab` 切换焦点；`回车` / `空格` 触发「继续上一局 / 开始新游戏」 |
+| AI 求解器 | 自动对局，`Ctrl+C` 中断并保存；`run_ai_2048.py` 另含批量测试模式 |
 
 桌面版启动时：若检测到未完成的对局会停在**启动页**（展示上一局分数），否则直接进入游戏页。
 
@@ -82,9 +89,9 @@ python pyqt_2048/pyqt_2048_with_history.py
 2. [如何实现带历史记录功能的控制台 2048 游戏](blog/2.如何实现带历史记录功能的控制台2048游戏.md)
 3. [使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销/重做](blog/3.使用%20PyQt5%20实现%202048%20桌面版游戏（MVC%20架构与撤销重做）.md)
 
-后续计划：PyQt 动画与性能优化、经典算法求解（贪心 / Expectimax / MCTS）、用历史数据训练模型。
+后续计划：PyQt 动画与性能优化、更多求解算法（贪心 / MCTS）、用历史数据训练模型。
 
 ## 说明
 
-- `ai_solver_2048.py`、`run_ai_2048.py`、`simple_ai_demo.py` 目前**整个文件被注释**，属于尚未启用的实验代码，暂不可直接运行。
+- `ai_solver_2048.py`、`run_ai_2048.py`、`simple_ai_demo.py` 为 **Expectimax 自动求解器**，可直接运行：`python run_ai_2048.py`（演示 / 批量测试）或 `python simple_ai_demo.py`（固定步数演示）。求解器复用控制台版的对局与存档接口，对局同样落盘到 `console_2048_with_history/game_history/`。
 - 桌面版的界面为纯视觉优化（布局 / 配色 / 字号 / 间距 / 圆角 / 控件状态），不影响游戏规则、分数与存档逻辑。

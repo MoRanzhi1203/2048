@@ -117,6 +117,8 @@ class GameCore:
         self.game_id = None
         self.history_file = None
         self.current_move = 0
+        self.history_rows = []      # 已写入的 CSV 数据行（保留被撤销的“未来行”供重做恢复）
+        self.history_count = 0      # 当前生效的历史行数（撤销/重做时收缩/扩张）
         self.history_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "game_history")
         os.makedirs(self.history_dir, exist_ok=True)
@@ -148,22 +150,28 @@ class GameCore:
             pass
 
     def start_new_game(self):
-        """开始新游戏：新建历史文件、清空棋盘、生成两个初始方块"""
+        """开始新游戏：先结算上一局，再新建历史文件、清空棋盘、生成两个初始方块"""
+        # 上一局无论是正常结束还是中途被「新游戏」放弃，都在此结算为已结束，
+        # 避免它以旧分数残留在 index.json 里变成可续玩的“幽灵档”
+        if self.game_id:
+            self.update_index(is_completed=True)
+
         self.game_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         game_dir = os.path.join(self.history_dir, self.game_id)
         os.makedirs(game_dir, exist_ok=True)
 
         self.history_file = os.path.join(game_dir, "history.csv")
-        with open(self.history_file, 'w', newline='', encoding='utf-8') as f:
-            csv.writer(f).writerow(["步数", "操作类型", "当前分数", "网格状态"])
 
         self.grid = [[0] * self.grid_size for _ in range(self.grid_size)]
         self.score = 0
         self.game_over = False
         self.won = False
         self.current_move = 0
+        self.history_rows = []
+        self.history_count = 0
         self.undo_stack.clear()
         self.redo_stack.clear()
+        self._write_history_file()
 
         for _ in range(2):
             self.add_new_tile()
@@ -172,15 +180,38 @@ class GameCore:
         self.update_index()
 
     def record_move(self, move_type):
-        """把一步操作追加到历史 CSV，并同步保存游戏状态"""
+        """把一步操作写入历史记录，并同步保存游戏状态"""
         if not self.history_file:
             return
         self.current_move += 1
-        with open(self.history_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow([self.current_move, move_type, self.score,
-                             json.dumps(self.grid, ensure_ascii=False)])
+        # 撤销后再次操作时，丢弃之前撤销掉的“未来行”
+        del self.history_rows[self.history_count:]
+        self.history_rows.append([self.current_move, move_type, self.score,
+                                  json.dumps(self.grid, ensure_ascii=False)])
+        self.history_count = len(self.history_rows)
+        self._write_history_file()
         self.save_game_state()
+
+    def _write_history_file(self):
+        """按当前生效的历史行重写 CSV，保证撤销/重做后与棋盘状态一致"""
+        if not self.history_file:
+            return
+        with open(self.history_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["步数", "操作类型", "当前分数", "网格状态"])
+            writer.writerows(self.history_rows[:self.history_count])
+
+    def _read_history_rows(self):
+        """从历史 CSV 读回数据行（不含表头），用于恢复存档后继续撤销/重做"""
+        if not self.history_file or not os.path.exists(self.history_file):
+            return []
+        try:
+            with open(self.history_file, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                next(reader, None)  # 跳过表头
+                return [row for row in reader]
+        except IOError:
+            return []
 
     def save_game_state(self):
         """保存完整状态，用于下次启动时恢复"""
@@ -202,8 +233,12 @@ class GameCore:
         except IOError:
             pass
 
-    def update_index(self):
-        """更新 index.json，记录每局游戏的概要信息"""
+    def update_index(self, is_completed=None):
+        """更新 index.json，记录每局游戏的概要信息。
+
+        is_completed 为 None 时按当前胜负状态推断；传入 True/False 可强制指定
+        （用于开新局前把被放弃的上一局结算为已结束）。
+        """
         index_file = os.path.join(self.history_dir, "index.json")
         index_data = []
         if os.path.exists(index_file):
@@ -213,21 +248,28 @@ class GameCore:
             except (json.JSONDecodeError, IOError):
                 index_data = []
 
-        game_info = {
-            "game_id": self.game_id,
-            "start_time": datetime.datetime.now().isoformat(),
-            "score": self.score,
-            "best_score": self.best_score,
-            "is_completed": self.game_over or self.won,
-            "last_updated": datetime.datetime.now().isoformat()
-        }
+        completed = is_completed if is_completed is not None else (self.game_over or self.won)
+        now = datetime.datetime.now().isoformat()
 
-        for i, info in enumerate(index_data):
+        for info in index_data:
             if info["game_id"] == self.game_id:
-                index_data[i].update(game_info)
+                # 更新已有条目时保留最初的 start_time（它才是真正的开局时间）
+                info.update({
+                    "score": self.score,
+                    "best_score": self.best_score,
+                    "is_completed": completed,
+                    "last_updated": now,
+                })
                 break
         else:
-            index_data.append(game_info)
+            index_data.append({
+                "game_id": self.game_id,
+                "start_time": now,
+                "score": self.score,
+                "best_score": self.best_score,
+                "is_completed": completed,
+                "last_updated": now,
+            })
 
         try:
             with open(index_file, 'w', encoding='utf-8') as f:
@@ -273,6 +315,8 @@ class GameCore:
             self.won = state["won"]
             self.current_move = state["current_move"]
             self.history_file = os.path.join(game_dir, "history.csv")
+            self.history_rows = self._read_history_rows()
+            self.history_count = len(self.history_rows)
             self.undo_stack.clear()
             self.redo_stack.clear()
             self.update_index()
@@ -366,6 +410,7 @@ class GameCore:
         self.undo_stack.append(snapshot)
         self.redo_stack.clear()
 
+        self._sync_best_score()
         self.record_move(DIRECTION_NAMES[direction])
         self.add_new_tile()
         self.record_move("添加新方块")
@@ -373,6 +418,12 @@ class GameCore:
         self.check_win()
         self.check_game_over()
         return True
+
+    def _sync_best_score(self):
+        """当前分数刷新纪录时，同步并持久化最高分（保证最高分实时更新）"""
+        if self.score > self.best_score:
+            self.best_score = self.score
+            self.save_best_score()
 
     # ---------------- 撤销 / 重做 ----------------
     def _snapshot(self):
@@ -382,6 +433,8 @@ class GameCore:
             "score": self.score,
             "game_over": self.game_over,
             "won": self.won,
+            "current_move": self.current_move,
+            "history_count": self.history_count,
         }
 
     def _restore(self, snapshot):
@@ -389,6 +442,9 @@ class GameCore:
         self.score = snapshot["score"]
         self.game_over = snapshot["game_over"]
         self.won = snapshot["won"]
+        self.current_move = snapshot["current_move"]
+        self.history_count = snapshot["history_count"]
+        self._write_history_file()  # 让历史记录回退到该快照对应的行
 
     def can_undo(self):
         return bool(self.undo_stack)
@@ -402,6 +458,7 @@ class GameCore:
             return False
         self.redo_stack.append(self._snapshot())
         self._restore(self.undo_stack.pop())
+        self._sync_best_score()
         self.save_game_state()
         self.update_index()
         return True
@@ -412,6 +469,7 @@ class GameCore:
             return False
         self.undo_stack.append(self._snapshot())
         self._restore(self.redo_stack.pop())
+        self._sync_best_score()
         self.save_game_state()
         self.update_index()
         return True

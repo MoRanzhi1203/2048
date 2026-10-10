@@ -23,7 +23,6 @@ class Console2048WithHistory:
         self.game_id = None  # 游戏ID
         self.game_start_time = None  # 游戏开始时间
         self.history_file = None  # 历史记录文件路径
-        self.history_writer = None  # CSV写入器
         self.history_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "game_history")  # 历史记录目录
         self.current_move = 0  # 当前步数
         
@@ -189,6 +188,27 @@ class Console2048WithHistory:
             # 记录错误但继续运行
             pass
             
+    def mark_game_completed(self, game_id):
+        """把指定对局在索引中标记为已完成（用于用户放弃续玩时结算旧档）"""
+        if not game_id:
+            return
+        index_file = os.path.join(self.history_dir, "index.json")
+        if not os.path.exists(index_file):
+            return
+        try:
+            with open(index_file, 'r', encoding='utf-8') as f:
+                index_data = json.load(f)
+            for info in index_data:
+                if info.get('game_id') == game_id:
+                    info['is_completed'] = True
+                    info['last_updated'] = datetime.datetime.now().isoformat()
+                    break
+            with open(index_file, 'w', encoding='utf-8') as f:
+                json.dump(index_data, f, ensure_ascii=False, indent=2)
+        except (json.JSONDecodeError, IOError) as e:
+            # 记录错误但继续运行
+            pass
+
     def get_last_unfinished_game(self):
         """获取最后一个未完成且非游戏结束状态的游戏信息（活档）"""
         index_file = os.path.join(self.history_dir, "index.json")
@@ -325,13 +345,16 @@ class Console2048WithHistory:
 
     def get_key(self):
         """获取键盘输入"""
+        key_map = {'w': 'up', 's': 'down', 'a': 'left', 'd': 'right', 'q': 'quit'}  # 定义按键映射
+        arrow_map = {'H': 'up', 'P': 'down', 'K': 'left', 'M': 'right'}  # 方向键后缀映射
         while True:
             key = msvcrt.getch()  # 获取用户输入
-            if key in (b'\xe0', b'\x00'):  # 方向键前缀
-                key = msvcrt.getch()
-                return {'H': 'up', 'P': 'down', 'K': 'left', 'M': 'right'}.get(key.decode(), None)  # 映射方向键
-            key_map = {'w': 'up', 's': 'down', 'a': 'left', 'd': 'right', 'q': 'quit'}  # 定义按键映射
-            ch = key.decode().lower()  # 转换为小写字母
+            if key in (b'\xe0', b'\x00'):  # 方向键前缀，再读一个字节
+                ext = msvcrt.getch().decode('utf-8', errors='ignore')
+                if ext in arrow_map:
+                    return arrow_map[ext]
+                continue
+            ch = key.decode('utf-8', errors='ignore').lower()  # 安全解码，忽略无法解析的字节
             if ch in key_map:
                 return key_map[ch]
 
@@ -369,7 +392,7 @@ class Console2048WithHistory:
             # 询问用户是否继续
             while True:
                 print("是否继续上一把游戏？ (y/n): ")
-                choice = msvcrt.getch().decode().lower()
+                choice = msvcrt.getch().decode('utf-8', errors='ignore').lower()
                 print(choice)
                 if choice == 'y':
                     # 尝试加载游戏状态
@@ -382,6 +405,8 @@ class Console2048WithHistory:
                         self.start_new_game()
                         break
                 elif choice == 'n':
+                    # 放弃续玩，把旧对局标记为已结束，避免下次启动再次被当作可续玩的活档
+                    self.mark_game_completed(last_unfinished.get('game_id'))
                     self.start_new_game()  # 开始新游戏
                     break
         else:
@@ -410,12 +435,12 @@ class Console2048WithHistory:
                 break
 
             if key in ('up', 'down', 'left', 'right'):  # 处理用户移动
-                previous_grid = [row.copy() for row in self.grid]  # 记录移动前的网格
                 previous_score = self.score  # 记录移动前的分数
                 if self._move(key):  # 如果移动成功
+                    after_move_grid = [row.copy() for row in self.grid]  # 移动后的网格（尚未添加新方块）
                     self.add_new_tile()  # 添加新方块
                     move_score = self.score - previous_score  # 计算本次移动获得的分数
-                    self.record_move(f"向{key}移动", move_score, previous_grid, self.grid)
+                    self.record_move(f"向{key}移动", move_score, after_move_grid, self.grid)
                     # 更新索引文件中的分数信息
                     self.update_index()
 

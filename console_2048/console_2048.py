@@ -123,13 +123,16 @@ class Console2048:
     # ========= 输入与控制 =========
     def get_key(self):
         """获取键盘输入"""
+        key_map = {'w': 'up', 's': 'down', 'a': 'left', 'd': 'right', 'q': 'quit'}  # 定义按键映射
+        arrow_map = {'H': 'up', 'P': 'down', 'K': 'left', 'M': 'right'}  # 方向键后缀映射
         while True:
             key = msvcrt.getch()  # 获取用户输入
-            if key in (b'\xe0', b'\x00'):  # 方向键前缀
-                key = msvcrt.getch()
-                return {'H': 'up', 'P': 'down', 'K': 'left', 'M': 'right'}.get(key.decode(), None)  # 映射方向键
-            key_map = {'w': 'up', 's': 'down', 'a': 'left', 'd': 'right', 'q': 'quit'}  # 定义按键映射
-            ch = key.decode().lower()  # 转换为小写字母
+            if key in (b'\xe0', b'\x00'):  # 方向键前缀，再读一个字节
+                ext = msvcrt.getch().decode('utf-8', errors='ignore')
+                if ext in arrow_map:
+                    return arrow_map[ext]
+                continue
+            ch = key.decode('utf-8', errors='ignore').lower()  # 安全解码，忽略无法解析的字节
             if ch in key_map:
                 return key_map[ch]
 
@@ -157,6 +160,7 @@ class Console2048:
             if key in ('up', 'down', 'left', 'right'):  # 处理用户移动
                 if self._move(key):  # 如果移动成功
                     self.add_new_tile()  # 添加新方块
+                    self.best_score = max(self.best_score, self.score)  # 实时刷新最高分
 
 
 if __name__ == "__main__":

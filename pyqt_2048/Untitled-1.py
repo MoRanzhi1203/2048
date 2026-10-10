@@ -6,7 +6,7 @@ import random
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QGridLayout,
                              QLabel, QPushButton, QMessageBox, QVBoxLayout,
                              QHBoxLayout, QFrame)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette, QColor
 
 class GameCore:
@@ -90,6 +90,7 @@ class TileLabel(QLabel):
         super().__init__(parent)
         self.value = value
         self.setAlignment(Qt.AlignCenter)
+        self.setAutoFillBackground(True)  # 使 QPalette.Window 底色真正填充方块背景
         self.update_tile()
         
     def set_value(self, value):
@@ -137,9 +138,9 @@ class TileLabel(QLabel):
         self.setMinimumSize(80, 80)
 
 class GameBoard(QWidget):
-    score_updated = Qt.pyqtSignal(int, int)
-    game_over = Qt.pyqtSignal()
-    game_won = Qt.pyqtSignal()
+    score_updated = pyqtSignal(int, int)
+    game_over = pyqtSignal()
+    game_won = pyqtSignal()
     
     def __init__(self, grid_size=4, parent=None):
         super().__init__(parent)
