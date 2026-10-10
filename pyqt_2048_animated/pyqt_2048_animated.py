@@ -21,8 +21,8 @@ import random
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton,
                              QMessageBox, QVBoxLayout, QHBoxLayout, QStackedWidget,
                              QFrame, QGraphicsDropShadowEffect)
-from PyQt5.QtCore import Qt, QTimer, QRectF, QRect, QPoint, QPointF, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen
+from PyQt5.QtCore import Qt, QTimer, QRectF, QRect, QPoint, QPointF, pyqtSignal, QEvent
+from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen, QIcon, QCursor
 
 # =====================================================================
 # 复用第 3 篇的 Model（GameCore）：动画版不改动任何棋盘逻辑
@@ -129,6 +129,15 @@ SP_CARD_W, SP_CARD_H = 334, 126
 SP_BTN_W, SP_BTN_H = 328, 48
 SP_BTN_RADIUS = 10
 SP_CARD_RADIUS = 13
+
+# 软件品牌标识：仅用于窗口标题栏 / 任务栏图标（矢量绘制，无外部资源）
+# 2×2 小方块，四格数字连读即 “2048”：(字符, 底色, 字色)
+BRAND_TILES = (
+    ("2", (238, 228, 218), (119, 110, 101)),
+    ("0", (242, 177, 121), (255, 255, 255)),
+    ("4", (245, 149,  99), (255, 255, 255)),
+    ("8", (237, 194,  46), (255, 255, 255)),
+)
 
 # 背景装饰方块：(数值, 中心x比例, 中心y比例, 边长, 旋转角, 透明度)
 SP_DECOR_TILES = (
@@ -354,7 +363,21 @@ PARTICLE_PRESETS = {
     "button":      {"main": 4,  "accent": 8,  "speed": (40, 120),  "life": (0.25, 0.45),
                     "size_main": (5, 9), "size_accent": (2, 4),
                     "gravity": 700.0, "damping": 0.970},
+    # 启动页悬停（持续发射，此处为“每批”数量）：暖金碎片 + 米白高光，每批 4 颗
+    "hover_continue":  {"main": 2, "accent": 2, "speed": (50, 130),  "life": (0.35, 0.60),
+                        "size_main": (4, 7), "size_accent": (2, 4),
+                        "gravity": 620.0, "damping": 0.965, "up_bias": -40.0},
+    # 启动页悬停（持续发射）：浅暖棕碎片 + 米白高光，每批 3 颗，更柔和
+    "hover_new_game":  {"main": 1, "accent": 2, "speed": (35, 90),   "life": (0.28, 0.45),
+                        "size_main": (2, 4), "size_accent": (2, 4),
+                        "gravity": 520.0, "damping": 0.965, "up_bias": -20.0},
 }
+
+# 启动页两个按钮的持续悬停配置：(主色, 高光, 辅助色) —— 主碎片在主色/辅助色间交替
+HOVER_CONTINUE_COLORS = ("#E8C570", "#FFF4D6", "#C49B65")   # 暖金 + 米白 + 浅焦糖
+HOVER_NEW_GAME_COLORS = ("#B8A392", "#FFF8EE", "#E8D8C6")   # 浅暖棕 + 米白 + 米色
+HOVER_CONTINUE_INTERVAL = 120      # 持续发射间隔（ms），落在 100～140
+HOVER_NEW_GAME_INTERVAL = 180      # 持续发射间隔（ms），落在 160～200
 
 # 粒子配色映射：main = 主碎片（沿用数字方块自身背景色），accent = 辅助高光（同色系提亮）
 PARTICLE_COLORS = {
@@ -447,6 +470,10 @@ class ParticleEngine:
 
     def is_active(self):
         return bool(self.particles)
+
+    def is_saturated(self):
+        """是否已达同屏上限：达到后新的悬停批次不再发射，优先保留既有粒子"""
+        return len(self.particles) >= self.max_particles
 
     def clear(self):
         self.particles = []
@@ -578,6 +605,9 @@ class ParticleOverlay(QWidget):
 
     def is_active(self):
         return self.engine.is_active()
+
+    def is_saturated(self):
+        return self.engine.is_saturated()
 
     def clear(self):
         self.engine.clear()
@@ -888,9 +918,77 @@ class BoardView(QWidget):
 
 
 class PressFeedbackButton(QPushButton):
-    """按下时上报按压点（供粒子系统在按钮上撒少量粒子；禁用时不触发）"""
+    """按钮交互反馈基类：
+
+    - 按下时上报按压点（供粒子系统在按钮上撒少量粒子；禁用时不触发）
+    - 可选开启悬停反馈：进入后立即发射一批，并按固定时间间隔持续发射，
+      发射位置跟随鼠标当前位置；离开 / 隐藏 / 禁用 / 销毁时立即停止发射，
+      已有粒子仍由粒子层自然淡出（不在这里清空）。
+    持续发射用一个挂在按钮上的 QTimer 驱动（QTimer 按真实经过时间触发，
+    不是帧计数），并且整只按钮始终只维护这一个定时器，反复进出不会叠加。
+    """
 
     pressedAt = pyqtSignal(int, int)
+    hoverPulse = pyqtSignal(int, int)     # 悬停期间按间隔上报一次发射点（按钮局部坐标）
+
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self._hover_enabled = False       # 是否启用悬停持续发射
+        self._hover_interval = 120        # 发射间隔（ms）
+        self._hover_active = False        # 当前是否处于悬停
+        self._hover_timer = None          # 懒创建；父对象为按钮，随按钮一起销毁
+
+    # ---- 配置 ----
+    def set_hover_particles(self, enabled=True, interval_ms=120):
+        self._hover_enabled = bool(enabled)
+        self._hover_interval = max(30, int(interval_ms))
+        if self._hover_timer is not None:
+            self._hover_timer.setInterval(self._hover_interval)
+
+    # ---- 发射调度（单一循环） ----
+    def _hover_emit(self):
+        # 任何时刻只要不再满足“启用 + 可用 + 可见 + 仍在悬停”，立即停表
+        if not (self._hover_enabled and self._hover_active
+                and self.isEnabled() and self.isVisible()):
+            self.stop_hover_emission()
+            return
+        local = self.mapFromGlobal(QCursor.pos())   # 跟随鼠标当前位置
+        self.hoverPulse.emit(local.x(), local.y())
+
+    def _start_hover_emission(self):
+        if self._hover_timer is None:
+            self._hover_timer = QTimer(self)        # 父对象=按钮 → 按钮销毁即回收
+            self._hover_timer.timeout.connect(self._hover_emit)
+        self._hover_timer.setInterval(self._hover_interval)
+        if not self._hover_timer.isActive():
+            self._hover_timer.start()
+        self._hover_emit()                          # 进入瞬间先来一批
+
+    def stop_hover_emission(self):
+        """停止持续发射并清除悬停状态（不清空已存在的粒子）"""
+        self._hover_active = False
+        if self._hover_timer is not None and self._hover_timer.isActive():
+            self._hover_timer.stop()
+
+    # ---- 事件 ----
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if self._hover_enabled and self.isEnabled() and self.isVisible() and not self._hover_active:
+            self._hover_active = True
+            self._start_hover_emission()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.stop_hover_emission()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.stop_hover_emission()                 # 页面切换 / 隐藏时立即停表
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.EnabledChange and not self.isEnabled():
+            self.stop_hover_emission()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.isEnabled():
@@ -936,6 +1034,47 @@ class ArrowButton(EnterButton):
         painter.drawLine(QPointF(ax - 3.0, ay - 4.5), QPointF(ax + 1.5, ay))  # 上翼
         painter.drawLine(QPointF(ax - 3.0, ay + 4.5), QPointF(ax + 1.5, ay))  # 下翼
         painter.end()
+
+
+# ---------------------------------------------------------------------
+# 软件图标：仅用于窗口标题栏 / 任务栏，矢量绘制、不引入外部资源
+# ---------------------------------------------------------------------
+def paint_brand_mark(painter, cx, cy, side):
+    """在中心 (cx, cy)、整体边长 side 处绘制 2×2 小方块，四格连读即 “2048”"""
+    gap = max(1.0, side * 0.09)
+    tile = (side - gap) / 2.0
+    radius = tile * 0.22
+    font = QFont()
+    font.setBold(True)
+    font.setPixelSize(max(6, int(tile * 0.74)))
+    painter.setFont(font)
+    for idx, (text, bg, fg) in enumerate(BRAND_TILES):
+        row, col = divmod(idx, 2)
+        rect = QRectF(cx - side / 2.0 + col * (tile + gap),
+                      cy - side / 2.0 + row * (tile + gap), tile, tile)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(*bg))
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.setPen(QColor(*fg))
+        painter.drawText(rect, Qt.AlignCenter, text)
+
+
+def build_app_icon():
+    """用矢量绘制生成窗口 / 任务栏图标：多尺寸渲染，高 DPI 下边缘清晰"""
+    icon = QIcon()
+    for size in (16, 24, 32, 48, 64, 128, 256):
+        pm = QPixmap(size, size)
+        pm.fill(Qt.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(SP_BG))                    # 暖米色圆角底板
+        radius = size * 0.22
+        painter.drawRoundedRect(QRectF(0, 0, size, size), radius, radius)
+        paint_brand_mark(painter, size / 2.0, size / 2.0, size * 0.74)
+        painter.end()
+        icon.addPixmap(pm)
+    return icon
 
 
 class StartDecorPage(QWidget):
@@ -995,12 +1134,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.model = AnimatedGameCore(4)
         self.win_announced = False
+        self._hover_shard_toggle = 0          # 悬停主碎片在主色/辅助色间交替
         self.init_ui()
         self.startup()
 
     # ---------------- 界面搭建 ----------------
     def init_ui(self):
         self.setWindowTitle("2048")
+        self.setWindowIcon(build_app_icon())          # 标题栏 / 任务栏图标（矢量生成）
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setStyleSheet(f"QMainWindow {{ background-color: {COLOR_BG}; }}")
 
@@ -1051,11 +1192,13 @@ class MainWindow(QMainWindow):
         self.continue_start_button = self._make_button(
             "继续上一局", self.on_continue_clicked, qss=SP_PRIMARY_QSS,
             size=(SP_BTN_W, SP_BTN_H), focusable=True,
-            arrow=("#FFFFFF", "#F1EAE0"))
+            arrow=("#FFFFFF", "#F1EAE0"),
+            hover=("hover_continue", HOVER_CONTINUE_INTERVAL, *HOVER_CONTINUE_COLORS))
         self.new_game_start_button = self._make_button(
             "开始新游戏", self.on_new_game_clicked, qss=SP_SECONDARY_QSS,
             size=(SP_BTN_W, SP_BTN_H), focusable=True, particle_color="#c7b9a8",
-            arrow=("#776E65", "#B7A595"))
+            arrow=("#776E65", "#B7A595"),
+            hover=("hover_new_game", HOVER_NEW_GAME_INTERVAL, *HOVER_NEW_GAME_COLORS))
         layout.addWidget(self.continue_start_button, 0, Qt.AlignHCenter)
         layout.addSpacing(13)
         layout.addWidget(self.new_game_start_button, 0, Qt.AlignHCenter)
@@ -1208,7 +1351,7 @@ class MainWindow(QMainWindow):
 
     def _make_button(self, text, slot, qss=PRIMARY_BUTTON_QSS,
                      size=(BUTTON_WIDTH, BUTTON_HEIGHT), focusable=False,
-                     particle_color="#8f7a66", arrow=None):
+                     particle_color="#8f7a66", arrow=None, hover=None):
         # arrow=(正常色, 禁用色) 时使用带右侧箭头的按钮；箭头不参与布局
         button = ArrowButton(text, arrow[0], arrow[1]) if arrow else EnterButton(text)
         button.setFixedSize(*size)
@@ -1219,6 +1362,14 @@ class MainWindow(QMainWindow):
         # 启用状态下按下：在按压点撒少量粒子（禁用按钮不触发）
         button.pressedAt.connect(
             lambda x, y, b=button, c=particle_color: self._emit_button_particles(b, x, y, c))
+        # hover=(预设名, 间隔ms, 主色, 高光, 辅助色)：悬停期间按间隔持续发射
+        if hover:
+            preset_name, interval_ms, main_hex, accent_hex, aux_hex = hover
+            shard_pool = (main_hex, aux_hex)      # 主碎片在主色 / 辅助色间交替
+            button.set_hover_particles(True, interval_ms)
+            button.hoverPulse.connect(
+                lambda x, y, b=button, p=preset_name, m=shard_pool, a=accent_hex:
+                    self._emit_hover_particles(b, x, y, p, m, a))
         return button
 
     def _emit_button_particles(self, button, x, y, color_hex):
@@ -1227,6 +1378,16 @@ class MainWindow(QMainWindow):
             return
         main = QColor(color_hex)
         layer.emit_from(button, x, y, main, main.lighter(165), "button")
+
+    def _emit_hover_particles(self, button, x, y, preset_name, shard_pool, accent_hex):
+        layer = getattr(self, "particle_layer", None)
+        if layer is None or not button.isEnabled() or not button.isVisible():
+            return
+        if layer.is_saturated():                  # 达到同屏上限：优先削减新的悬停粒子
+            return
+        main = QColor(shard_pool[self._hover_shard_toggle % len(shard_pool)])
+        self._hover_shard_toggle += 1
+        layer.emit_from(button, x, y, main, QColor(accent_hex), preset_name)
 
     # ---------------- 刷新视图 ----------------
     def refresh(self):
@@ -1358,6 +1519,7 @@ class MainWindow(QMainWindow):
         if recent and self.model.load_game_state(recent):
             self.win_announced = self.model.won
             self.refresh()
+            self._reset_start_hover()
             self.stack.setCurrentIndex(GAME_PAGE)
             self.setFocus()
 
@@ -1368,8 +1530,16 @@ class MainWindow(QMainWindow):
         self.model.start_new_game()
         self.win_announced = False
         self.refresh()
+        self._reset_start_hover()
         self.stack.setCurrentIndex(GAME_PAGE)
         self.setFocus()
+
+    def _reset_start_hover(self):
+        """离开启动页时立即停止两个按钮的持续发射（不清空已有粒子）"""
+        for button in (getattr(self, "continue_start_button", None),
+                       getattr(self, "new_game_start_button", None)):
+            if button is not None:
+                button.stop_hover_emission()
 
     # ---------------- 对话框 ----------------
     def show_game_over(self):
@@ -1404,6 +1574,7 @@ def main():
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
+    app.setWindowIcon(build_app_icon())   # 应用级图标：标题栏 / 任务栏统一显示 2048 图标
     font = QFont("Microsoft YaHei", 10)
     if hasattr(font, "setFamilies"):
         font.setFamilies(["Microsoft YaHei", "Microsoft YaHei UI", "SimHei"])
