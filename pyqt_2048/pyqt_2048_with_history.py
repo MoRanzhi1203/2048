@@ -61,36 +61,40 @@ BUTTON_WIDTH, BUTTON_HEIGHT = 100, 44
 CARD_WIDTH, CARD_HEIGHT = 330, 110   # 启动页「上一局」摘要卡
 
 # 按钮样式：主按钮（实心棕）、次按钮（浅色，含禁用态）、文字按钮（无底色）
+# border 恒为 2px（默认透明），保证 hover/focus 时不发生尺寸跳动
 PRIMARY_BUTTON_QSS = f"""
 QPushButton {{
     background-color: #8f7a66; color: #f9f6f2;
-    border: none; border-radius: {TILE_RADIUS}px;
+    border: 2px solid transparent; border-radius: {TILE_RADIUS}px;
     font-size: 14px; font-weight: bold;
 }}
 QPushButton:hover    {{ background-color: #9f8b78; }}
 QPushButton:pressed  {{ background-color: #7c6a58; }}
+QPushButton:focus    {{ border-color: #f9f6f2; }}
 QPushButton:disabled {{ background-color: #cdc2b6; color: #f2ece5; }}
 """
 
 SECONDARY_BUTTON_QSS = f"""
 QPushButton {{
     background-color: #eee4da; color: {COLOR_TEXT};
-    border: none; border-radius: {TILE_RADIUS}px;
+    border: 2px solid transparent; border-radius: {TILE_RADIUS}px;
     font-size: 14px; font-weight: bold;
 }}
 QPushButton:hover    {{ background-color: #e2d7ca; }}
 QPushButton:pressed  {{ background-color: #d5c9ba; }}
+QPushButton:focus    {{ border-color: #8f7a66; }}
 QPushButton:disabled {{ background-color: #eee8e1; color: #b7aa9e; }}
 """
 
 TEXT_BUTTON_QSS = f"""
 QPushButton {{
     background-color: transparent; color: {COLOR_TEXT};
-    border: none; border-radius: {TILE_RADIUS}px;
+    border: 2px solid transparent; border-radius: {TILE_RADIUS}px;
     font-size: 14px; font-weight: bold;
 }}
 QPushButton:hover    {{ background-color: #efe9e1; }}
 QPushButton:pressed  {{ background-color: #e6ddd3; }}
+QPushButton:focus    {{ background-color: #efe9e1; border-color: #8f7a66; }}
 QPushButton:disabled {{ color: #c3b8ad; }}
 """
 
@@ -503,6 +507,17 @@ class BoardView(QWidget):
                 self.tiles[i][j].set_value(grid[i][j])
 
 
+class EnterButton(QPushButton):
+    """可聚焦按钮；额外支持回车键触发（QPushButton 原生只响应空格）"""
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self.click()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 # =====================================================================
 # Controller 层：连接 Model 与 View，处理所有交互
 # =====================================================================
@@ -583,11 +598,13 @@ class MainWindow(QMainWindow):
         layout.addSpacing(23)
 
         # 继续 = 主操作（实心棕，与卡片同宽）；开始新游戏 = 轻量文字按钮
+        # 两者均可键盘聚焦（Tab + 回车/空格），并带可见 focus 态
         self.continue_start_button = self._make_button(
-            "继续上一局", self.on_continue_clicked, size=(CARD_WIDTH, 48))
+            "继续上一局", self.on_continue_clicked,
+            size=(CARD_WIDTH, 48), focusable=True, enter_ok=True)
         self.new_game_start_button = self._make_button(
-            "开始新游戏", self.on_new_game_clicked,
-            qss=TEXT_BUTTON_QSS, size=(CARD_WIDTH, BUTTON_HEIGHT))
+            "开始新游戏", self.on_new_game_clicked, qss=TEXT_BUTTON_QSS,
+            size=(CARD_WIDTH, BUTTON_HEIGHT), focusable=True, enter_ok=True)
         layout.addWidget(self.continue_start_button, 0, Qt.AlignHCenter)
         layout.addSpacing(10)
         layout.addWidget(self.new_game_start_button, 0, Qt.AlignHCenter)
@@ -681,12 +698,14 @@ class MainWindow(QMainWindow):
             f"<div style='font-size:24px; color:{COLOR_CARD_VALUE}; font-weight:bold;'>{value}</div>")
 
     def _make_button(self, text, slot, qss=PRIMARY_BUTTON_QSS,
-                     size=(BUTTON_WIDTH, BUTTON_HEIGHT)):
-        button = QPushButton(text)
+                     size=(BUTTON_WIDTH, BUTTON_HEIGHT), focusable=False,
+                     enter_ok=False):
+        button = EnterButton(text) if enter_ok else QPushButton(text)
         button.setFixedSize(*size)
         button.setCursor(Qt.PointingHandCursor)
-        # 不参与焦点：否则方向键会被 Qt 的焦点导航拦下，无法传到主窗口
-        button.setFocusPolicy(Qt.NoFocus)
+        # 游戏页按钮不参与焦点：否则方向键会被 Qt 的焦点导航拦下，无法传到主窗口；
+        # 启动页按钮需要键盘可达（Tab 切换 + 回车/空格触发）
+        button.setFocusPolicy(Qt.StrongFocus if focusable else Qt.NoFocus)
         button.setStyleSheet(qss)
         button.clicked.connect(slot)
         return button
@@ -756,6 +775,9 @@ class MainWindow(QMainWindow):
             self.start_new_game()
         else:
             self.stack.setCurrentIndex(START_PAGE)
+            # 启动页键盘可达：默认聚焦「继续上一局」（无存档时聚焦「开始新游戏」）
+            (self.continue_start_button if self.continue_start_button.isEnabled()
+             else self.new_game_start_button).setFocus()
 
     def _render_last_game(self, info):
         if info is None:
