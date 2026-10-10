@@ -555,8 +555,6 @@ def v5_required_text_widgets(w, scene):
     for name, wdg in (
         ("按钮-AI求解", getattr(w, "solver_ai_button", None)),
         ("求解标题", getattr(w, "solver_title", None)),
-        ("按钮-折叠", getattr(w, "solver_collapse_btn", None)),
-        ("按钮-展开", getattr(w, "solver_expand_btn", None)),
         ("高级参数", getattr(w, "solver_advanced_toggle", None)),
         ("按钮-开始求解", getattr(w, "solver_start_btn", None)),
         ("按钮-导出结果", getattr(w, "solver_export_btn", None)),

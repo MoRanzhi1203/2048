@@ -271,12 +271,197 @@ class SolverGuiTest(unittest.TestCase):
         self.assertLessEqual(self.w.height(), self.v5.V5_DEFAULT_H)
 
     def test_default_two_column_layout(self):
-        """T-01：默认左右并排；左为游戏页，右为求解工作台；底部不再重复出现求解区。"""
+        """T-01/G01：默认左右并排；左为游戏区(holder)，右为求解工作台；底部不重复。"""
         self.assertEqual(self.w.splitter.orientation(), Qt.Horizontal)
-        self.assertIs(self.w.splitter.widget(0), self.w.game_page)
+        self.assertIs(self.w.splitter.widget(0), self.w.game_holder)
         self.assertIs(self.w.splitter.widget(1), self.w.solver_container)
+        self.assertTrue(self.w.game_holder.isAncestorOf(self.w.game_page))
         self.assertIs(self.w.solver_panel.parentWidget(), self.w.solver_container)
         self.assertFalse(self.w.game_page.isAncestorOf(self.w.solver_panel))
+        # 展开态右栏宽度合理（默认 400，容差）
+        self.assertGreaterEqual(self.w.splitter.sizes()[1], self.v5.SOLVER_W_MIN)
+
+    def test_collapse_hides_solver_and_shrinks_window(self):
+        """G02/G03：折叠后完整隐藏右栏容器（splitter 右项=0，无分隔残留），整窗收窄。"""
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        self.assertTrue(self.w._solver_collapsed)
+        self.assertFalse(self.w.solver_container.isVisible())        # 整体隐藏（含背景/边框/窄条）
+        self.assertFalse(self.w.solver_panel.isVisible())
+        self.assertEqual(self.w.splitter.sizes()[1], 0)             # 无分隔器残留
+        self.assertFalse(self.w.splitter.handle(0).isVisible())     # 分隔条一并隐藏
+        # 整窗收窄到纯游戏宽度，无右侧空白或窄条
+        self.assertLessEqual(self.w.width(), self.v5.COLLAPSED_WIDTH + 4)
+        self.assertEqual(self.w.game_page.width(), self.v5.WINDOW_WIDTH)
+
+    def test_game_buttons_within_board_width(self):
+        """G04/G10：四个控制按钮在展开/折叠态都锚定于棋盘宽度内，不散到窗口两端。"""
+        def check(tag):
+            xs = {name: getattr(self.w, attr).mapTo(
+                self.w, getattr(self.w, attr).rect().topLeft()).x()
+                for name, attr in (("undo", "undo_button"), ("redo", "redo_button"),
+                                   ("ai", "solver_ai_button"), ("new", "new_game_button"))}
+            self.assertGreaterEqual(xs["undo"], 0, tag)
+            self.assertLess(xs["new"], self.v5.WINDOW_WIDTH, tag)   # 仍在棋盘左栏内
+            self.assertLess(xs["ai"], xs["new"], tag)
+            return xs
+        base = check("expanded")
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        self.assertEqual(check("collapsed"), base)                  # 折叠后位置不变
+        self.w.resize(1000, self.w.height())                       # 用户折叠态放大
+        pump(self.app, 120)
+        self.assertEqual(check("collapsed+widen"), base)           # 仍不散开
+        self.assertEqual(self.w.game_page.width(), self.v5.WINDOW_WIDTH)
+        self.w._toggle_solver()
+        pump(self.app, 120)
+
+    def test_restore_geometry_and_width(self):
+        """G05：展开恢复折叠前的窗口宽度与右栏宽度（忽略屏幕夹取以验证纯逻辑）。"""
+        self.w._clamp_to_screen = lambda g: g
+        self.w.resize(self.v5.V5_DEFAULT_WIDTH, self.v5.V5_DEFAULT_H)
+        self.w._apply_splitter_sizes()
+        pump(self.app, 80)
+        before_w = self.w.width()
+        before_right = self.w.splitter.sizes()[1]
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        collapsed_w = self.w.width()
+        self.assertLess(collapsed_w, before_w)
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        self.assertEqual(self.w.width(), before_w)
+        self.assertEqual(self.w.splitter.sizes()[1], before_right)
+
+    def test_splitter_width_restored_after_drag(self):
+        """G07：展开态拖动分隔条后的右栏宽度，在折叠/展开后仍被恢复。"""
+        self.w._clamp_to_screen = lambda g: g
+        self.w.resize(1200, self.v5.V5_DEFAULT_H)        # 加宽以便右栏可拖到 >400
+        pump(self.app, 60)
+        total = self.w.splitter.width()
+        self.w.splitter.setSizes([total - 600, 600])     # 用户把右栏拖到 600
+        pump(self.app, 80)
+        dragged = self.w.splitter.sizes()[1]
+        self.assertGreater(dragged, self.v5.SOLVER_W_DEFAULT)
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        self.assertAlmostEqual(self.w.splitter.sizes()[1], dragged, delta=4)
+
+    def test_toggle_20_no_drift(self):
+        """G06：连续折叠/展开 20 次无累计尺寸漂移。"""
+        self.w._clamp_to_screen = lambda g: g
+        self.w.resize(self.v5.V5_DEFAULT_WIDTH, self.v5.V5_DEFAULT_H)
+        self.w._apply_splitter_sizes()
+        pump(self.app, 80)
+        base_w = self.w.width()
+        base_sizes = self.w.splitter.sizes()
+        for _ in range(20):
+            self.w._toggle_solver()
+            pump(self.app, 20)
+            self.w._toggle_solver()
+            pump(self.app, 20)
+        self.assertEqual(self.w.width(), base_w)
+        self.assertEqual(self.w.splitter.sizes(), base_sizes)
+
+    def test_collapsed_splitter_has_no_right_pane(self):
+        """G08：折叠态右栏已整体隐藏，拖动分隔条不会出现右侧空白大栏。"""
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        self.w.splitter.setSizes([400, 500])          # 试图拉出右栏
+        pump(self.app, 80)
+        self.assertEqual(self.w.splitter.sizes()[1], 0)
+        self.assertFalse(self.w.solver_container.isVisible())
+        self.w._toggle_solver()
+        pump(self.app, 100)
+
+    def test_maximized_collapse_keeps_window(self):
+        """G09：最大化时隐藏/展开不强制改变窗口尺寸，仅切换右栏内容。"""
+        self.w.isMaximized = lambda: True              # 模拟最大化
+        w_before = self.w.width()
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        self.assertTrue(self.w._solver_collapsed)
+        self.assertFalse(self.w.solver_container.isVisible())
+        self.assertEqual(self.w.width(), w_before)     # 尺寸未被程序化修改
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        self.assertTrue(self.w.solver_container.isVisible())
+        self.assertEqual(self.w.width(), w_before)
+
+    def _scan_chevron(self, btn):
+        """把按钮渲染到离屏位图，统计 Chevron 箭头色 / 背景色 / 绿色像素。"""
+        from PyQt5.QtGui import QColor, QPixmap
+        pm = QPixmap(btn.size())
+        pm.fill(Qt.transparent)
+        btn.render(pm)
+        img = pm.toImage()
+        arrow = QColor("#8A7662")
+        bg = QColor("#F3EDE5")
+        n_arrow = n_bg = n_green = 0
+        for y in range(img.height()):
+            for x in range(img.width()):
+                c = img.pixelColor(x, y)
+                if c.alpha() < 40:
+                    continue
+                if (abs(c.red() - arrow.red()) <= 30 and
+                        abs(c.green() - arrow.green()) <= 30 and
+                        abs(c.blue() - arrow.blue()) <= 30):
+                    n_arrow += 1
+                if (abs(c.red() - bg.red()) <= 8 and
+                        abs(c.green() - bg.green()) <= 8 and
+                        abs(c.blue() - bg.blue()) <= 8):
+                    n_bg += 1
+                if c.green() > c.red() + 30 and c.green() > c.blue() + 30:
+                    n_green += 1
+        return n_arrow, n_bg, n_green
+
+    def test_header_collapse_icon_left_of_title(self):
+        """标题栏：Chevron 收起按钮位于标题左侧、紧凑左对齐，动作为向右收起。"""
+        v5 = self.v5
+        btn = self.w.solver_collapse_btn
+        title = self.w.solver_title
+        bx = btn.mapTo(self.w, btn.rect().topLeft()).x()
+        tx = title.mapTo(self.w, title.rect().topLeft()).x()
+        self.assertLess(bx, tx)                          # 按钮在标题左侧
+        self.assertLess(tx - bx, 60)                     # 间距紧凑，不分散到两端
+        self.assertIsInstance(btn, v5.ChevronToolButton)   # 自定义细线箭头，非系统图标
+        self.assertEqual(btn.text(), "")                 # 无文字
+        self.assertTrue(btn.icon().isNull())             # 不使用任何图标（含绿色系统图标）
+        self.assertEqual(btn.direction(), "right")       # 向右收起
+        self.assertEqual(btn.toolTip(), "收起 AI 求解面板")
+        # 折叠后该按钮随右栏一起隐藏
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        self.assertFalse(btn.isVisible())
+
+    def test_chevron_button_geometry_and_rendering(self):
+        """折叠按钮 26×26 / 圆角 6 / 配色符合规范；箭头 QPainter 绘制且无绿色图标。"""
+        from PyQt5.QtGui import QColor
+        v5 = self.v5
+        btn = self.w.solver_collapse_btn
+        self.assertEqual((btn.width(), btn.height()), (26, 26))
+        self.assertEqual(v5.COLLAPSE_BTN_SIZE, 26)
+        self.assertEqual(v5.COLLAPSE_BTN_RADIUS, 6)
+        self.assertEqual(QColor(v5.COLLAPSE_BTN_BG), QColor("#F3EDE5"))
+        self.assertEqual(QColor(v5.COLLAPSE_BTN_BORDER), QColor("#CDBEAF"))
+        self.assertEqual(QColor(v5.COLLAPSE_ARROW), QColor("#8A7662"))
+        self.assertEqual(btn._arrow_color(), QColor("#8A7662"))     # 常态箭头色
+        n_arrow, n_bg, n_green = self._scan_chevron(btn)
+        self.assertGreater(n_arrow, 0, "未绘制出 #8A7662 Chevron 箭头")
+        self.assertGreater(n_bg, 0, "QSS 背景未生效")
+        self.assertEqual(n_green, 0, "出现绿色系统图标像素")
+
+    def test_chevron_button_disabled_color(self):
+        """Chevron 按钮 disabled 态使用浅灰箭头，启用后恢复常态色。"""
+        from PyQt5.QtGui import QColor
+        btn = self.w.solver_collapse_btn
+        self.assertEqual(btn._arrow_color(), QColor("#8A7662"))
+        btn.setEnabled(False)
+        self.assertEqual(btn._arrow_color(), QColor("#C3B4A4"))
+        btn.setEnabled(True)
+        self.assertEqual(btn._arrow_color(), QColor("#8A7662"))
 
     def test_solver_panel_right_of_game(self):
         """求解面板位于棋盘/按钮的右侧，而不是下方（UI-01）。"""
@@ -338,9 +523,12 @@ class SolverGuiTest(unittest.TestCase):
                      "solver_view_btn", "solver_compare_btn", "solver_status",
                      "solver_progress", "solver_log", "solver_strategy",
                      "solver_depth", "solver_mode", "solver_container",
-                     "solver_collapse_btn", "solver_collapsed_bar", "solver_expand_btn",
+                     "solver_collapse_btn", "solver_edge_handle",
                      "solver_advanced_toggle", "solver_advanced_body", "solver_metrics"):
             self.assertTrue(hasattr(self.w, attr), attr)
+        # 折叠窄条及其按钮已移除（改为整体隐藏容器 + AI 按钮重新打开）
+        self.assertFalse(hasattr(self.w, "solver_collapsed_bar"))
+        self.assertFalse(hasattr(self.w, "solver_expand_btn"))
 
     def test_result_actions_present(self):
         """结果操作（导出/查看/对比）位于右栏且可见可用。"""
@@ -467,29 +655,253 @@ class SolverGuiTest(unittest.TestCase):
         self.assertEqual(self.w.board_view.width(), self.w.board_view.height())
 
     def test_solver_collapse_and_expand(self):
-        """T-04：折叠后状态保留、展开入口始终可见，可恢复。"""
+        """T-04：折叠后整体隐藏且状态保留；重新展开后宽度/配置/日志一致。"""
+        self.w._clamp_to_screen = lambda g: g          # 忽略屏幕夹取以验证纯几何逻辑
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
         self.w.solver_mode.setCurrentIndex(1)
         self.w.solver_strategy.setCurrentIndex(0)
+        self.w.solver_depth.setCurrentIndex(1)
         self.w.on_solver_clicked()
         wait_until(self.app, lambda: not self.w._solver_running)
         log_count = self.w.solver_log.count()
         self.assertGreaterEqual(log_count, 2)
+        right_before = self.w.splitter.sizes()[1]
+        strategy_before = self.w.solver_strategy.currentData()
+        mode_before = self.w.solver_mode.currentData()
 
         self.w._toggle_solver()
         pump(self.app, 80)
         self.assertTrue(self.w._solver_collapsed)
+        self.assertFalse(self.w.solver_container.isVisible())     # 整体隐藏（无背景/边框/窄条）
         self.assertFalse(self.w.solver_panel.isVisible())
-        self.assertTrue(self.w.solver_collapsed_bar.isVisible())
-        self.assertTrue(self.w.solver_expand_btn.isVisible())     # 恢复入口可见
         self.assertEqual(self.w.solver_log.count(), log_count)    # 日志不丢
 
         self.w._toggle_solver()
-        pump(self.app, 80)
+        pump(self.app, 120)
         self.assertFalse(self.w._solver_collapsed)
         self.assertTrue(self.w.solver_panel.isVisible())
-        self.assertFalse(self.w.solver_collapsed_bar.isVisible())
         self.assertEqual(self.w.solver_log.count(), log_count)    # 展开后日志一致
+        self.assertAlmostEqual(self.w.splitter.sizes()[1], right_before, delta=6)
+        self.assertEqual(self.w.solver_strategy.currentData(), strategy_before)
+        self.assertEqual(self.w.solver_mode.currentData(), mode_before)
+
+    def test_ai_button_reopens_panel_without_solving(self):
+        """折叠后点击左侧「AI 求解」只重新展开面板，不自动开始求解。"""
+        before = self.w.solver_log.count()
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        self.assertTrue(self.w._solver_collapsed)
+        self.assertEqual(self.w.solver_ai_button.text(), "AI 求解")   # 折叠态入口标签
+        self.w.solver_ai_button.click()
+        pump(self.app, 120)
+        self.assertFalse(self.w._solver_collapsed)
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertFalse(self.w._solver_running)                       # 未自动开始求解
+        self.assertEqual(self.w.solver_log.count(), before)
+
+    def test_ai_button_opens_panel_only_when_expanded(self):
+        """展开态「AI 求解」仍只负责打开/聚焦面板，不启动算法（启停交给「开始求解」）。"""
+        self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        before = self.w.solver_log.count()
+        self.w.solver_ai_button.click()
+        pump(self.app, 120)
+        self.assertFalse(self.w._solver_running)                   # 未启动算法
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertEqual(self.w.solver_log.count(), before)
+        self.assertEqual(self.w.solver_ai_button.text(), "AI 求解")
+
+    def test_hide_while_solving_via_ai_button_reopens(self):
+        """运行中隐藏不停止求解；用 AI 按钮重新展开后任务与状态连续。"""
+        self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+        self.w.solver_mode.setCurrentIndex(0)          # 自动连走
+        self.w.solver_strategy.setCurrentIndex(2)      # MCTS
+        self.w.solver_depth.setCurrentIndex(0)
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(self.app, lambda: self.w._solver_running, timeout_ms=3000))
+        self.w._toggle_solver()                        # 运行中隐藏
+        pump(self.app, 120)
+        self.assertFalse(self.w.solver_container.isVisible())
+        self.assertTrue(self.w._solver_running)        # 隐藏不停止求解
+        self.assertEqual(self.w.solver_ai_button.text(), "AI 求解")   # 入口标签恒定
+        self.w.solver_ai_button.click()                # 用 AI 按钮重新展开
+        pump(self.app, 120)
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertTrue(self.w._session is not None or len(self.w._sessions) >= 1)
+        if self.w._solver_running:
+            self.w._stop_solver("测试结束")             # 停止改用面板方法
+            pump(self.app, 120)
+
+    # ---- V5.1：右侧贴边半胶囊把手（EdgeHandle） ----
+    def _widget_rect_in_window(self, widget):
+        from PyQt5.QtCore import QRect
+        top_left = widget.mapTo(self.w, widget.rect().topLeft())
+        return QRect(top_left, widget.size())
+
+    def _assert_edge_handle_geometry(self, handle):
+        hw, hh, top = self.v5.EDGE_HANDLE_W, self.v5.EDGE_HANDLE_H, self.v5.EDGE_HANDLE_TOP
+        self.assertEqual((handle.width(), handle.height()), (hw, hh))
+        self.assertEqual(handle.x(), self.w.width() - hw)          # 紧贴宿主内容右缘（无缝隙）
+        self.assertEqual(handle.y(), top)                          # 对齐内容区顶部锚点
+
+    def test_edge_handle_visibility_tracks_state(self):
+        """贴边把手：展开态隐藏、折叠态显示，反复切换一致。"""
+        handle = self.w.solver_edge_handle
+        self.assertFalse(handle.isVisible())                       # 初始展开态：隐藏
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        self.assertTrue(handle.isVisible())                        # 折叠态：显示
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        self.assertFalse(handle.isVisible())                       # 再展开：隐藏
+
+    def test_edge_handle_mounted_outside_solver_container(self):
+        """贴边把手挂载在主窗口上，不随 Solver 容器隐藏，且不进入主布局。"""
+        handle = self.w.solver_edge_handle
+        self.assertIs(handle.parentWidget(), self.w)               # 父级为顶层窗口
+        self.assertFalse(self.w.solver_container.isAncestorOf(handle))
+        # 不进入主布局：splitter 仍只有左右两栏，把手不在其中
+        self.assertEqual(self.w.splitter.count(), 2)
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        self.assertFalse(self.w.solver_container.isVisible())      # 容器整体隐藏
+        self.assertTrue(handle.isVisible())                        # 把手仍可见
+
+    def test_edge_handle_geometry_and_chevron(self):
+        """把手 22×40、细线左箭头、无系统绿色图标；左侧圆角、右侧直边。"""
+        from PyQt5.QtGui import QColor, QPixmap
+        handle = self.w.solver_edge_handle
+        self.assertIsInstance(handle, self.v5.SolverEdgeHandle)
+        self.assertEqual((handle.width(), handle.height()), (self.v5.EDGE_HANDLE_W, self.v5.EDGE_HANDLE_H))
+        self.assertEqual(handle.toolTip(), "展开 AI 求解面板")
+        self.assertEqual(handle.accessibleName(), "展开 AI 求解面板")
+        n_arrow, n_bg, n_green = self._scan_chevron(handle)
+        self.assertGreater(n_arrow, 0, "把手未绘制 Chevron 箭头")
+        self.assertGreater(n_bg, 0, "把手背景未绘制")
+        self.assertEqual(n_green, 0, "把手出现绿色系统图标像素")
+        # 形状：右侧直边（无边框、贴右缘为背景色）；左侧圆角（角点非把手背景）；左侧有边框
+        pm = QPixmap(handle.size())
+        pm.fill(Qt.transparent)
+        handle.render(pm)
+        img = pm.toImage()
+        bg = QColor(self.v5.EDGE_HANDLE_BG)
+        border = QColor(self.v5.EDGE_HANDLE_BORDER)
+        center = img.pixelColor(handle.width() // 2, handle.height() // 2)
+        self.assertLessEqual(self._color_dist(center, bg), 3, "把手中心应为背景色")
+        left_mid = img.pixelColor(0, handle.height() // 2)
+        self.assertLessEqual(self._color_dist(left_mid, border), 16, "左侧缺少边框")
+        right_mid = img.pixelColor(handle.width() - 1, handle.height() // 2)
+        self.assertLessEqual(self._color_dist(right_mid, bg), 8, "右侧直边应为背景色")
+        self.assertGreater(self._color_dist(right_mid, border), 12, "右侧不应有边框")
+        for cx, cy in ((0, 0), (0, handle.height() - 1)):
+            corner = img.pixelColor(cx, cy)
+            self.assertGreater(self._color_dist(corner, bg), self._color_dist(center, bg) + 5,
+                               "左侧角点应为圆角（非把手背景）")
+
+    @staticmethod
+    def _color_dist(c, t):
+        return max(abs(c.red() - t.red()), abs(c.green() - t.green()), abs(c.blue() - t.blue()))
+
+    def test_edge_handle_reopens_panel_without_solving(self):
+        """点击贴边把手重新展开面板，恢复右栏宽度，不启动算法。"""
+        before = self.w.solver_log.count()
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        right_before = self.w._solver_saved_sizes[1] if self.w._solver_saved_sizes else None
+        self.w.solver_edge_handle.clicked.emit()                   # 模拟点击
+        pump(self.app, 150)
+        self.assertFalse(self.w._solver_collapsed)
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertFalse(self.w.solver_edge_handle.isVisible())    # 展开后隐藏
+        self.assertFalse(self.w._solver_running)                   # 未启动算法
+        self.assertEqual(self.w.solver_log.count(), before)
+        if right_before is not None:
+            self.assertGreaterEqual(self.w.splitter.sizes()[1], self.v5.SOLVER_W_MIN)
+
+    def test_edge_handle_repositions_on_resize(self):
+        """折叠态改变窗口尺寸后，把手重新贴右缘且不遮挡棋盘/分数卡/底部按钮。"""
+        self.w._toggle_solver()
+        pump(self.app, 120)
+        handle = self.w.solver_edge_handle
+        self.assertTrue(handle.isVisible())
+        self._assert_edge_handle_geometry(handle)
+        # 用户拉宽折叠窗口
+        self.w.resize(760, self.w.height())
+        pump(self.app, 120)
+        self.assertTrue(handle.isVisible())
+        self._assert_edge_handle_geometry(handle)
+        # 不遮挡棋盘 / 分数卡 / 底部按钮
+        handle_rect = handle.geometry()
+        for attr in ("board_view", "score_label", "best_label",
+                     "undo_button", "redo_button", "solver_ai_button", "new_game_button"):
+            other = self._widget_rect_in_window(getattr(self.w, attr))
+            self.assertFalse(handle_rect.intersects(other), attr + " 被把手遮挡")
+        self.w._toggle_solver()
+        pump(self.app, 120)
+
+    def test_edge_handle_hide_while_solving_reopens(self):
+        """运行中折叠：把手显示，点击后展开且不停止后台求解。"""
+        self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+        self.w.solver_mode.setCurrentIndex(0)
+        self.w.solver_strategy.setCurrentIndex(2)      # MCTS
+        self.w.solver_depth.setCurrentIndex(0)
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(self.app, lambda: self.w._solver_running, timeout_ms=3000))
+        self.w._toggle_solver()                        # 运行中折叠
+        pump(self.app, 120)
+        self.assertTrue(self.w.solver_edge_handle.isVisible())
+        self.assertTrue(self.w._solver_running)        # 隐藏不停止求解
+        self.w.solver_edge_handle.clicked.emit()       # 把手展开
+        pump(self.app, 120)
+        self.assertFalse(self.w._solver_collapsed)
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertTrue(self.w._session is not None or len(self.w._sessions) >= 1)
+        if self.w._solver_running:
+            self.w._stop_solver("测试结束")
+            pump(self.app, 120)
+
+    # ---- V5.1：命名统一 / 入口一致 / 无重复连接 ----
+    def test_panel_title_named_ai_solver(self):
+        """右侧面板标题与左侧入口统一为「AI 求解」。"""
+        self.assertEqual(self.w.solver_title.text(), "AI 求解")
+        self.assertEqual(self.w.solver_ai_button.text(), "AI 求解")
+        self.assertEqual(self.w.solver_start_btn.text(), "开始求解")   # 启停按钮命名不变
+
+    def test_both_entries_share_open_method(self):
+        """左侧「AI 求解」与右侧贴边把手行为一致：均打开面板、不启动算法。"""
+        before = self.w.solver_log.count()
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        # 用贴边把手展开
+        self.w.solver_edge_handle.clicked.emit()
+        pump(self.app, 100)
+        self.assertFalse(self.w._solver_collapsed)
+        # 再收起，用左侧 AI 按钮展开
+        self.w._toggle_solver()
+        pump(self.app, 100)
+        self.w.solver_ai_button.click()
+        pump(self.app, 100)
+        self.assertFalse(self.w._solver_collapsed)
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertFalse(self.w._solver_running)                 # 两个入口都不启动算法
+        self.assertEqual(self.w.solver_log.count(), before)
+
+    def test_no_duplicate_widgets_or_connections_on_toggles(self):
+        """连续 20 次折叠/展开：不重复创建 Solver 实例，也不重复连接入口信号。"""
+        from PyQt5.QtWidgets import QWidget
+        handle = self.w.solver_edge_handle
+        ai_btn = self.w.solver_ai_button
+        r_handle = handle.receivers(handle.clicked)
+        r_ai = ai_btn.receivers(ai_btn.clicked)
+        for _ in range(20):
+            self.w._toggle_solver()
+            pump(self.app, 15)
+            self.w._toggle_solver()
+            pump(self.app, 15)
+        self.assertEqual(len(self.w.findChildren(QWidget, "solverPanel")), 1)
+        self.assertEqual(len(self.w.findChildren(QWidget, "solverEdgeHandle")), 1)
+        self.assertIs(self.w.solver_edge_handle, handle)         # 同一实例，未重建
+        self.assertEqual(handle.receivers(handle.clicked), r_handle)
+        self.assertEqual(ai_btn.receivers(ai_btn.clicked), r_ai)
 
     def test_collapse_during_solve_keeps_running(self):
         """T-05：求解中折叠不影响业务推进，展开后状态一致。"""

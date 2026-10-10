@@ -10,10 +10,12 @@ PyQt5 图形界面版 2048：算法求解版（第 5 版）
                    仅把存档目录指向 v5 自己的 game_history；
     View        -> 复用第 4 版 BoardView / ParticleOverlay / 全部视觉常量；
     Layout      -> 把第 4 版游戏页整体作为左栏，右侧放入求解工作台，用水平 QSplitter
-                   承载：可拖动调整宽度、可折叠/展开（折叠后仍有可见恢复入口）；
+                   承载：可拖动调整宽度、可折叠（折叠=整体隐藏右栏，窗口收窄；展开入口
+                   为右侧贴边半胶囊把手 SolverEdgeHandle 或左侧「AI 求解」按钮，两者共用同一展开逻辑）；
     Controller  -> SolverMainWindow 继承第 4 版 MainWindow：
                    1) 求解在后台线程（SolverWorker）执行，带超时与异常兜底，绝不阻塞界面；
-                   2) 左侧按钮行保留「AI 求解」快捷入口（运行中变「停止」）。
+                   2) 左侧按钮行「AI 求解」仅负责打开/聚焦右侧 AI 求解面板，不启动算法；
+                      启动 / 停止求解由右侧面板的「开始求解」（运行中显示「停止」）负责。
 
 求解能力：
     - 策略：启发式 / 贪心模拟 / Expectimax / MCTS / 强化学习（5 类，本体未改）
@@ -49,8 +51,9 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,   # noq
                              QToolButton, QSizePolicy,
                              QDialog, QTableWidget, QTableWidgetItem,
                              QAbstractItemView, QHeaderView, QFrame)
-from PyQt5.QtCore import Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot   # noqa: E402
-from PyQt5.QtGui import QColor, QFont                                 # noqa: E402
+from PyQt5.QtCore import (Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot,   # noqa: E402
+                          QRect)
+from PyQt5.QtGui import (QColor, QFont, QPainter, QPen, QPainterPath)   # noqa: E402
 
 
 # =====================================================================
@@ -62,9 +65,8 @@ WINDOW_HEIGHT = v4.WINDOW_HEIGHT               # 672（第 4 版游戏页高度 
 # 右侧 Solver 工作台（可拖动 / 可折叠）
 SOLVER_W_DEFAULT = 400                         # 右栏默认宽度
 SOLVER_W_MIN = 300                             # 右栏展开态最小宽度
-COLLAPSED_W = 30                               # 右栏折叠后保留的窄条宽度（始终可见的恢复入口）
 SPLITTER_HANDLE = 6                            # 水平分隔条宽度
-COLLAPSED_BAR_TEXT = "◀\n求\n解"               # 折叠窄条上的竖排文字
+CONTAINER_MARGIN = 6                           # 右栏容器边距（展开态）
 
 V5_DEFAULT_H = 720                             # 游戏页默认高度（约 960×720 目标）
 V5_MIN_H = WINDOW_HEIGHT                       # 游戏页最小高度（不低于第 4 版高度）
@@ -72,6 +74,19 @@ TITLEBAR_RESERVE = 56                          # 估算标题栏 + 边距（逻�
 
 V5_DEFAULT_WIDTH = WINDOW_WIDTH + SOLVER_W_DEFAULT + SPLITTER_HANDLE   # 906：默认双栏整窗宽
 V5_MIN_WIDTH = WINDOW_WIDTH + SOLVER_W_MIN + SPLITTER_HANDLE           # 806：展开态最小整窗宽
+COLLAPSED_WIDTH = WINDOW_WIDTH                 # 500：折叠后整体隐藏右栏，窗口收窄到纯游戏宽度
+
+# 折叠态右侧贴边半胶囊把手（EdgeHandle；父级为主窗口，不随 Solver 容器隐藏，作为 overlay 不参与布局）
+EDGE_HANDLE_W = 22                             # 把手宽度（20–24 px）
+EDGE_HANDLE_H = 40                             # 把手高度（38–44 px）
+EDGE_HANDLE_RADIUS = 9                         # 左侧圆角（右侧直边，贴窗口右缘无缝隙）
+EDGE_HANDLE_TOP = 150                          # 距内容区顶部锚点（避开分数卡/标题，落在右侧空白边距内）
+EDGE_HANDLE_BG = "#F3EDE5"                     # 常态背景
+EDGE_HANDLE_BORDER = "#CDBEAF"                 # 左/上/下边框（右侧不描边）
+EDGE_HANDLE_BG_HOVER = "#E9DFD3"               # hover 背景
+EDGE_HANDLE_BG_PRESSED = "#DCD0C2"             # pressed 背景
+EDGE_HANDLE_ARROW = "#8A7662"                  # 箭头色（与标题栏收起箭头一致）
+EDGE_HANDLE_ARROW_WIDTH = 1.6                  # 箭头线宽（与标题栏收起箭头一致）
 
 PANEL_BG = "#F2E9DD"
 PANEL_LINE = "#D8C9B9"
@@ -79,6 +94,22 @@ PANEL_RADIUS = 12
 GROUP_BG = "#F7F0E7"
 LOG_BG = "#FAF5EE"
 LOG_LINE = "#E4D9C9"
+
+# 折叠/展开 Chevron 箭头按钮（QSS 负责背景/边框，QPainter 负责细线箭头；
+# 不再使用 Windows 系统绿色圆形方向图标）
+COLLAPSE_BTN_SIZE = 26                          # 按钮尺寸 26×26 px
+COLLAPSE_BTN_RADIUS = 6                         # 圆角 6 px
+COLLAPSE_BTN_BG = "#F3EDE5"                     # 常态背景
+COLLAPSE_BTN_BORDER = "#CDBEAF"                 # 常态边框
+COLLAPSE_BTN_BG_HOVER = "#EAE1D6"               # hover 背景
+COLLAPSE_BTN_BG_PRESSED = "#DED3C4"             # pressed 背景
+COLLAPSE_BTN_BG_DISABLED = "#F6F1EA"            # disabled 背景
+COLLAPSE_BTN_BORDER_DISABLED = "#E3DACF"        # disabled 边框
+COLLAPSE_ARROW = "#8A7662"                      # 箭头常态色
+COLLAPSE_ARROW_HOVER = "#6E5C4A"                # 箭头 hover 色
+COLLAPSE_ARROW_PRESSED = "#584736"              # 箭头 pressed 色
+COLLAPSE_ARROW_DISABLED = "#C3B4A4"             # 箭头 disabled 色
+COLLAPSE_ARROW_WIDTH = 1.6                      # 箭头线宽（px）
 
 RESULT_DIR = os.path.join(_HERE, "solver_results")
 EXPORT_DIR = os.path.join(RESULT_DIR, "exports")
@@ -148,19 +179,6 @@ GROUP_QSS = (
     f"QFrame#solverGroup {{ background-color: {GROUP_BG};"
     f" border: 1px solid {PANEL_LINE}; border-radius: 7px; }}")
 
-# 折叠后保留的窄条：始终可见的“展开”入口
-COLLAPSE_BAR_QSS = f"""
-QWidget#solverCollapseBar {{ background-color: {PANEL_BG};
-    border: 1px solid {PANEL_LINE}; border-radius: {PANEL_RADIUS}px; }}
-QPushButton#solverExpandBtn {{
-    background-color: #EEE4DA; color: {v4.COLOR_TEXT};
-    border: 1px solid {PANEL_LINE}; border-radius: 6px;
-    font-size: 12px; font-weight: bold; padding: 0;
-}}
-QPushButton#solverExpandBtn:hover {{ background-color: #E2D7CA; }}
-QPushButton#solverExpandBtn:pressed {{ background-color: #D5C9BA; }}
-"""
-
 # 折叠 / 高级参数 小工具按钮
 TOOL_BUTTON_QSS = f"""
 QToolButton {{
@@ -172,9 +190,232 @@ QToolButton:hover {{ background-color: #E2D7CA; }}
 QToolButton:checked {{ background-color: #E2D7CA; }}
 """
 
+# 标题栏收起/展开 Chevron 图标按钮（无文字；语义由箭头方向 + 工具提示表达）
+COLLAPSE_ICON_QSS = f"""
+QToolButton#solverCollapseBtn {{
+    background-color: {COLLAPSE_BTN_BG}; border: 1px solid {COLLAPSE_BTN_BORDER};
+    border-radius: {COLLAPSE_BTN_RADIUS}px; padding: 0;
+}}
+QToolButton#solverCollapseBtn:hover {{ background-color: {COLLAPSE_BTN_BG_HOVER}; }}
+QToolButton#solverCollapseBtn:pressed {{ background-color: {COLLAPSE_BTN_BG_PRESSED}; }}
+QToolButton#solverCollapseBtn:disabled {{
+    background-color: {COLLAPSE_BTN_BG_DISABLED}; border-color: {COLLAPSE_BTN_BORDER_DISABLED};
+}}
+"""
+
 # 状态指标：标签（次要色）+ 数值（正文色）
 METRIC_KEY_QSS = "color:#8f8175; font-size:11px;"
 METRIC_VAL_QSS = f"color:{v4.COLOR_TEXT}; font-size:12px; font-weight:bold;"
+
+
+# =====================================================================
+# 自定义 Chevron 箭头按钮
+# QSS 负责背景/边框（含 hover/pressed/disabled），QPainter 负责绘制细线箭头；
+# 用于替代 Windows 系统绿色圆形方向图标。
+# =====================================================================
+class ChevronToolButton(QToolButton):
+    """细线 Chevron 箭头按钮。
+
+    direction="right"：展开态，表示把求解栏向右收起；
+    direction="left"： 折叠态，表示把求解栏向左展开。
+    箭头颜色按 hover / pressed / disabled 三态切换，配合 QSS 背景反馈。
+    """
+
+    def __init__(self, direction="right", parent=None):
+        super().__init__(parent)
+        self._direction = "right"
+        self.setAutoRaise(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(COLLAPSE_BTN_SIZE, COLLAPSE_BTN_SIZE)
+        self.setDirection(direction)
+
+    def setDirection(self, direction):
+        self._direction = "left" if str(direction).lower() == "left" else "right"
+        self.update()
+
+    def direction(self):
+        return self._direction
+
+    def _arrow_color(self):
+        if not self.isEnabled():
+            return QColor(COLLAPSE_ARROW_DISABLED)
+        if self.isDown():
+            return QColor(COLLAPSE_ARROW_PRESSED)
+        if self.underMouse():
+            return QColor(COLLAPSE_ARROW_HOVER)
+        return QColor(COLLAPSE_ARROW)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)                    # 由 QSS 绘制背景与边框
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(self._arrow_color(), COLLAPSE_ARROW_WIDTH)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        cx = self.width() / 2.0
+        cy = self.height() / 2.0
+        hw, hh = 2.6, 4.8                            # Chevron 水平半宽 / 垂直半高
+        if self._direction == "right":
+            pts = ((cx - hw, cy - hh), (cx + hw, cy), (cx - hw, cy + hh))
+        else:
+            pts = ((cx + hw, cy - hh), (cx - hw, cy), (cx + hw, cy + hh))
+        path = QPainterPath()
+        path.moveTo(*pts[0])
+        path.lineTo(*pts[1])
+        path.lineTo(*pts[2])
+        painter.drawPath(path)
+        painter.end()
+
+
+# =====================================================================
+# 折叠态右侧贴边半胶囊把手（EdgeHandle）
+# 自绘：单侧圆角（左侧两角圆角、右侧直边）+ 细线左向 Chevron；
+# 作为 overlay 挂主窗口，不参与布局；QSS 无法可靠表达“单侧圆角”，故用 paintEvent。
+# =====================================================================
+class SolverEdgeHandle(QWidget):
+    """折叠态右侧贴边半胶囊展开把手。
+
+    点击或键盘（回车/空格）发射 clicked；hover / pressed / disabled / 焦点均有视觉反馈。
+    箭头与标题栏收起按钮同色（#8A7662）、同粗细（1.6 px）、同为圆角笔帽细线。
+    """
+
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("solverEdgeHandle")
+        self.setFixedSize(EDGE_HANDLE_W, EDGE_HANDLE_H)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setToolTip("展开 AI 求解面板")
+        self.setAccessibleName("展开 AI 求解面板")
+        self._hover = False
+        self._pressed = False
+
+    # ---- 交互状态 ----
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def focusInEvent(self, event):
+        self.update()
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        self.update()
+        super().focusOutEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._pressed = True
+            self.update()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._pressed:
+            self._pressed = False
+            self.update()
+            if self.rect().contains(event.pos()):
+                self.clicked.emit()
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self.clicked.emit()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+    # ---- 绘制 ----
+    def _palette(self):
+        if not self.isEnabled():
+            return (QColor(COLLAPSE_BTN_BG_DISABLED), QColor(COLLAPSE_BTN_BORDER_DISABLED),
+                    QColor(COLLAPSE_ARROW_DISABLED))
+        if self._pressed:
+            return (QColor(EDGE_HANDLE_BG_PRESSED), QColor(EDGE_HANDLE_BORDER),
+                    QColor(EDGE_HANDLE_ARROW))
+        if self._hover:
+            return (QColor(EDGE_HANDLE_BG_HOVER), QColor(EDGE_HANDLE_BORDER),
+                    QColor(EDGE_HANDLE_ARROW))
+        return (QColor(EDGE_HANDLE_BG), QColor(EDGE_HANDLE_BORDER), QColor(EDGE_HANDLE_ARROW))
+
+    def _geometry_pts(self):
+        w = float(self.width())
+        h = float(self.height())
+        x0, y0 = 0.5, 0.5
+        x1, y1 = w - 0.5, h - 0.5
+        r = min(float(EDGE_HANDLE_RADIUS), (y1 - y0) / 2.0, (x1 - x0))
+        return x0, y0, x1, y1, r
+
+    def _body_path(self):
+        """半胶囊轮廓：左上/左下圆角，右侧直边。"""
+        x0, y0, x1, y1, r = self._geometry_pts()
+        path = QPainterPath()
+        path.moveTo(x1, y0)                                   # 右上
+        path.lineTo(x0 + r, y0)                               # 上边（到圆角起点）
+        path.arcTo(x0, y0, 2 * r, 2 * r, 90, 90)               # 左上圆角
+        path.lineTo(x0, y1 - r)                               # 左边
+        path.arcTo(x0, y1 - 2 * r, 2 * r, 2 * r, 180, 90)      # 左下圆角
+        path.lineTo(x1, y1)                                   # 下边（到右直边）
+        path.closeSubpath()
+        return path
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        bg, border, arrow = self._palette()
+        # 背景
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg)
+        painter.drawPath(self._body_path())
+        # 边框：仅左 / 上 / 下（右侧直边不描边，紧贴窗口右缘）
+        x0, y0, x1, y1, r = self._geometry_pts()
+        border_path = QPainterPath()
+        border_path.moveTo(x1, y0)
+        border_path.lineTo(x0 + r, y0)
+        border_path.arcTo(x0, y0, 2 * r, 2 * r, 90, 90)
+        border_path.lineTo(x0, y1 - r)
+        border_path.arcTo(x0, y1 - 2 * r, 2 * r, 2 * r, 180, 90)
+        border_path.lineTo(x1, y1)
+        bpen = QPen(border, 1.0)
+        bpen.setCapStyle(Qt.FlatCap)
+        bpen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(bpen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(border_path)
+        # 细线左向 Chevron（与标题栏箭头同色同粗细）
+        apen = QPen(arrow, EDGE_HANDLE_ARROW_WIDTH)
+        apen.setCapStyle(Qt.RoundCap)
+        apen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(apen)
+        cx = self.width() / 2.0
+        cy = self.height() / 2.0
+        hw, hh = 2.6, 4.8
+        chevron = QPainterPath()
+        chevron.moveTo(cx + hw, cy - hh)
+        chevron.lineTo(cx - hw, cy)
+        chevron.lineTo(cx + hw, cy + hh)
+        painter.drawPath(chevron)
+        # 键盘焦点反馈（不占用鼠标态视觉）
+        if self.hasFocus():
+            fpen = QPen(QColor(EDGE_HANDLE_ARROW), 1.0)
+            fpen.setStyle(Qt.DashLine)
+            painter.setPen(fpen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(self.rect().adjusted(3, 3, -3, -3), 4, 4)
+        painter.end()
 
 
 # =====================================================================
@@ -400,11 +641,11 @@ class SolverMainWindow(v4.MainWindow):
         row = self._find_row_layout(page.layout(), self.new_game_button)
         if row is not None:
             self.solver_ai_button = self._make_button(
-                "AI 求解", self.on_solver_clicked,
+                "AI 求解", self._open_solver_panel,
                 qss=v4.SECONDARY_BUTTON_QSS, size=(78, 44),
                 particle_color="#cbbcaa")
             self.solver_ai_button.setToolTip(
-                "用算法求解当前局面（启发式 / 贪心模拟 / Expectimax / MCTS / 强化学习）")
+                "打开右侧「AI 求解」面板；算法运行请在面板内点击「开始求解」")
             row.insertWidget(row.indexOf(self.new_game_button), self.solver_ai_button)
         return page
 
@@ -456,21 +697,63 @@ class SolverMainWindow(v4.MainWindow):
         self.splitter.setChildrenCollapsible(False)
         outer.addWidget(self.splitter)
 
-        game_page.setMinimumWidth(WINDOW_WIDTH)         # 左栏不小于第 4 版宽度，保证像素一致
-        self.splitter.addWidget(game_page)
+        # 左栏内容固定为第 4 版宽度并左对齐：窗口变宽时留白落在 holder 内，
+        # 而不是把棋盘/按钮拉伸到窗口两端（修复 G04/G10 的按钮散开）。
+        game_page.setFixedWidth(WINDOW_WIDTH)
         game_page.show()                                # removeWidget() 会隐式 hide()，重新标记为可见
+        holder = QWidget()
+        holder.setObjectName("gameHolder")
+        hbox = QHBoxLayout(holder)
+        hbox.setContentsMargins(0, 0, 0, 0)
+        hbox.setSpacing(0)
+        hbox.addWidget(game_page)                       # 宽度固定 500、高度填满
+        hbox.addStretch(1)                              # 多余宽度在此吸收（自然留白）
+        self.game_holder = holder
+        self.splitter.addWidget(holder)
 
         self._solver_collapsed = False
         self._solver_saved_sizes = None
+        self._expanded_geometry = None                  # 折叠前备份的整窗几何
+        self._solver_transition = False                 # 折叠/展开防重入
         self._build_solver_panel()                      # 构建右栏（展开体 + 折叠窄条）
         self.splitter.addWidget(self.solver_container)
 
-        self.splitter.setStretchFactor(0, 0)            # 缩放时把新增空间主要给右栏
+        self.splitter.setStretchFactor(0, 0)            # 展开：新增空间主要给右栏
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setSizes([WINDOW_WIDTH, SOLVER_W_DEFAULT])
 
         self.stack.insertWidget(v4.GAME_PAGE, container)  # 保持在 GAME_PAGE(=1) 索引
         self._root_container = container
+        self._build_solver_edge_handle()                # 右侧贴边把手（父级=主窗口 overlay）
+
+    # ---------------- 右侧贴边半胶囊把手（折叠态专用入口） ----------------
+    def _build_solver_edge_handle(self):
+        """在主窗口右侧边缘创建独立贴边把手（overlay）。
+
+        父级为主窗口 self（与粒子层同层），**不随 solver_container 隐藏**，也不加入任何布局，
+        因此不参与主布局宽度分配；由稳定定位逻辑贴宿主内容右缘、对齐内容区顶部锚点。
+        """
+        handle = SolverEdgeHandle(self)
+        handle.clicked.connect(self._open_solver_panel)  # 与左侧 AI 按钮共用同一展开逻辑
+        handle.hide()                                     # 仅折叠态显示
+        self.solver_edge_handle = handle
+        self._position_solver_edge_handle()
+
+    def _position_solver_edge_handle(self):
+        """把手贴宿主内容右缘、对齐内容区顶部锚点；随 resize/DPI 变化重新定位。"""
+        handle = getattr(self, "solver_edge_handle", None)
+        if handle is None:
+            return
+        x = max(0, self.width() - EDGE_HANDLE_W)         # 紧贴右缘，不留悬空缝隙
+        handle.move(x, EDGE_HANDLE_TOP)
+
+    def _show_solver_edge_handle(self):
+        handle = getattr(self, "solver_edge_handle", None)
+        if handle is None:
+            return
+        self._position_solver_edge_handle()
+        handle.show()
+        handle.raise_()
 
     def _grow_for_solver(self):
         """进入游戏页：切换为左右双栏的可调整窗口尺寸（高度自适应屏幕）。"""
@@ -541,11 +824,12 @@ class SolverMainWindow(v4.MainWindow):
         - 结构对应 V5.1 规范 2.3；日志分配主 stretch，窗口变高时由日志吸收空间；
         - 右栏整体不套嵌套滚动区（规范 5.5），避免拖动/缩放时重建控件。
         """
-        # 外层容器：body（展开体）与 collapse_bar（折叠窄条）互斥显示
+        # 外层容器：折叠时整体隐藏该容器（见 _do_collapse），不保留任何窄条
         container = QWidget()
         self.solver_container = container
         cbox = QVBoxLayout(container)
-        cbox.setContentsMargins(6, 6, 6, 6)
+        cbox.setContentsMargins(CONTAINER_MARGIN, CONTAINER_MARGIN,
+                                CONTAINER_MARGIN, CONTAINER_MARGIN)
         cbox.setSpacing(0)
 
         panel = QWidget()
@@ -560,20 +844,19 @@ class SolverMainWindow(v4.MainWindow):
         box.setContentsMargins(12, 10, 12, 12)
         box.setSpacing(8)
 
-        # A. 头部：标题 + 折叠按钮
+        # A. 头部：[收起/展开 Chevron 按钮] + 标题 —— 两者左对齐、间距固定，不分散到两端
         head = QHBoxLayout()
-        head.setSpacing(6)
-        title = QLabel("算法求解")
+        head.setSpacing(8)
+        self.solver_collapse_btn = ChevronToolButton("right")
+        self.solver_collapse_btn.setObjectName("solverCollapseBtn")
+        self.solver_collapse_btn.setStyleSheet(COLLAPSE_ICON_QSS)
+        self.solver_collapse_btn.clicked.connect(self._toggle_solver)
+        title = QLabel("AI 求解")
         title.setStyleSheet(f"color:{v4.COLOR_TEXT}; font-size:14px; font-weight:bold;")
         self.solver_title = title
-        self.solver_collapse_btn = QToolButton()
-        self.solver_collapse_btn.setStyleSheet(TOOL_BUTTON_QSS)
-        self.solver_collapse_btn.setCursor(Qt.PointingHandCursor)
-        self.solver_collapse_btn.setToolTip("折叠算法求解面板（折叠后仍可从此处或左侧「AI 求解」恢复）")
-        self.solver_collapse_btn.clicked.connect(self._toggle_solver)
-        head.addWidget(title)
-        head.addStretch()
-        head.addWidget(self.solver_collapse_btn)
+        head.addWidget(self.solver_collapse_btn, 0, Qt.AlignVCenter)
+        head.addWidget(title, 0, Qt.AlignVCenter)
+        head.addStretch()                                          # 末尾留白
         box.addLayout(head)
 
         # B. 参数区：标签 + 控件的结构化表单（复用原有下拉框对象与回调）
@@ -692,24 +975,8 @@ class SolverMainWindow(v4.MainWindow):
             result.addWidget(btn)
         box.addLayout(result)
 
-        # 折叠窄条：始终可见的“展开”入口（UI-07）
-        bar = QWidget()
-        bar.setObjectName("solverCollapseBar")
-        bar.setStyleSheet(COLLAPSE_BAR_QSS)
-        bar.setFixedWidth(COLLAPSED_W)
-        bar_box = QVBoxLayout(bar)
-        bar_box.setContentsMargins(3, 6, 3, 6)
-        bar_box.setSpacing(0)
-        self.solver_expand_btn = QPushButton(COLLAPSED_BAR_TEXT)
-        self.solver_expand_btn.setObjectName("solverExpandBtn")
-        self.solver_expand_btn.setCursor(Qt.PointingHandCursor)
-        self.solver_expand_btn.setToolTip("展开算法求解面板")
-        self.solver_expand_btn.clicked.connect(self._toggle_solver)
-        bar_box.addWidget(self.solver_expand_btn)
-        bar_box.addStretch()
-        bar.setVisible(False)
-        self.solver_collapsed_bar = bar
-        cbox.addWidget(bar)
+        # 折叠态不保留右侧窄条：整体隐藏 solver_container 即可（见 _do_collapse）；
+        # 重新展开的入口为右上角悬浮 Chevron 按钮与左侧「AI 求解」按钮（见 _open_solver_panel）。
 
         self._on_strategy_changed()          # 同步“强度”可用状态 + 高级配置文本
         self._update_collapse_button()
@@ -728,9 +995,14 @@ class SolverMainWindow(v4.MainWindow):
         self.solver_advanced_toggle.setText("高级参数 ▾" if checked else "高级参数 ▸")
 
     def _update_collapse_button(self):
+        """同步面板标题栏 Chevron 按钮：该按钮仅存在于展开态，动作为“向右收起 AI 求解面板”。"""
         btn = getattr(self, "solver_collapse_btn", None)
-        if btn is not None:
-            btn.setText("展开 ◂" if self._solver_collapsed else "折叠 ▸")
+        if btn is None:
+            return
+        btn.setDirection("right")
+        btn.setToolTip("收起 AI 求解面板")
+        if hasattr(btn, "setAccessibleName"):
+            btn.setAccessibleName("收起 AI 求解面板")
 
     # ---------------- 自适应尺寸：窗口始终完整落在屏幕内 ----------------
     def _available_height(self):
@@ -742,8 +1014,9 @@ class SolverMainWindow(v4.MainWindow):
 
     def _min_width(self):
         """整窗最小宽度：左栏保持第 4 版宽度 + 右栏（展开/折叠）最小宽度 + 分隔条。"""
-        right = COLLAPSED_W if self._solver_collapsed else SOLVER_W_MIN
-        return WINDOW_WIDTH + right + SPLITTER_HANDLE
+        if self._solver_collapsed:
+            return COLLAPSED_WIDTH                        # 折叠：整体隐藏右栏，仅左栏宽度
+        return V5_MIN_WIDTH
 
     def _apply_splitter_sizes(self):
         """按折叠状态与当前窗口宽度重排左右比例。
@@ -752,13 +1025,14 @@ class SolverMainWindow(v4.MainWindow):
         """
         if not hasattr(self, "splitter"):
             return
-        total = max(self.width(), V5_MIN_WIDTH)
+        total = self.width()                              # 折叠后窗口会变窄，不能用固定下限
         if self._solver_collapsed:
-            right = COLLAPSED_W
-        else:
-            saved = self._solver_saved_sizes
-            right = max(SOLVER_W_MIN, saved[1] if saved else SOLVER_W_DEFAULT)
-        right = min(right, max(COLLAPSED_W, total - WINDOW_WIDTH - SPLITTER_HANDLE))
+            # 右栏容器已隐藏：全部宽度归左栏，不留任何残留
+            self.splitter.setSizes([max(WINDOW_WIDTH, total), 0])
+            return
+        saved = self._solver_saved_sizes
+        right = max(SOLVER_W_MIN, saved[1] if saved else SOLVER_W_DEFAULT)
+        right = min(right, max(0, total - WINDOW_WIDTH - SPLITTER_HANDLE))
         left = max(WINDOW_WIDTH, total - right - SPLITTER_HANDLE)
         self.splitter.setSizes([left, right])
 
@@ -782,28 +1056,92 @@ class SolverMainWindow(v4.MainWindow):
     def _toggle_solver(self):
         self._set_solver_collapsed(not self._solver_collapsed)
 
+    def _is_normal_window(self):
+        """普通（非最大化/非全屏）窗口才允许程序化调整几何。"""
+        return not (self.isMaximized() or self.isFullScreen())
+
+    def _clamp_to_screen(self, geom):
+        """把几何夹到当前显示器可用区域，避免展开时窗口跑出屏幕。"""
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return geom
+        av = screen.availableGeometry()
+        w = min(geom.width(), av.width())
+        h = min(geom.height(), av.height())
+        x = min(max(geom.x(), av.left()), av.right() - w + 1)
+        y = min(max(geom.y(), av.top()), av.bottom() - h + 1)
+        return QRect(x, y, w, h)
+
+    def _set_splitter_handles_enabled(self, enabled):
+        """启用/禁用分隔条拖动（折叠态禁用，避免把窄条拖成大块空白）。"""
+        for i in range(self.splitter.count()):
+            handle = self.splitter.handle(i)
+            if handle is not None:
+                handle.setEnabled(enabled)
+
     def _set_solver_collapsed(self, collapsed):
-        """折叠/展开右栏：不停止 worker、不清空日志与算法状态。"""
+        """折叠/展开右栏：不停止 worker、不清空日志与算法状态（防重入）。"""
         collapsed = bool(collapsed)
-        if collapsed == self._solver_collapsed:
+        if self._solver_transition or collapsed == self._solver_collapsed:
             return
-        if collapsed:
-            sizes = self.splitter.sizes()
-            if sizes and sizes[1] >= SOLVER_W_MIN:        # 记住有效宽度，供展开恢复
-                self._solver_saved_sizes = sizes
-            self.solver_panel.hide()
-            self.solver_collapsed_bar.show()
-            self._solver_collapsed = True
-        else:
-            self.solver_collapsed_bar.hide()
-            self.solver_panel.show()
-            self._solver_collapsed = False
+        self._solver_transition = True
+        try:
+            if collapsed:
+                self._do_collapse()
+            else:
+                self._do_expand()
+        finally:
+            self._solver_transition = False
+
+    def _do_collapse(self):
+        # 1) 仅在“有效展开且为普通窗口”时备份几何与右栏宽度，避免用折叠态覆盖备份
+        if self._is_normal_window():
+            self._expanded_geometry = self.geometry()
+        sizes = self.splitter.sizes()
+        if sizes and sizes[1] >= SOLVER_W_MIN:
+            self._solver_saved_sizes = sizes
+        # 2) 完整隐藏右侧 Solver 容器：求解控件/背景/边框/窄条与分隔条一并消失
+        self._solver_collapsed = True
+        self.solver_container.hide()
+        self._set_splitter_handles_enabled(False)
+        # 3) 多余宽度全部归左栏 holder（留白在 holder 内，按钮不散开）
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 0)
         self.setMinimumSize(self._min_width(), V5_MIN_H)
-        if self.width() < self._min_width():              # 折叠后可缩得更窄
-            self.resize(self._min_width(), self.height())
+        # 4) 普通窗口同步收窄到纯游戏尺寸（无右侧空白或窄条）
+        if self._is_normal_window() and self.width() > COLLAPSED_WIDTH:
+            self.resize(COLLAPSED_WIDTH, self.height())
         self._apply_splitter_sizes()
         self._update_collapse_button()
-        self._render_metrics()                            # 展开/折叠后指标保持一致
+        self._update_solver_buttons()                       # AI 按钮作为“重新打开面板”入口
+        self._show_solver_edge_handle()                     # 显示右侧贴边把手
+        QTimer.singleShot(0, self._apply_splitter_sizes)   # 排队等待布局落定（非轮询）
+
+    def _do_expand(self):
+        # 1) 先隐藏贴边把手，再恢复完整右栏与几何（注意 Qt 布局事件顺序）
+        self._solver_collapsed = False
+        handle = getattr(self, "solver_edge_handle", None)
+        if handle is not None:
+            handle.hide()                                   # 展开态隐藏把手
+        self.solver_container.show()
+        self._set_splitter_handles_enabled(True)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.setMinimumSize(V5_MIN_WIDTH, V5_MIN_H)
+        # 2) 恢复折叠前的整窗几何（夹到屏幕内）
+        if self._expanded_geometry is not None and self._is_normal_window():
+            self.setGeometry(self._clamp_to_screen(self._expanded_geometry))
+        # 3) 恢复右栏宽度与业务状态（控件实例未销毁，配置/参数/日志自动保留）
+        self._apply_splitter_sizes()
+        self._update_collapse_button()
+        self._update_solver_buttons()
+        self._render_metrics()
+        QTimer.singleShot(0, self._apply_splitter_sizes)
+
+    # ---------------- 窗口事件：贴边把手随尺寸变化重新贴边 ----------------
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_solver_edge_handle()
 
     # ---------------- 状态指标（UI-04 / T-11） ----------------
     def _set_metric(self, key, value):
@@ -975,7 +1313,14 @@ class SolverMainWindow(v4.MainWindow):
         if at_bottom:
             self.solver_log.scrollToBottom()
 
-    # ---------------- 入口：AI 求解按钮 / 面板开始按钮 ----------------
+    # ---------------- 入口：AI 求解按钮 / 悬浮展开按钮 / 面板开始按钮 ----------------
+    def _open_solver_panel(self):
+        """统一的“展开（打开）AI 求解面板”逻辑：右侧悬浮按钮与左侧 AI 按钮共用，不启动算法。
+
+        面板已展开时为无操作（幂等）；不重建控件、不重复连接信号。
+        """
+        self._set_solver_collapsed(False)
+
     def on_solver_clicked(self):
         if self._solver_running:
             self._stop_solver("用户停止")
@@ -1193,10 +1538,12 @@ class SolverMainWindow(v4.MainWindow):
         return summary
 
     def _update_solver_buttons(self):
+        """仅「开始求解」随运行状态切换文案；左侧「AI 求解」恒为打开面板入口，不参与启停。"""
         running = self._solver_running
         self.solver_start_btn.setText("停止" if running else "开始求解")
-        if hasattr(self, "solver_ai_button"):
-            self.solver_ai_button.setText("停止" if running else "AI 求解")
+        ai = getattr(self, "solver_ai_button", None)
+        if ai is not None:
+            ai.setText("AI 求解")
 
     # ---------------- 覆盖：求解期间屏蔽手动操作 ----------------
     def on_move(self, direction):
