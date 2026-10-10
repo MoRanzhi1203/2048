@@ -28,10 +28,10 @@ from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen, QIcon, QCursor, 
 # 复用第 3 篇的 Model（GameCore）：动画版不改动任何棋盘逻辑
 # =====================================================================
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_V3_DIR = os.path.join(os.path.dirname(_HERE), "pyqt_2048")
+_V3_DIR = os.path.join(os.path.dirname(_HERE), "v3_pyqt_2048")
 if _V3_DIR not in sys.path:
     sys.path.insert(0, _V3_DIR)
-from pyqt_2048_with_history import GameCore, DIRECTION_NAMES  # noqa: E402
+from v3_pyqt_2048_with_history import GameCore, DIRECTION_NAMES  # noqa: E402
 
 
 # =====================================================================

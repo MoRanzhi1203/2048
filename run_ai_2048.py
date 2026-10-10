@@ -9,14 +9,14 @@ import sys
 import time
 
 # 让脚本无论从哪个工作目录启动，都能找到同级的 ai_solver_2048 与
-# console_2048_with_history 子目录中的模块
+# v2_console_2048_with_history 子目录中的模块
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_CONSOLE_DIR = os.path.join(_HERE, "console_2048_with_history")
+_CONSOLE_DIR = os.path.join(_HERE, "v2_console_2048_with_history")
 for _p in (_CONSOLE_DIR, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from console_2048_with_history import Console2048WithHistory
+from v2_console_2048_with_history import Console2048WithHistory
 from ai_solver_2048 import AI2048Solver, _play_with_ai
 
 

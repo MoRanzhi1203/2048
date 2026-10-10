@@ -6,20 +6,22 @@
 
 ```
 2048/
-├── console_2048/                     # 第 1 篇：纯控制台版
-│   └── console_2048.py
-├── console_2048_with_history/        # 第 2 篇：带历史记录 + 续玩
-│   ├── console_2048_with_history.py
+├── v1_console_2048/                  # 第 1 篇：纯控制台版
+│   └── v1_console_2048.py
+├── v2_console_2048_with_history/     # 第 2 篇：带历史记录 + 续玩
+│   ├── v2_console_2048_with_history.py
 │   └── game_history/                 # 对局存档（运行时生成）
-├── pyqt_2048/                        # 第 3 篇：PyQt5 桌面版
-│   ├── pyqt_2048_with_history.py     #   主程序（MVC + 撤销/重做 + 历史 + 启动页）
-│   ├── Untitled-1.py                 #   早期简单原型
-│   ├── screenshots/                  #   启动页 / 游戏页截图
+├── v3_pyqt_2048/                     # 第 3 篇：PyQt5 桌面版
+│   ├── v3_pyqt_2048_with_history.py  #   主程序（MVC + 撤销/重做 + 历史 + 启动页）
+│   ├── screenshots/                  #   启动页 / 游戏页整窗截图
 │   └── game_history/                 #   对局存档（运行时生成）
-├── pyqt_2048_animated/               # 第 4 篇：PyQt5 动画版（复用第 3 篇 GameCore）
-│   ├── pyqt_2048_animated.py         #   主程序（分层渲染 + 定时器插值动画）
-│   ├── screenshots/                  #   启动页 / 滑行中途 / 游戏页截图
+├── v4_pyqt_2048_animated/            # 第 4 篇：PyQt5 动画版（复用第 3 篇 GameCore）
+│   ├── v4_pyqt_2048_animated.py      #   主程序（分层渲染 + 定时器插值动画）
+│   ├── screenshots/                  #   启动页 / 悬停与合并粒子 / 游戏页整窗截图
 │   └── game_history/                 #   对局存档（运行时生成）
+├── tools/capture_gui.py              # 统一 GUI 截图入口（见 docs/GUI_SCREENSHOT_STANDARD.md）
+├── docs/GUI_SCREENSHOT_STANDARD.md   # GUI 截图与视觉验收规范（强制）
+├── AGENTS.md / .trae/rules/          # 项目级 Agent 规则（含截图强制规范）
 ├── blog/                             # 系列博客
 │   ├── 1.Python 实现：从数学模型到完整控制台版《2048》游戏.md
 │   ├── 2.如何实现带历史记录功能的控制台2048游戏.md
@@ -30,6 +32,17 @@
 ├── run_ai_2048.py                    # 求解器交互脚本（演示模式 / 批量测试）
 └── simple_ai_demo.py                 # 求解器简化演示（固定步数，无需交互）
 ```
+
+## 版本对照
+
+| 版本号 | 目录 | 入口脚本 | 对应博客 | 形态 |
+| --- | --- | --- | --- | --- |
+| **v1** | `v1_console_2048/` | `v1_console_2048.py` | 第 1 篇 | 控制台版（数学模型） |
+| **v2** | `v2_console_2048_with_history/` | `v2_console_2048_with_history.py` | 第 2 篇 | 控制台版 + 历史记录/续玩 |
+| **v3** | `v3_pyqt_2048/` | `v3_pyqt_2048_with_history.py` | 第 3 篇 | PyQt5 桌面版（MVC + 撤销/重做） |
+| **v4** | `v4_pyqt_2048_animated/` | `v4_pyqt_2048_animated.py` | 第 4 篇 | PyQt5 动画版（复用 v3 的 GameCore） |
+
+> 版本号顺序与系列博客一致；v4 通过 `sys.path` 复用 v3 的 `GameCore`（`from v3_pyqt_2048_with_history import GameCore`）。
 
 ## 环境依赖
 
@@ -46,16 +59,16 @@ pip install PyQt5
 
 ```bash
 # 第 1 篇：纯控制台版
-python console_2048/console_2048.py
+python v1_console_2048/v1_console_2048.py
 
 # 第 2 篇：带历史记录的控制台版
-python console_2048_with_history/console_2048_with_history.py
+python v2_console_2048_with_history/v2_console_2048_with_history.py
 
 # 第 3 篇：PyQt5 桌面版
-python pyqt_2048/pyqt_2048_with_history.py
+python v3_pyqt_2048/v3_pyqt_2048_with_history.py
 
 # 第 4 篇：PyQt5 动画版
-python pyqt_2048_animated/pyqt_2048_animated.py
+python v4_pyqt_2048_animated/v4_pyqt_2048_animated.py
 
 # AI 求解器（Expectimax 自动对局：演示模式 / 批量测试）
 python run_ai_2048.py
@@ -87,9 +100,19 @@ python simple_ai_demo.py
 
 ## 界面预览（桌面版 · 动画版）
 
-| 启动页 | 滑行中途 | 游戏页 |
+| 启动页 | 合并粒子 | 游戏页 |
 | --- | --- | --- |
-| ![启动页](pyqt_2048_animated/screenshots/start_page.png) | ![滑行中途](pyqt_2048_animated/screenshots/animation.png) | ![游戏页](pyqt_2048_animated/screenshots/game_page.png) |
+| ![启动页](v4_pyqt_2048_animated/screenshots/full_start.png) | ![合并粒子](v4_pyqt_2048_animated/screenshots/full_merge.png) | ![游戏页](v4_pyqt_2048_animated/screenshots/full_game.png) |
+
+## 开发规范（强制）
+
+- **GUI 截图规范**：[docs/GUI_SCREENSHOT_STANDARD.md](docs/GUI_SCREENSHOT_STANDARD.md) —— 正式截图必须是含 Windows 原生标题栏的完整窗口、不得丢失任何文字，并通过 `CAPTURE/STRUCTURE/TEXT/VISUAL` 门禁；未验证标记 `UNVERIFIED`，不合格不得交付。项目级 Agent 规则见 [AGENTS.md](AGENTS.md) 与 [.trae/rules/project_rules.md](.trae/rules/project_rules.md)。
+- **统一截图入口**：`python tools/capture_gui.py --version v4|v3 --scene <scene>`，正式图输出到各版本 `screenshots/full_<scene>.png`。
+
+```bash
+python tools/capture_gui.py --version v4 --scene start   # start | game | hover | merge
+python tools/capture_gui.py --version v3 --scene game    # v3 支持 start | game
+```
 
 ## 系列博客
 
@@ -102,6 +125,6 @@ python simple_ai_demo.py
 
 ## 说明
 
-- `ai_solver_2048.py`、`run_ai_2048.py`、`simple_ai_demo.py` 为 **Expectimax 自动求解器**，可直接运行：`python run_ai_2048.py`（演示 / 批量测试）或 `python simple_ai_demo.py`（固定步数演示）。求解器复用控制台版的对局与存档接口，对局同样落盘到 `console_2048_with_history/game_history/`。
+- `ai_solver_2048.py`、`run_ai_2048.py`、`simple_ai_demo.py` 为 **Expectimax 自动求解器**，可直接运行：`python run_ai_2048.py`（演示 / 批量测试）或 `python simple_ai_demo.py`（固定步数演示）。求解器复用控制台版的对局与存档接口，对局同样落盘到 `v2_console_2048_with_history/game_history/`。
 - 桌面版的界面为纯视觉优化（布局 / 配色 / 字号 / 间距 / 圆角 / 控件状态），不影响游戏规则、分数与存档逻辑。
-- 动画版（第 4 篇）直接复用第 3 篇的 `GameCore`，只替换 View 层并加入平滑动画；使用自己的 `pyqt_2048_animated/game_history/` 存档目录。
+- 动画版（第 4 篇）直接复用第 3 篇的 `GameCore`，只替换 View 层并加入平滑动画；使用自己的 `v4_pyqt_2048_animated/game_history/` 存档目录。

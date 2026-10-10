@@ -12,10 +12,10 @@ import random
 import os
 import sys
 
-# 添加当前目录与 console_2048_with_history 子目录到 Python 路径，
+# 添加当前目录与 v2_console_2048_with_history 子目录到 Python 路径，
 # 确保可以导入 Console2048WithHistory（其源码位于同级子目录中）
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_CONSOLE_DIR = os.path.join(_HERE, "console_2048_with_history")
+_CONSOLE_DIR = os.path.join(_HERE, "v2_console_2048_with_history")
 for _p in (_HERE, _CONSOLE_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -386,7 +386,7 @@ def _play_with_ai(game, ai, delay=0.1, verbose=True):
 
 def run_ai_solver(max_depth=3, max_time=0.05, delay=0.1):
     """运行AI求解器（命令行入口）"""
-    from console_2048_with_history import Console2048WithHistory
+    from v2_console_2048_with_history import Console2048WithHistory
 
     print("启动2048游戏AI求解器...")
     print(f"参数：搜索深度={max_depth}，单步思考上限={max_time}秒，演示延迟={delay}秒")
@@ -429,7 +429,7 @@ def solve_2048_automatically(game_instance=None, max_depth=3, max_time=0.05,
     :param verbose: 是否打印过程信息
     :return: 游戏最终分数
     """
-    from console_2048_with_history import Console2048WithHistory
+    from v2_console_2048_with_history import Console2048WithHistory
 
     # 如果没有提供游戏实例，创建一个新的
     if game_instance is None:
