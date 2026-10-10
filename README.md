@@ -1,6 +1,6 @@
 # 2048 · Python 实现系列
 
-用 Python 从零实现 2048：从**数学模型**到**控制台版**、**带历史记录的续玩版**、再到 **PyQt5 桌面版**（MVC 架构 / 撤销重做 / 启动页 / 高 DPI 适配）、**平滑动画版**，最后是**算法求解版**（启发式 / 贪心模拟 / Expectimax / MCTS / 强化学习接入现有界面），并附带系列技术博客。
+用 Python 从零实现 2048：从**数学模型**到**控制台版**、**带历史记录的续玩版**、再到 **PyQt5 桌面版**（MVC 架构 / 撤销重做 / 启动页 / 高 DPI 适配）、**平滑动画版**，最后是**算法求解版**（启发式 / 贪心模拟 / Expectimax / MCTS / 强化学习接入现有界面，V5.1 起为**左侧游戏台 + 右侧可拖动/可折叠算法求解工作台**的双栏布局），并附带系列技术博客。
 
 ## 目录结构
 
@@ -20,13 +20,13 @@
 │   ├── screenshots/                  #   启动页 / 悬停与合并粒子 / 游戏页整窗截图
 │   └── game_history/                 #   对局存档（运行时生成）
 ├── v5_pyqt_2048_solver/              # 第 6 篇：算法求解版（复用第 4 篇界面，增量扩展）
-│   ├── v5_pyqt_2048_solver.py        #   主程序（继承第 4 版 MainWindow + 底部求解面板）
+│   ├── v5_pyqt_2048_solver.py        #   主程序（继承第 4 版 MainWindow + 左右双栏求解工作台）
 │   ├── solver_2048.py                #   求解算法核心（启发式/贪心模拟/Expectimax/MCTS/强化学习，含剪枝）
 │   ├── rl_2048.py                    #   强化学习：numpy 策略/价值网络 + 自对弈策略梯度训练
 │   ├── rl_model.npz                  #   强化学习模型文件（训练产物）
-│   ├── test_solver.py                #   测试用例（算法核心 5 类策略 + 界面集成）
+│   ├── test_solver.py                #   测试用例（算法核心 5 类策略 + 界面集成 + 双栏布局/折叠）
 │   ├── 功能说明.md                    #   第 5 版功能说明文档
-│   ├── screenshots/                  #   启动页 / 游戏页 / 求解中 / 单步建议整窗截图
+│   ├── screenshots/                  #   启动页 / 双栏游戏页 / 求解中 / 单步建议 / 折叠态 整窗截图
 │   ├── solver_results/               #   求解会话与导出文件（运行时生成）
 │   └── game_history/                 #   对局存档（运行时生成）
 ├── tools/capture_gui.py              # 统一 GUI 截图入口（见 docs/GUI_SCREENSHOT_STANDARD.md）
@@ -57,7 +57,7 @@
 | **v2** | `v2_console_2048_with_history/` | `v2_console_2048_with_history.py` | 第 2 篇 | 控制台版 + 历史记录/续玩 |
 | **v3** | `v3_pyqt_2048/` | `v3_pyqt_2048_with_history.py` | 第 3 篇 | PyQt5 桌面版（MVC + 撤销/重做） |
 | **v4** | `v4_pyqt_2048_animated/` | `v4_pyqt_2048_animated.py` | 第 4 篇 | PyQt5 动画版（复用 v3 的 GameCore） |
-| **v5** | `v5_pyqt_2048_solver/` | `v5_pyqt_2048_solver.py` | 第 6 篇 | PyQt5 算法求解版（复用 v4 界面 + 求解面板） |
+| **v5** | `v5_pyqt_2048_solver/` | `v5_pyqt_2048_solver.py` | 第 6 篇 | PyQt5 算法求解版（v4 界面 + **V5.1 左右双栏**求解工作台） |
 
 > 版本号顺序与系列博客一致；v4 通过 `sys.path` 复用 v3 的 `GameCore`（`from v3_pyqt_2048_with_history import GameCore`），v5 复用 v4 的界面与模型（`import v4_pyqt_2048_animated`）。
 
@@ -145,11 +145,11 @@ python simple_ai_demo.py
 | --- | --- | --- |
 | ![启动页](v4_pyqt_2048_animated/screenshots/full_start.png) | ![合并粒子](v4_pyqt_2048_animated/screenshots/full_merge.png) | ![游戏页](v4_pyqt_2048_animated/screenshots/full_game.png) |
 
-## 界面预览（第 5 版 · 算法求解版）
+## 界面预览（第 5 版 · 算法求解版 V5.1 左右双栏）
 
-| 游戏页（含求解面板） | 求解中（实时状态） | 单步建议 |
+| 双栏游戏页（左游戏台 + 右求解工作台） | 求解中（实时状态） | 右栏折叠态（保留展开入口） |
 | --- | --- | --- |
-| ![V5 游戏页](v5_pyqt_2048_solver/screenshots/full_game.png) | ![V5 求解中](v5_pyqt_2048_solver/screenshots/full_solver.png) | ![V5 单步建议](v5_pyqt_2048_solver/screenshots/full_suggest.png) |
+| ![V5 游戏页](v5_pyqt_2048_solver/screenshots/full_game.png) | ![V5 求解中](v5_pyqt_2048_solver/screenshots/full_solver.png) | ![V5 折叠态](v5_pyqt_2048_solver/screenshots/full_collapsed.png) |
 
 ## 开发规范（强制）
 
@@ -157,7 +157,7 @@ python simple_ai_demo.py
 - **统一截图入口**：`python tools/capture_gui.py --version v5|v4|v3 --scene <scene>`，正式图输出到各版本 `screenshots/full_<scene>.png`。
 
 ```bash
-python tools/capture_gui.py --version v5 --scene game       # v5: start|game|solver|suggest|gameover|export|results|recover
+python tools/capture_gui.py --version v5 --scene game       # v5: start|game|solver|suggest|collapsed|gameover|export|results|recover
 python tools/capture_gui.py --version v4 --scene start      # v4: start|game|hover|merge|gameover|won|recover
 python tools/capture_gui.py --version v3 --scene game       # v3: start|game|recover
 ```
@@ -186,4 +186,4 @@ python v5_pyqt_2048_solver/test_solver.py   # 第 5 版求解器与界面测试
 - `ai_solver_2048.py`、`run_ai_2048.py`、`simple_ai_demo.py` 为 **Expectimax 自动求解器**，可直接运行：`python run_ai_2048.py`（演示 / 批量测试）或 `python simple_ai_demo.py`（固定步数演示）。求解器复用控制台版的对局与存档接口，对局同样落盘到 `v2_console_2048_with_history/game_history/`。
 - 桌面版的界面为纯视觉优化（布局 / 配色 / 字号 / 间距 / 圆角 / 控件状态），不影响游戏规则、分数与存档逻辑。
 - 动画版（第 4 篇）直接复用第 3 篇的 `GameCore`，只替换 View 层并加入平滑动画；使用自己的 `v4_pyqt_2048_animated/game_history/` 存档目录。
-- 算法求解版（v5）在第 4 版界面上**增量**接入求解能力：启动页与第 4 版逐像素一致，仅游戏页向下扩展一块求解面板；求解在后台线程执行（带时间预算与异常兜底），内置 **5 类策略**（启发式 / 贪心模拟 rollout / Expectimax（含剪枝）/ MCTS / 强化学习）、`单步建议 / 自动连走`，并提供结果导出、查看与对比。详见 [v5_pyqt_2048_solver/功能说明.md](v5_pyqt_2048_solver/功能说明.md)。
+- 算法求解版（v5）在第 4 版界面上**增量**接入求解能力：启动页与第 4 版逐像素一致；**V5.1 起游戏页改为「左侧游戏台 + 右侧算法求解工作台」的水平双栏布局**（`QSplitter` 可拖动、右栏可折叠/展开且折叠后仍有可见恢复入口），旧底部求解区已移除。求解在后台线程执行（带时间预算与异常兜底），内置 **5 类策略**（启发式 / 贪心模拟 rollout / Expectimax（含剪枝）/ MCTS / 强化学习）、`单步建议 / 自动连走`，并提供结果导出、查看与对比。详见 [v5_pyqt_2048_solver/功能说明.md](v5_pyqt_2048_solver/功能说明.md)。

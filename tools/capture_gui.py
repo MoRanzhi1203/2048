@@ -331,11 +331,20 @@ def titlebar_controls_stats(img, tb_h):
 
 
 def find_label(page, text):
+    """按文本查找 QLabel：优先返回“可见”的匹配项。
+
+    V5.1 右栏隐藏后，其内部指标标签（如 max_tile 恰好等于 "2048"）与主标题文本相同，
+    若不加区分会命中不可见标签导致误判；这里优先可见，其次回退首个匹配。
+    """
     from PyQt5.QtWidgets import QLabel
+    fallback = None
     for lb in page.findChildren(QLabel):
         if lb.text() == text:
-            return lb
-    return None
+            if lb.isVisible():
+                return lb
+            if fallback is None:
+                fallback = lb
+    return fallback
 
 
 def dialog_text_widgets(dlg):
@@ -465,6 +474,8 @@ def _v5_demo_board(w):
 
 
 def v5_scene_start(w, app, settle_ms):
+    # 启动页与第 4 版同尺寸：强制回 500×672（真实“有存档时启动”的状态）
+    w.setFixedSize(500, 672)
     w.stack.setCurrentIndex(0)
     pump(app, max(settle_ms, 260))
     return "start"
@@ -523,8 +534,19 @@ def v5_scene_suggest(w, app, settle_ms):
     return "suggest"
 
 
+def v5_scene_collapsed(w, app, settle_ms):
+    """右栏折叠态：仅保留窄条与“展开”入口，左栏游戏区照常显示（V5.1）。"""
+    w.stack.setCurrentIndex(1)
+    _v5_demo_board(w)
+    if hasattr(w, "_set_solver_collapsed"):
+        w._set_solver_collapsed(True)
+    pump(app, max(settle_ms, 260))
+    return "collapsed"
+
+
 V5_SCENES = {"start": v5_scene_start, "game": v5_scene_game,
-             "solver": v5_scene_solver, "suggest": v5_scene_suggest}
+             "solver": v5_scene_solver, "suggest": v5_scene_suggest,
+             "collapsed": v5_scene_collapsed}
 
 
 def v5_required_text_widgets(w, scene):
@@ -533,10 +555,13 @@ def v5_required_text_widgets(w, scene):
     for name, wdg in (
         ("按钮-AI求解", getattr(w, "solver_ai_button", None)),
         ("求解标题", getattr(w, "solver_title", None)),
+        ("按钮-折叠", getattr(w, "solver_collapse_btn", None)),
+        ("按钮-展开", getattr(w, "solver_expand_btn", None)),
+        ("高级参数", getattr(w, "solver_advanced_toggle", None)),
         ("按钮-开始求解", getattr(w, "solver_start_btn", None)),
         ("按钮-导出结果", getattr(w, "solver_export_btn", None)),
-        ("按钮-查看结果", getattr(w, "solver_view_btn", None)),
-        ("按钮-对比", getattr(w, "solver_compare_btn", None)),
+        ("按钮-查看详情", getattr(w, "solver_view_btn", None)),
+        ("按钮-性能对比", getattr(w, "solver_compare_btn", None)),
     ):
         if wdg is not None:
             items.append((name, wdg))
@@ -724,7 +749,7 @@ def main():
     ap.add_argument("--version", default="v5", choices=sorted(VERSIONS),
                     help="目标版本：v5=算法求解版，v4=动画版，v3=MVC/撤销重做版")
     ap.add_argument("--scene", required=True,
-                    help="场景，可用值随版本而定：v5=start|game|solver|suggest|gameover|export|results|recover；"
+                    help="场景，可用值随版本而定：v5=start|game|solver|suggest|collapsed|gameover|export|results|recover；"
                          "v4=start|game|hover|merge|gameover|won|recover；v3=start|game|recover")
     ap.add_argument("--out", default=None,
                     help="输出 PNG 路径（默认 <版本>/screenshots/full_<scene>.png）")

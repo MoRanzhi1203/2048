@@ -263,47 +263,49 @@ class SolverGuiTest(unittest.TestCase):
         self.w.board_view.render(self.w.model.grid)
         self.w.refresh()
 
-    # ---- 界面结构：第 4 版界面保持，新增入口与面板 ----
+    # ---- V5.1 布局：左右双栏（UI-01/02/06/08） ----
     def test_window_sizes_by_page(self):
-        # 游戏页：不低于第 4 版高度、不超过期望整窗高度，宽度与第 4 版一致
-        self.assertGreaterEqual(self.w.height(), self.v5.WINDOW_HEIGHT)
-        self.assertLessEqual(self.w.height(), self.v5.V5_WINDOW_HEIGHT)
-        self.assertEqual(self.w.width(), self.v5.WINDOW_WIDTH)
+        # 游戏页：进入双栏，宽度应容纳“左游戏区 + 右求解区”，高度在合理范围内
+        self.assertGreaterEqual(self.w.width(), self.v5.V5_MIN_WIDTH)
+        self.assertGreaterEqual(self.w.height(), self.v5.V5_MIN_H)
+        self.assertLessEqual(self.w.height(), self.v5.V5_DEFAULT_H)
+
+    def test_default_two_column_layout(self):
+        """T-01：默认左右并排；左为游戏页，右为求解工作台；底部不再重复出现求解区。"""
+        self.assertEqual(self.w.splitter.orientation(), Qt.Horizontal)
+        self.assertIs(self.w.splitter.widget(0), self.w.game_page)
+        self.assertIs(self.w.splitter.widget(1), self.w.solver_container)
+        self.assertIs(self.w.solver_panel.parentWidget(), self.w.solver_container)
+        self.assertFalse(self.w.game_page.isAncestorOf(self.w.solver_panel))
+
+    def test_solver_panel_right_of_game(self):
+        """求解面板位于棋盘/按钮的右侧，而不是下方（UI-01）。"""
+        panel_left = self.w.solver_panel.mapTo(
+            self.w, self.w.solver_panel.rect().topLeft()).x()
+        board_right = self.w.board_view.mapTo(
+            self.w, self.w.board_view.rect().topRight()).x()
+        self.assertGreaterEqual(panel_left, board_right)
 
     def test_adaptive_height_on_roomy_screen(self):
-        """屏幕足够高时：整窗 = 期望高度（886），面板 = 214。"""
-        self.w._available_height = lambda: 1200
+        """屏幕足够高时：游戏页高度取默认值（不超高）。"""
+        self.w._available_height = lambda: 1400
         self.w._grow_for_solver()
         pump(self.app, 60)
-        self.assertEqual(self.w.height(), self.v5.V5_WINDOW_HEIGHT)
-        self.assertEqual(self.w.solver_panel.height(), self.v5.PANEL_H)
+        self.assertEqual(self.w.height(), self.v5.V5_DEFAULT_H)
 
-    def test_adaptive_height_on_short_screen(self):
-        """屏幕偏矮时：窗口自适应变矮、面板变矮并转为内部滚动，且原布局不被压坏。"""
-        self.w._available_height = lambda: 800
+    def test_window_height_never_below_minimum(self):
+        """屏幕过矮时窗口也不会低于最小高度（避免控件被压变形/重叠）。"""
+        self.w._available_height = lambda: 500
         self.w._grow_for_solver()
         pump(self.app, 60)
-        self.assertEqual(self.w.height(), 800 - self.v5.TITLEBAR_RESERVE)
-        self.assertEqual(self.w.solver_panel.height(),
-                         self.w.height() - self.v5.WINDOW_HEIGHT)
-        # 原控件仍是“顶部锚定、不重叠”：按钮在棋盘下方
-        board_bottom = self.w.board_view.mapTo(
-            self.w, self.w.board_view.rect().bottomLeft()).y()
-        undo_top = self.w.undo_button.mapTo(
-            self.w, self.w.undo_button.rect().topLeft()).y()
-        self.assertGreater(undo_top, board_bottom)
+        self.assertGreaterEqual(self.w.height(), self.v5.V5_MIN_H)
 
-    def test_adaptive_height_never_below_layout_minimum(self):
-        """屏幕过矮时窗口也不会低于布局最小高度（避免控件被压变形/重叠）。"""
-        self.w._available_height = lambda: 600
-        self.w._grow_for_solver()
-        pump(self.app, 60)
-        page = self.w.stack.widget(1)
-        self.assertGreaterEqual(self.w.height(), page.minimumSizeHint().height())
-
-    def test_panel_scrollable_area_exists(self):
-        self.assertTrue(hasattr(self.w, "solver_scroll"))
-        self.assertIsNotNone(self.w.solver_scroll.widget())   # 滚动内容存在
+    def test_no_bottom_duplicate_solver(self):
+        """T-02：求解日志唯一，且左游戏页内不再悬挂求解面板（无底部重复区）。"""
+        from PyQt5.QtWidgets import QListWidget
+        logs = [w for w in self.w.findChildren(QListWidget) if w is self.w.solver_log]
+        self.assertEqual(len(logs), 1)
+        self.assertFalse(self.w.game_page.isAncestorOf(self.w.solver_panel))
 
     def test_centered_at_launch_when_fits(self):
         """屏幕放得下时，启动窗口应居中于可用区域。"""
@@ -325,7 +327,7 @@ class SolverGuiTest(unittest.TestCase):
         self.assertTrue(self.w._user_moved)
 
     def test_ai_button_inserted_before_new_game(self):
-        page = self.w.stack.widget(1)
+        page = self.w.game_page
         row = self.w._find_row_layout(page.layout(), self.w.new_game_button)
         self.assertIsNotNone(row)
         self.assertEqual(row.indexOf(self.w.solver_ai_button),
@@ -335,19 +337,17 @@ class SolverGuiTest(unittest.TestCase):
         for attr in ("solver_title", "solver_start_btn", "solver_export_btn",
                      "solver_view_btn", "solver_compare_btn", "solver_status",
                      "solver_progress", "solver_log", "solver_strategy",
-                     "solver_depth", "solver_mode"):
+                     "solver_depth", "solver_mode", "solver_container",
+                     "solver_collapse_btn", "solver_collapsed_bar", "solver_expand_btn",
+                     "solver_advanced_toggle", "solver_advanced_body", "solver_metrics"):
             self.assertTrue(hasattr(self.w, attr), attr)
 
-    def test_solver_panel_below_board_and_buttons(self):
-        """求解面板必须位于棋盘与按钮行“下方”，且不覆盖上方原有控件。"""
-        panel = self.w.solver_log.parentWidget()
-        board_bottom = self.w.board_view.mapTo(
-            self.w, self.w.board_view.rect().bottomLeft()).y()
-        undo_bottom = self.w.undo_button.mapTo(
-            self.w, self.w.undo_button.rect().bottomLeft()).y()
-        panel_top = panel.mapTo(self.w, panel.rect().topLeft()).y()
-        self.assertGreaterEqual(panel_top, board_bottom)
-        self.assertGreaterEqual(panel_top, undo_bottom)
+    def test_result_actions_present(self):
+        """结果操作（导出/查看/对比）位于右栏且可见可用。"""
+        for attr in ("solver_export_btn", "solver_view_btn", "solver_compare_btn"):
+            btn = getattr(self.w, attr)
+            self.assertTrue(btn.isVisible(), attr)
+            self.assertTrue(btn.isEnabled(), attr)
 
     def test_original_widgets_same_as_v4(self):
         """原界面控件的位置/尺寸与第 4 版逐项一致（顶部锚定，不受加高影响）。"""
@@ -451,6 +451,124 @@ class SolverGuiTest(unittest.TestCase):
         # 界面仍在、可继续手动操作
         self.w.on_move('left')
         self.assertTrue(wait_until(self.app, lambda: not self.w.board_view.is_animating()))
+
+    # ---- V5.1：拖动 / 折叠 / 展开 / 状态一致性 ----
+    def test_splitter_user_resize(self):
+        """T-03：改分隔器尺寸后两栏边界合法，无控件重叠或异常消失。"""
+        total = self.w.splitter.width()
+        self.w.splitter.setSizes([total - 320, 320])
+        pump(self.app, 60)
+        sizes = self.w.splitter.sizes()
+        self.assertGreater(sizes[0], 0)
+        self.assertGreater(sizes[1], 0)
+        self.assertTrue(self.w.game_page.isVisible())
+        self.assertTrue(self.w.solver_panel.isVisible())
+        # 棋盘仍为正方形，未被非等比拉伸
+        self.assertEqual(self.w.board_view.width(), self.w.board_view.height())
+
+    def test_solver_collapse_and_expand(self):
+        """T-04：折叠后状态保留、展开入口始终可见，可恢复。"""
+        self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        self.w.solver_mode.setCurrentIndex(1)
+        self.w.solver_strategy.setCurrentIndex(0)
+        self.w.on_solver_clicked()
+        wait_until(self.app, lambda: not self.w._solver_running)
+        log_count = self.w.solver_log.count()
+        self.assertGreaterEqual(log_count, 2)
+
+        self.w._toggle_solver()
+        pump(self.app, 80)
+        self.assertTrue(self.w._solver_collapsed)
+        self.assertFalse(self.w.solver_panel.isVisible())
+        self.assertTrue(self.w.solver_collapsed_bar.isVisible())
+        self.assertTrue(self.w.solver_expand_btn.isVisible())     # 恢复入口可见
+        self.assertEqual(self.w.solver_log.count(), log_count)    # 日志不丢
+
+        self.w._toggle_solver()
+        pump(self.app, 80)
+        self.assertFalse(self.w._solver_collapsed)
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertFalse(self.w.solver_collapsed_bar.isVisible())
+        self.assertEqual(self.w.solver_log.count(), log_count)    # 展开后日志一致
+
+    def test_collapse_during_solve_keeps_running(self):
+        """T-05：求解中折叠不影响业务推进，展开后状态一致。"""
+        self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        self.w.solver_mode.setCurrentIndex(0)          # 自动连走
+        self.w.solver_strategy.setCurrentIndex(1)      # Expectimax
+        self.w.solver_depth.setCurrentIndex(0)         # 快速
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(
+            self.app, lambda: self.w._solver_running, timeout_ms=3000))
+        self.w._toggle_solver()                        # 运行中折叠
+        pump(self.app, 120)
+        baseline = len(self.w._session["steps"]) if self.w._session else 0
+        # 折叠状态下业务应继续推进（或自然结束），worker 不被取消
+        wait_until(self.app,
+                   lambda: (not self.w._solver_running) or
+                   (self.w._session and len(self.w._session["steps"]) > baseline),
+                   timeout_ms=6000)
+        self.w._toggle_solver()                        # 展开
+        pump(self.app, 120)
+        self.assertTrue(self.w.solver_panel.isVisible())
+        self.assertTrue(self.w._session is not None or len(self.w._sessions) >= 1)
+        self.w._stop_solver("测试结束")
+        pump(self.app, 120)
+
+    def test_start_stop_single_trigger(self):
+        """T-07：开始/停止只触发一次；停止后无残留运行线程。"""
+        self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+        self.w.solver_mode.setCurrentIndex(0)          # 自动连走
+        self.w.solver_strategy.setCurrentIndex(2)      # MCTS（有搜索耗时）
+        before = len(self.w._sessions)
+        self.w.on_solver_clicked()
+        pump(self.app, 200)
+        self.w.on_solver_clicked()                     # 停止
+        ok = wait_until(self.app, lambda: not self.w._solver_running and
+                        not self.w._solve_in_flight)
+        self.assertTrue(ok)
+        self.assertEqual(self.w.solver_start_btn.text(), "开始求解")
+        self.assertEqual(self.w.solver_ai_button.text(), "AI 求解")
+        # 停止后线程被回收（空闲时不存在运行中的 QThread）
+        self.assertTrue(self.w._solver_thread is None)
+        self.assertGreaterEqual(len(self.w._sessions), before + 1)
+
+    def test_advanced_toggle(self):
+        """UI-09：高级参数区可折叠，仅展示真实生效配置。"""
+        self.assertFalse(self.w.solver_advanced_body.isVisible())
+        self.w.solver_advanced_toggle.setChecked(True)
+        pump(self.app, 40)
+        self.assertTrue(self.w.solver_advanced_body.isVisible())
+        self.assertIn("当前生效配置", self.w.solver_advanced_text.text())
+        self.w.solver_advanced_toggle.setChecked(False)
+        pump(self.app, 40)
+        self.assertFalse(self.w.solver_advanced_body.isVisible())
+
+    def test_metrics_match_model(self):
+        """T-11：状态指标与底层真实状态一致。"""
+        self._set_grid([[2, 4, 8, 16], [128, 512, 1024, 2048], [0, 32, 0, 0], [0, 0, 0, 0]])
+        self.w.model.score = 4321
+        self.w.refresh()
+        self.w._render_idle_status()
+        pump(self.app, 40)
+        self.assertEqual(self.w.solver_metrics["score"].text(), "4321")
+        self.assertEqual(self.w.solver_metrics["max_tile"].text(), "2048")
+        self.assertEqual(self.w.solver_metrics["steps"].text(), "0")
+
+    def test_strategy_change_maps_to_config(self):
+        """T-08：切换算法/强度仍映射到原有 solver 配置，无参数偷换。"""
+        idx_rl = solver.STRATEGY_ORDER.index("rl")
+        self.w.solver_strategy.setCurrentIndex(idx_rl)
+        pump(self.app, 20)
+        self.assertFalse(self.w.solver_depth.isEnabled())      # RL 无强度
+        idx_mcts = solver.STRATEGY_ORDER.index("mcts")
+        self.w.solver_strategy.setCurrentIndex(idx_mcts)
+        pump(self.app, 20)
+        self.assertTrue(self.w.solver_depth.isEnabled())       # MCTS 有强度
+        cfg = solver.build_config(self.w.solver_strategy.currentData(),
+                                  self.w.solver_depth.currentData())
+        self.assertEqual(cfg["strategy"], "mcts")
+        self.assertIn("time_limit", cfg)
 
 
 def main():

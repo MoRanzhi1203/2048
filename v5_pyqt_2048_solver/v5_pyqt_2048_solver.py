@@ -5,21 +5,21 @@ PyQt5 图形界面版 2048：算法求解版（第 5 版）
 
 配套博客《第 6 篇：经典算法求解 2048》。
 
-设计要点（严格沿用第 4 版界面，只做“增量”扩展）：
+设计要点（V5.1：左侧 GamePanel + 右侧可拖动/可折叠 Solver 工作台）：
     Model       -> 复用第 4 版 AnimatedGameCore（棋盘 / 合并 / 存档 / 撤销重做一行未改），
                    仅把存档目录指向 v5 自己的 game_history；
     View        -> 复用第 4 版 BoardView / ParticleOverlay / 全部视觉常量；
+    Layout      -> 把第 4 版游戏页整体作为左栏，右侧放入求解工作台，用水平 QSplitter
+                   承载：可拖动调整宽度、可折叠/展开（折叠后仍有可见恢复入口）；
     Controller  -> SolverMainWindow 继承第 4 版 MainWindow：
-                   1) 在游戏页底部“向下扩展”一块求解面板（原有控件坐标完全不变）；
-                   2) 在原按钮行新增一个「AI 求解」入口按钮；
-                   3) 求解在后台线程（SolverWorker）执行，带超时与异常兜底，
-                      绝不阻塞或破坏原有界面。
+                   1) 求解在后台线程（SolverWorker）执行，带超时与异常兜底，绝不阻塞界面；
+                   2) 左侧按钮行保留「AI 求解」快捷入口（运行中变「停止」）。
 
 求解能力：
-    - 策略：启发式（单步贪心） / Expectimax（迭代加深 + 时间预算）
+    - 策略：启发式 / 贪心模拟 / Expectimax / MCTS / 强化学习（5 类，本体未改）
     - 模式：单步建议（只提示方向） / 自动连走（驱动真实棋盘，复用第 4 版动画）
-    - 实时状态：状态 / 步数 / 当前方向与评估分 / 用时 / 最大瓦片 / 分数
-    - 中间结果：逐步日志列表
+    - 实时状态：状态 / 步数 / 当前方向与评估分 / 用时 / 最大瓦片 / 分数（2 列指标）
+    - 中间结果：逐步日志列表（主 stretch；支持用户上滚查看历史）
     - 结果输出：结构化会话（JSON/CSV 导出）+ 查看 + 多会话对比
 """
 
@@ -44,28 +44,39 @@ import ui_theme as _theme                                             # noqa: E4
 import safe_store as _store                                           # noqa: E402
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,   # noqa: E402
-                             QVBoxLayout, QHBoxLayout, QComboBox, QListWidget,
-                             QListWidgetItem, QProgressBar,
+                             QVBoxLayout, QHBoxLayout, QGridLayout, QComboBox,
+                             QListWidget, QListWidgetItem, QProgressBar, QSplitter,
+                             QToolButton, QSizePolicy,
                              QDialog, QTableWidget, QTableWidgetItem,
-                             QAbstractItemView, QHeaderView, QScrollArea, QFrame)
+                             QAbstractItemView, QHeaderView, QFrame)
 from PyQt5.QtCore import Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot   # noqa: E402
 from PyQt5.QtGui import QColor, QFont                                 # noqa: E402
 
 
 # =====================================================================
-# 常量：窗口与求解面板
+# 常量：窗口与求解工作台（V5.1 左右双栏）
 # =====================================================================
-WINDOW_WIDTH = v4.WINDOW_WIDTH                 # 500（与第 4 版一致）
-WINDOW_HEIGHT = v4.WINDOW_HEIGHT               # 672（第 4 版游戏页高度）
+WINDOW_WIDTH = v4.WINDOW_WIDTH                 # 500（左侧游戏区宽度，与第 4 版逐像素一致）
+WINDOW_HEIGHT = v4.WINDOW_HEIGHT               # 672（第 4 版游戏页高度 = 左侧最小高度）
 
-PANEL_H = 214                                  # 底部求解面板的“期望”高度（空间足够时）
-PANEL_MIN = 60                                 # 面板最小高度（再小时改为面板内滚动）
+# 右侧 Solver 工作台（可拖动 / 可折叠）
+SOLVER_W_DEFAULT = 400                         # 右栏默认宽度
+SOLVER_W_MIN = 300                             # 右栏展开态最小宽度
+COLLAPSED_W = 30                               # 右栏折叠后保留的窄条宽度（始终可见的恢复入口）
+SPLITTER_HANDLE = 6                            # 水平分隔条宽度
+COLLAPSED_BAR_TEXT = "◀\n求\n解"               # 折叠窄条上的竖排文字
+
+V5_DEFAULT_H = 720                             # 游戏页默认高度（约 960×720 目标）
+V5_MIN_H = WINDOW_HEIGHT                       # 游戏页最小高度（不低于第 4 版高度）
 TITLEBAR_RESERVE = 56                          # 估算标题栏 + 边距（逻辑像素）
-V5_WINDOW_HEIGHT = WINDOW_HEIGHT + PANEL_H     # 886：整窗在原版基础上向下加高（上限）
+
+V5_DEFAULT_WIDTH = WINDOW_WIDTH + SOLVER_W_DEFAULT + SPLITTER_HANDLE   # 906：默认双栏整窗宽
+V5_MIN_WIDTH = WINDOW_WIDTH + SOLVER_W_MIN + SPLITTER_HANDLE           # 806：展开态最小整窗宽
 
 PANEL_BG = "#F2E9DD"
 PANEL_LINE = "#D8C9B9"
 PANEL_RADIUS = 12
+GROUP_BG = "#F7F0E7"
 LOG_BG = "#FAF5EE"
 LOG_LINE = "#E4D9C9"
 
@@ -129,16 +140,41 @@ QListWidget::item {{ padding: 1px 4px; }}
 QListWidget::item:selected {{ background-color: #E4D9C9; color: {v4.COLOR_TEXT}; }}
 """
 
-# 求解面板内层滚动区：透明背景 + 细滚动条（卡片外框由外层 solverPanel 绘制）
-SCROLL_QSS = """
-QScrollArea { background: transparent; border: none; }
-QScrollArea > QWidget > QWidget { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 8px; margin: 2px 1px 2px 0; }
-QScrollBar::handle:vertical { background: #CBBBA9; border-radius: 4px; min-height: 24px; }
-QScrollBar::handle:vertical:hover { background: #BCA893; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+# 参数表单：标签 + 控件（V5.1 由横排小框改为结构化表单）
+FORM_LABEL_QSS = f"color:{v4.COLOR_TEXT}; font-size:12px;"
+
+# 右栏内的分组卡片（浅米色圆角，复用 v5 既有卡片配色）
+GROUP_QSS = (
+    f"QFrame#solverGroup {{ background-color: {GROUP_BG};"
+    f" border: 1px solid {PANEL_LINE}; border-radius: 7px; }}")
+
+# 折叠后保留的窄条：始终可见的“展开”入口
+COLLAPSE_BAR_QSS = f"""
+QWidget#solverCollapseBar {{ background-color: {PANEL_BG};
+    border: 1px solid {PANEL_LINE}; border-radius: {PANEL_RADIUS}px; }}
+QPushButton#solverExpandBtn {{
+    background-color: #EEE4DA; color: {v4.COLOR_TEXT};
+    border: 1px solid {PANEL_LINE}; border-radius: 6px;
+    font-size: 12px; font-weight: bold; padding: 0;
+}}
+QPushButton#solverExpandBtn:hover {{ background-color: #E2D7CA; }}
+QPushButton#solverExpandBtn:pressed {{ background-color: #D5C9BA; }}
 """
+
+# 折叠 / 高级参数 小工具按钮
+TOOL_BUTTON_QSS = f"""
+QToolButton {{
+    background-color: #EEE4DA; color: {v4.COLOR_TEXT};
+    border: 1px solid {PANEL_LINE}; border-radius: 6px;
+    font-size: 12px; padding: 2px 8px;
+}}
+QToolButton:hover {{ background-color: #E2D7CA; }}
+QToolButton:checked {{ background-color: #E2D7CA; }}
+"""
+
+# 状态指标：标签（次要色）+ 数值（正文色）
+METRIC_KEY_QSS = "color:#8f8175; font-size:11px;"
+METRIC_VAL_QSS = f"color:{v4.COLOR_TEXT}; font-size:12px; font-weight:bold;"
 
 
 # =====================================================================
@@ -367,7 +403,8 @@ class SolverMainWindow(v4.MainWindow):
                 "AI 求解", self.on_solver_clicked,
                 qss=v4.SECONDARY_BUTTON_QSS, size=(78, 44),
                 particle_color="#cbbcaa")
-            self.solver_ai_button.setToolTip("用算法（启发式 / Expectimax）求解当前局面")
+            self.solver_ai_button.setToolTip(
+                "用算法求解当前局面（启发式 / 贪心模拟 / Expectimax / MCTS / 强化学习）")
             row.insertWidget(row.indexOf(self.new_game_button), self.solver_ai_button)
         return page
 
@@ -380,7 +417,7 @@ class SolverMainWindow(v4.MainWindow):
                 return sub
         return None
 
-    # ---------------- 覆盖：界面初始化（复用 v4 后扩展） ----------------
+    # ---------------- 覆盖：界面初始化（复用 v4 后扩展为左右双栏） ----------------
     def init_ui(self):
         super().init_ui()
 
@@ -389,13 +426,54 @@ class SolverMainWindow(v4.MainWindow):
             _store.resolve_history_dir(os.path.join(_HERE, "game_history"), "v5"), "v5")
 
         self._init_solver()
-        self._build_solver_panel()
-        # 启动页尺寸与第 4 版完全一致；进入游戏页时再向下扩展出求解面板
+        self._restructure_two_columns()
+        # 启动页尺寸与第 4 版完全一致；进入游戏页时再切换为双栏可调整尺寸
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.refresh()
 
+    # =================================================================
+    # V5.1：左 GamePanel + 右 Solver Workbench（水平 QSplitter）
+    # =================================================================
+    def _restructure_two_columns(self):
+        """把 v4 的游戏页整体作为左栏，右侧放入求解工作台，用水平 QSplitter 承载。
+
+        - 左栏仍是 v4 原页面对象（不重建棋盘/控件，避免状态不同步）；
+        - 旧“底部求解区”不再存在（UI-01）：求解面板只出现在右栏。
+        """
+        game_page = self.stack.widget(v4.GAME_PAGE)
+        self.game_page = game_page
+        self.stack.removeWidget(game_page)              # 从堆叠页取出（对象保留，未销毁）
+
+        container = QWidget()
+        container.setObjectName("v5Root")
+        outer = QHBoxLayout(container)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setObjectName("mainSplitter")
+        self.splitter.setHandleWidth(SPLITTER_HANDLE)
+        self.splitter.setChildrenCollapsible(False)
+        outer.addWidget(self.splitter)
+
+        game_page.setMinimumWidth(WINDOW_WIDTH)         # 左栏不小于第 4 版宽度，保证像素一致
+        self.splitter.addWidget(game_page)
+        game_page.show()                                # removeWidget() 会隐式 hide()，重新标记为可见
+
+        self._solver_collapsed = False
+        self._solver_saved_sizes = None
+        self._build_solver_panel()                      # 构建右栏（展开体 + 折叠窄条）
+        self.splitter.addWidget(self.solver_container)
+
+        self.splitter.setStretchFactor(0, 0)            # 缩放时把新增空间主要给右栏
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([WINDOW_WIDTH, SOLVER_W_DEFAULT])
+
+        self.stack.insertWidget(v4.GAME_PAGE, container)  # 保持在 GAME_PAGE(=1) 索引
+        self._root_container = container
+
     def _grow_for_solver(self):
-        """进入游戏页时把窗口扩展到“第 4 版布局 + 底部求解面板”（高度自适应屏幕）。"""
+        """进入游戏页：切换为左右双栏的可调整窗口尺寸（高度自适应屏幕）。"""
         self._apply_solver_size()
 
     # ---------------- 覆盖：切到游戏页时同步扩展窗口 ----------------
@@ -456,154 +534,304 @@ class SolverMainWindow(v4.MainWindow):
         self._solver_thread = None
         self._solver_worker = None
 
-    # ---------------- 求解面板 ----------------
+    # ---------------- 右侧 Solver 工作台（V5.1） ----------------
     def _build_solver_panel(self):
-        # 外层：卡片外框（与启动页信息卡同款的圆角米色卡片）
+        """构建右侧求解工作台：头部 / 参数 / 运行 / 状态 / 高级 / 日志 / 结果。
+
+        - 结构对应 V5.1 规范 2.3；日志分配主 stretch，窗口变高时由日志吸收空间；
+        - 右栏整体不套嵌套滚动区（规范 5.5），避免拖动/缩放时重建控件。
+        """
+        # 外层容器：body（展开体）与 collapse_bar（折叠窄条）互斥显示
+        container = QWidget()
+        self.solver_container = container
+        cbox = QVBoxLayout(container)
+        cbox.setContentsMargins(6, 6, 6, 6)
+        cbox.setSpacing(0)
+
         panel = QWidget()
         panel.setObjectName("solverPanel")
         panel.setStyleSheet(
             f"#solverPanel {{ background-color: {PANEL_BG};"
             f" border: 1px solid {PANEL_LINE}; border-radius: {PANEL_RADIUS}px; }}")
-        panel.setFixedHeight(PANEL_H)
-        panel_box = QVBoxLayout(panel)
-        panel_box.setContentsMargins(2, 2, 2, 2)
-        panel_box.setSpacing(0)
-
-        # 内层：可滚动内容 —— 当屏幕高度不足以完整显示面板时，面板内部滚动，
-        # 保证策略/按钮/状态/日志始终都能访问到。
-        content = QWidget()
-        content.setAutoFillBackground(False)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setStyleSheet(SCROLL_QSS)
-        scroll.viewport().setAutoFillBackground(False)
-        scroll.setWidget(content)
-        panel_box.addWidget(scroll)
+        cbox.addWidget(panel)
         self.solver_panel = panel
-        self.solver_scroll = scroll
 
-        outer = QVBoxLayout(content)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(7)
+        box = QVBoxLayout(panel)
+        box.setContentsMargins(12, 10, 12, 12)
+        box.setSpacing(8)
 
-        # 第一行：标题 + 策略 / 深度 / 模式
-        row1 = QHBoxLayout()
-        row1.setSpacing(6)
+        # A. 头部：标题 + 折叠按钮
+        head = QHBoxLayout()
+        head.setSpacing(6)
         title = QLabel("算法求解")
-        title.setStyleSheet(f"color:{v4.COLOR_TEXT}; font-size:13px; font-weight:bold;")
+        title.setStyleSheet(f"color:{v4.COLOR_TEXT}; font-size:14px; font-weight:bold;")
         self.solver_title = title
-        row1.addWidget(title)
-        row1.addStretch()
+        self.solver_collapse_btn = QToolButton()
+        self.solver_collapse_btn.setStyleSheet(TOOL_BUTTON_QSS)
+        self.solver_collapse_btn.setCursor(Qt.PointingHandCursor)
+        self.solver_collapse_btn.setToolTip("折叠算法求解面板（折叠后仍可从此处或左侧「AI 求解」恢复）")
+        self.solver_collapse_btn.clicked.connect(self._toggle_solver)
+        head.addWidget(title)
+        head.addStretch()
+        head.addWidget(self.solver_collapse_btn)
+        box.addLayout(head)
+
+        # B. 参数区：标签 + 控件的结构化表单（复用原有下拉框对象与回调）
+        form_group = self._make_solver_group()
+        form = QGridLayout(form_group)
+        form.setContentsMargins(10, 8, 10, 8)
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(6)
+
         self.solver_strategy = self._make_combo(
-            [(solver.STRATEGIES[k], k) for k in solver.STRATEGY_ORDER], 106)
+            [(solver.STRATEGIES[k], k) for k in solver.STRATEGY_ORDER])
         self.solver_depth = self._make_combo(
-            [(solver.PRESET_LABELS[k], k) for k in solver.PRESET_ORDER], 66)
+            [(solver.PRESET_LABELS[k], k) for k in solver.PRESET_ORDER])
         self.solver_depth.setCurrentIndex(1)
-        self.solver_mode = self._make_combo([("自动连走", "auto"), ("单步建议", "single")], 84)
+        self.solver_mode = self._make_combo([("自动连走", "auto"), ("单步建议", "single")])
         self.solver_strategy.setCurrentIndex(solver.STRATEGY_ORDER.index("expectimax"))  # 默认 Expectimax
         self.solver_strategy.currentIndexChanged.connect(self._on_strategy_changed)
-        self._on_strategy_changed()                       # 同步“强度”可用状态
-        row1.addWidget(self.solver_strategy)
-        row1.addWidget(self.solver_depth)
-        row1.addWidget(self.solver_mode)
-        outer.addLayout(row1)
 
-        # 第二行：操作按钮
-        row2 = QHBoxLayout()
-        row2.setSpacing(8)
+        for row, (text, wdg) in enumerate((("算法", self.solver_strategy),
+                                           ("运行方式", self.solver_depth),
+                                           ("模式", self.solver_mode))):
+            lab = QLabel(text)
+            lab.setStyleSheet(FORM_LABEL_QSS)
+            lab.setFixedWidth(58)
+            form.addWidget(lab, row, 0, Qt.AlignVCenter)
+            form.addWidget(wdg, row, 1)
+        form.setColumnStretch(1, 1)
+        box.addWidget(form_group)
+
+        # C. 运行区：求解控制（主动作按钮 + 忙态进度），与结果操作分区（UI-05）
+        ctrl = QHBoxLayout()
+        ctrl.setSpacing(8)
         self.solver_start_btn = QPushButton("开始求解")
         self.solver_start_btn.setStyleSheet(PANEL_PRIMARY_QSS)
-        self.solver_start_btn.setFixedSize(96, 30)
+        self.solver_start_btn.setFixedHeight(32)
         self.solver_start_btn.setCursor(Qt.PointingHandCursor)
         self.solver_start_btn.clicked.connect(self.on_solver_clicked)
-
-        self.solver_export_btn = QPushButton("导出结果")
-        self.solver_view_btn = QPushButton("查看结果")
-        self.solver_compare_btn = QPushButton("对比")
-        for btn, slot, width in ((self.solver_export_btn, self.on_solver_export, 78),
-                                 (self.solver_view_btn, self.on_solver_view, 78),
-                                 (self.solver_compare_btn, self.on_solver_compare, 60)):
-            btn.setStyleSheet(PANEL_BUTTON_QSS)
-            btn.setFixedSize(width, 30)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(slot)
-        row2.addWidget(self.solver_start_btn)
-        row2.addWidget(self.solver_export_btn)
-        row2.addWidget(self.solver_view_btn)
-        row2.addWidget(self.solver_compare_btn)
-        row2.addStretch()
-        outer.addLayout(row2)
-
-        # 第三行：进度 + 状态
-        row3 = QHBoxLayout()
-        row3.setSpacing(8)
         self.solver_progress = QProgressBar()
-        self.solver_progress.setFixedSize(110, 8)
+        self.solver_progress.setFixedHeight(8)
         self.solver_progress.setTextVisible(False)
         self.solver_progress.setStyleSheet(PROGRESS_QSS)
         self.solver_progress.setRange(0, 100)
         self.solver_progress.setValue(0)
+        ctrl.addWidget(self.solver_start_btn, 1)
+        ctrl.addWidget(self.solver_progress, 1)
+        box.addLayout(ctrl)
+
+        # D. 状态区：标题行 + 2 列明细指标（值与真实业务对象一致）
+        status_group = self._make_solver_group()
+        sbox = QVBoxLayout(status_group)
+        sbox.setContentsMargins(10, 8, 10, 8)
+        sbox.setSpacing(6)
         self.solver_status = QLabel()
         self.solver_status.setWordWrap(True)
-        self.solver_status.setMinimumHeight(38)
-        row3.addWidget(self.solver_progress, 0, Qt.AlignVCenter)
-        row3.addWidget(self.solver_status, 1)
-        outer.addLayout(row3)
+        self.solver_status.setStyleSheet(f"color:{v4.COLOR_TEXT}; font-size:12px;")
+        sbox.addWidget(self.solver_status)
+        self.solver_metrics = {}
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(4)
+        metric_defs = (("steps", "步数"), ("action", "当前动作"), ("eval", "评估值"),
+                       ("score", "当前分数"), ("max_tile", "最大瓦片"), ("elapsed", "累计耗时"))
+        for idx, (key, text) in enumerate(metric_defs):
+            r, c = divmod(idx, 2)
+            k = QLabel(text)
+            k.setStyleSheet(METRIC_KEY_QSS)
+            v = QLabel("—")
+            v.setStyleSheet(METRIC_VAL_QSS)
+            self.solver_metrics[key] = v
+            grid.addWidget(k, r, c * 2)
+            grid.addWidget(v, r, c * 2 + 1)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+        sbox.addLayout(grid)
+        box.addWidget(status_group)
 
-        # 第四行：步骤日志
+        # G. 高级参数：可折叠容器；仅展示当前真实生效的配置，不放置伪控件
+        self.solver_advanced_toggle = QToolButton()
+        self.solver_advanced_toggle.setStyleSheet(TOOL_BUTTON_QSS)
+        self.solver_advanced_toggle.setText("高级参数 ▸")
+        self.solver_advanced_toggle.setCheckable(True)
+        self.solver_advanced_toggle.setCursor(Qt.PointingHandCursor)
+        self.solver_advanced_toggle.toggled.connect(self._on_advanced_toggled)
+        box.addWidget(self.solver_advanced_toggle, 0, Qt.AlignLeft)
+
+        self.solver_advanced_body = QWidget()
+        abox = QVBoxLayout(self.solver_advanced_body)
+        abox.setContentsMargins(2, 0, 2, 0)
+        abox.setSpacing(2)
+        self.solver_advanced_text = QLabel()
+        self.solver_advanced_text.setWordWrap(True)
+        self.solver_advanced_text.setStyleSheet("color:#8f8175; font-size:11px;")
+        abox.addWidget(self.solver_advanced_text)
+        self.solver_advanced_body.setVisible(False)
+        box.addWidget(self.solver_advanced_body)
+
+        # E. 日志区：主 stretch（窗口变高时由日志吸收）
         self.solver_log = QListWidget()
-        self.solver_log.setFixedHeight(62)
         self.solver_log.setStyleSheet(LOG_QSS)
         self.solver_log.setFocusPolicy(Qt.NoFocus)
-        outer.addWidget(self.solver_log)
-        outer.addStretch()                    # 多余空间落到底部，避免内容被拉伸
+        box.addWidget(self.solver_log, 1)
 
-        # 插入到游戏页布局：放在“尾部 stretch”之前（即按钮行下方），
-        # 上方原有控件坐标保持不变。注意 addSpacing 也会产生 spacer，
-        # 因此取“最后一个 spacer”（尾部 addStretch）作为插入点。
-        page = self.stack.widget(v4.GAME_PAGE)
-        lay = page.layout()
-        insert_at = lay.count()
-        for i in range(lay.count()):
-            item = lay.itemAt(i)
-            if item is not None and item.spacerItem() is not None:
-                insert_at = i
-        lay.insertWidget(insert_at, panel)
-        lay.insertSpacing(insert_at, 12)      # 面板与按钮行之间留出呼吸空间
+        # F. 结果区：导出结果 / 查看详情 / 性能对比（复用真实动作与业务参数）
+        result = QHBoxLayout()
+        result.setSpacing(8)
+        self.solver_export_btn = QPushButton("导出结果")
+        self.solver_view_btn = QPushButton("查看详情")
+        self.solver_compare_btn = QPushButton("性能对比")
+        for btn, slot in ((self.solver_export_btn, self.on_solver_export),
+                          (self.solver_view_btn, self.on_solver_view),
+                          (self.solver_compare_btn, self.on_solver_compare)):
+            btn.setStyleSheet(PANEL_BUTTON_QSS)
+            btn.setFixedHeight(30)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(slot)
+            result.addWidget(btn)
+        box.addLayout(result)
 
+        # 折叠窄条：始终可见的“展开”入口（UI-07）
+        bar = QWidget()
+        bar.setObjectName("solverCollapseBar")
+        bar.setStyleSheet(COLLAPSE_BAR_QSS)
+        bar.setFixedWidth(COLLAPSED_W)
+        bar_box = QVBoxLayout(bar)
+        bar_box.setContentsMargins(3, 6, 3, 6)
+        bar_box.setSpacing(0)
+        self.solver_expand_btn = QPushButton(COLLAPSED_BAR_TEXT)
+        self.solver_expand_btn.setObjectName("solverExpandBtn")
+        self.solver_expand_btn.setCursor(Qt.PointingHandCursor)
+        self.solver_expand_btn.setToolTip("展开算法求解面板")
+        self.solver_expand_btn.clicked.connect(self._toggle_solver)
+        bar_box.addWidget(self.solver_expand_btn)
+        bar_box.addStretch()
+        bar.setVisible(False)
+        self.solver_collapsed_bar = bar
+        cbox.addWidget(bar)
+
+        self._on_strategy_changed()          # 同步“强度”可用状态 + 高级配置文本
+        self._update_collapse_button()
         self._render_idle_status()
+
+    @staticmethod
+    def _make_solver_group():
+        """右栏内的浅米色圆角分组卡片。"""
+        frame = QFrame()
+        frame.setObjectName("solverGroup")
+        frame.setStyleSheet(GROUP_QSS)
+        return frame
+
+    def _on_advanced_toggled(self, checked):
+        self.solver_advanced_body.setVisible(bool(checked))
+        self.solver_advanced_toggle.setText("高级参数 ▾" if checked else "高级参数 ▸")
+
+    def _update_collapse_button(self):
+        btn = getattr(self, "solver_collapse_btn", None)
+        if btn is not None:
+            btn.setText("展开 ◂" if self._solver_collapsed else "折叠 ▸")
 
     # ---------------- 自适应尺寸：窗口始终完整落在屏幕内 ----------------
     def _available_height(self):
         """当前屏幕可用高度（Qt 逻辑像素）；取不到时退回期望整窗高度。"""
         screen = self.screen() or QApplication.primaryScreen()
         if screen is None:
-            return V5_WINDOW_HEIGHT
+            return V5_DEFAULT_H + TITLEBAR_RESERVE
         return screen.availableGeometry().height()
 
-    def _target_game_height(self):
-        avail = self._available_height()
-        return int(max(WINDOW_HEIGHT, min(V5_WINDOW_HEIGHT, avail - TITLEBAR_RESERVE)))
+    def _min_width(self):
+        """整窗最小宽度：左栏保持第 4 版宽度 + 右栏（展开/折叠）最小宽度 + 分隔条。"""
+        right = COLLAPSED_W if self._solver_collapsed else SOLVER_W_MIN
+        return WINDOW_WIDTH + right + SPLITTER_HANDLE
+
+    def _apply_splitter_sizes(self):
+        """按折叠状态与当前窗口宽度重排左右比例。
+
+        只调整分隔器 sizes，不改变窗口尺寸，避免 splitterMoved / resize 互相触发。
+        """
+        if not hasattr(self, "splitter"):
+            return
+        total = max(self.width(), V5_MIN_WIDTH)
+        if self._solver_collapsed:
+            right = COLLAPSED_W
+        else:
+            saved = self._solver_saved_sizes
+            right = max(SOLVER_W_MIN, saved[1] if saved else SOLVER_W_DEFAULT)
+        right = min(right, max(COLLAPSED_W, total - WINDOW_WIDTH - SPLITTER_HANDLE))
+        left = max(WINDOW_WIDTH, total - right - SPLITTER_HANDLE)
+        self.splitter.setSizes([left, right])
 
     def _apply_solver_size(self):
-        """进入游戏页：按屏幕可用高度自适应窗口高度，并让面板内部滚动兜底。
+        """进入游戏页：切换为可调整尺寸的左右双栏，高度自适应屏幕。
 
-        高度下限取“游戏页布局最小高度”，保证窗口再矮也不会把原有控件压变形。
         位置：未被用户手动拖动过时自动居中；否则只做越界校正，不打扰用户摆放。
         """
-        target = self._target_game_height()
-        panel_h = max(PANEL_MIN, target - WINDOW_HEIGHT)
-        self.solver_panel.setFixedHeight(panel_h)
-        page = self.stack.widget(v4.GAME_PAGE)
-        if page is not None:
-            target = max(target, page.minimumSizeHint().height())
-        self.setFixedSize(WINDOW_WIDTH, int(target))
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)          # 解除启动页的固定尺寸
+        avail = self._available_height()
+        height = int(max(V5_MIN_H, min(V5_DEFAULT_H, avail - TITLEBAR_RESERVE)))
+        self.setMinimumSize(self._min_width(), V5_MIN_H)  # 缩放不裁断关键按钮/棋盘
+        self.resize(V5_DEFAULT_WIDTH, height)
+        self._apply_splitter_sizes()
         if not self._user_moved:
             self._center_on_screen()
         self._keep_on_screen()
+
+    # ---------------- 折叠 / 展开（UI-07、交互细则 3） ----------------
+    def _toggle_solver(self):
+        self._set_solver_collapsed(not self._solver_collapsed)
+
+    def _set_solver_collapsed(self, collapsed):
+        """折叠/展开右栏：不停止 worker、不清空日志与算法状态。"""
+        collapsed = bool(collapsed)
+        if collapsed == self._solver_collapsed:
+            return
+        if collapsed:
+            sizes = self.splitter.sizes()
+            if sizes and sizes[1] >= SOLVER_W_MIN:        # 记住有效宽度，供展开恢复
+                self._solver_saved_sizes = sizes
+            self.solver_panel.hide()
+            self.solver_collapsed_bar.show()
+            self._solver_collapsed = True
+        else:
+            self.solver_collapsed_bar.hide()
+            self.solver_panel.show()
+            self._solver_collapsed = False
+        self.setMinimumSize(self._min_width(), V5_MIN_H)
+        if self.width() < self._min_width():              # 折叠后可缩得更窄
+            self.resize(self._min_width(), self.height())
+        self._apply_splitter_sizes()
+        self._update_collapse_button()
+        self._render_metrics()                            # 展开/折叠后指标保持一致
+
+    # ---------------- 状态指标（UI-04 / T-11） ----------------
+    def _set_metric(self, key, value):
+        lbl = self.solver_metrics.get(key)
+        if lbl is not None:
+            lbl.setText("—" if value is None else str(value))
+
+    def _render_metrics(self):
+        """状态指标与真实业务对象（session / model）一致，不造假。"""
+        if not getattr(self, "solver_metrics", None):
+            return
+        steps = self._session.get("steps", []) if self._session is not None else []
+        last = steps[-1] if steps else None
+        self._set_metric("steps", len(steps))
+        self._set_metric("action", last.get("name", "—") if last else "—")
+        if last is not None:
+            ev = last.get("eval")
+            self._set_metric("eval", "—" if ev is None else "%.1f" % ev)
+        else:
+            self._set_metric("eval", "—")
+        self._set_metric("score", self.model.score)
+        self._set_metric("max_tile",
+                         max(max(r) for r in self.model.grid) if self.model.grid else 0)
+        if self._session is not None:
+            self._set_metric("elapsed",
+                             "%.1fs" % (self._session.get("elapsed_ms", 0.0) / 1000.0))
+        else:
+            self._set_metric("elapsed", "—")
 
     def _safe_move(self, x, y):
         """程序化移动窗口（不记为“用户拖动”）。"""
@@ -668,9 +896,14 @@ class SolverMainWindow(v4.MainWindow):
         self._center_on_screen()
         self._keep_on_screen()
 
-    def _make_combo(self, items, width):
+    def _make_combo(self, items, width=None):
         combo = QComboBox()
-        combo.setFixedSize(width, 26)
+        if width:
+            combo.setFixedSize(width, 26)
+        else:                                # 表单内下拉框：水平填满、高度固定
+            combo.setFixedHeight(26)
+            combo.setMinimumWidth(90)
+            combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         combo.setStyleSheet(COMBO_QSS)
         combo.setCursor(Qt.PointingHandCursor)
         for text, data in items:
@@ -680,6 +913,23 @@ class SolverMainWindow(v4.MainWindow):
     def _on_strategy_changed(self):
         # 仅部分策略有“强度”参数（贪心模拟 / Expectimax / MCTS），其余置灰
         self.solver_depth.setEnabled(solver.has_presets(self.solver_strategy.currentData()))
+        self._refresh_advanced_text()
+
+    def _refresh_advanced_text(self):
+        """高级参数区只展示“当前真实生效的配置”，不显示伪控件/伪指标。"""
+        lbl = getattr(self, "solver_advanced_text", None)
+        if lbl is None:
+            return
+        strategy = self.solver_strategy.currentData()
+        preset = self.solver_depth.currentData()
+        try:
+            cfg = solver.build_config(strategy, preset)
+            desc = solver.describe_config(cfg)
+        except Exception:                                     # noqa: BLE001
+            desc = "—"
+        lbl.setText(
+            "当前生效配置：%s\n"
+            "（此区为可折叠预留位；仅在使用到真实可调参数时才会展示对应控件）" % desc)
 
     # ---------------- 状态文案 ----------------
     def _set_status(self, line1, line2="", error=False):
@@ -693,9 +943,11 @@ class SolverMainWindow(v4.MainWindow):
     def _render_idle_status(self):
         self._set_status("就绪：选择策略后点击「开始求解」",
                          "自动连走会驱动棋盘走子；单步建议只提示方向。")
+        self._render_metrics()
 
     def _render_running_status(self, computing=False):
         if self._session is None:
+            self._render_metrics()
             return
         steps = len(self._session["steps"])
         last = self._session["steps"][-1] if steps else None
@@ -711,12 +963,17 @@ class SolverMainWindow(v4.MainWindow):
             cur = "等待第一步…"
             extra = "分数 <b>%d</b>" % self.model.score
         self._set_status("%s　步数 <b>%d</b>　%s" % (head, steps, cur), extra)
+        self._render_metrics()
 
     def _log_step(self, text):
+        # 仅在原本处于底部时自动跟随；用户上滚查看历史时不强制抢回底部
+        sb = self.solver_log.verticalScrollBar()
+        at_bottom = sb.value() >= sb.maximum() - 2
         item = QListWidgetItem(text)
         item.setForeground(QColor(v4.COLOR_TEXT))
         self.solver_log.addItem(item)
-        self.solver_log.scrollToBottom()
+        if at_bottom:
+            self.solver_log.scrollToBottom()
 
     # ---------------- 入口：AI 求解按钮 / 面板开始按钮 ----------------
     def on_solver_clicked(self):
@@ -887,6 +1144,7 @@ class SolverMainWindow(v4.MainWindow):
             self._log_step("已停止求解（%s）。" % reason)
         self._finalize_session(reason)
         self._update_solver_buttons()
+        self._render_metrics()
         if not silent:
             self._set_status("已停止求解（%s）。" % reason,
                              "棋盘保持当前状态，可继续手动操作或再次求解。")
@@ -899,6 +1157,7 @@ class SolverMainWindow(v4.MainWindow):
         self.solver_progress.setValue(0)
         summary = self._finalize_session(reason)
         self._update_solver_buttons()
+        self._render_metrics()
         if summary:
             self._log_step("求解结束（%s）：共 %d 步，最终分数 %d，最大瓦片 %s"
                            % (reason, summary["steps"], summary["final_score"],
