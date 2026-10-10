@@ -14,7 +14,6 @@
 ├── pyqt_2048/                        # 第 3 篇：PyQt5 桌面版
 │   ├── pyqt_2048_with_history.py     #   主程序（MVC + 撤销/重做 + 历史 + 启动页）
 │   ├── Untitled-1.py                 #   早期简单原型
-│   ├── console_2048_with_history.py  #   控制台版副本
 │   ├── screenshots/                  #   启动页 / 游戏页截图
 │   └── game_history/                 #   对局存档（运行时生成）
 ├── blog/                             # 系列博客

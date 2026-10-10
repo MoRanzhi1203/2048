@@ -1,0 +1,6 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+
+# 运行时生成的对局存档（不入库，保持仓库精简）
+game_history/
