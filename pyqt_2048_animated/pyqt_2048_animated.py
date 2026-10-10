@@ -19,9 +19,10 @@ import math
 import random
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton,
-                             QMessageBox, QVBoxLayout, QHBoxLayout, QStackedWidget, QFrame)
-from PyQt5.QtCore import Qt, QTimer, QRectF, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap
+                             QMessageBox, QVBoxLayout, QHBoxLayout, QStackedWidget,
+                             QFrame, QGraphicsDropShadowEffect)
+from PyQt5.QtCore import Qt, QTimer, QRectF, QRect, QPoint, QPointF, pyqtSignal
+from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen
 
 # =====================================================================
 # 复用第 3 篇的 Model（GameCore）：动画版不改动任何棋盘逻辑
@@ -54,7 +55,6 @@ BOARD_SIDE = BOARD_PADDING * 2 + TILE_SIZE * 4 + TILE_GAP * 3   # 434
 WINDOW_WIDTH, WINDOW_HEIGHT = 500, 672
 GAME_MARGIN_X = (WINDOW_WIDTH - BOARD_SIDE) // 2
 BUTTON_WIDTH, BUTTON_HEIGHT = 100, 44
-CARD_WIDTH, CARD_HEIGHT = 330, 110
 
 # 动画时长（秒）：滑行 / 合并与新生放大
 MOVE_DURATION = 0.12
@@ -108,6 +108,61 @@ QPushButton:hover    {{ background-color: #efe7db; color: #6a5b4e; }}
 QPushButton:pressed  {{ background-color: #e4dacd; color: #5e5245; }}
 QPushButton:focus    {{ background-color: #efe7db; border-color: #8f7a66; }}
 QPushButton:disabled {{ color: #c3b8ad; }}
+"""
+
+# ---------------------------------------------------------------------
+# 启动页视觉规范（本次仅作用于启动页，游戏页样式保持不变）
+# ---------------------------------------------------------------------
+SP_BG = "#FAF8EF"                 # 页面背景
+SP_TITLE = "#776E65"              # 主标题
+SP_TEXT = "#776E65"               # 主要文字
+SP_SUBTEXT = "#938579"            # 次要文字
+SP_PRIMARY = "#8F7A66"            # 主按钮
+SP_PRIMARY_HOVER = "#9F8B78"
+SP_PRIMARY_PRESS = "#786554"
+SP_SECONDARY_BG = "#F5EFE6"       # 次按钮
+SP_SECONDARY_BORDER = "#B7A595"
+SP_CARD_BG = "#F2E9DD"            # 信息卡
+SP_LINE = "#D8C9B9"               # 装饰线条
+
+SP_CARD_W, SP_CARD_H = 334, 126
+SP_BTN_W, SP_BTN_H = 328, 48
+SP_BTN_RADIUS = 10
+SP_CARD_RADIUS = 13
+
+# 背景装饰方块：(数值, 中心x比例, 中心y比例, 边长, 旋转角, 透明度)
+SP_DECOR_TILES = (
+    (2,  0.10, 0.10, 74, -12, 34),
+    (16, 0.89, 0.15, 84,  10, 30),
+    (4,  0.06, 0.50, 62,   8, 28),
+    (8,  0.93, 0.46, 72, -10, 30),
+    (16, 0.13, 0.89, 80,  12, 26),
+    (2,  0.86, 0.87, 66,  -8, 30),
+    (8,  0.50, 0.04, 54,   6, 24),
+)
+
+SP_PRIMARY_QSS = f"""
+QPushButton {{
+    background-color: {SP_PRIMARY}; color: #FFFFFF;
+    border: 1px solid {SP_PRIMARY}; border-radius: {SP_BTN_RADIUS}px;
+    font-size: 14px; font-weight: 600;
+}}
+QPushButton:hover    {{ background-color: {SP_PRIMARY_HOVER}; border-color: {SP_PRIMARY_HOVER}; }}
+QPushButton:pressed  {{ background-color: {SP_PRIMARY_PRESS}; border-color: {SP_PRIMARY_PRESS}; }}
+QPushButton:focus    {{ border-color: #E8DFD3; }}
+QPushButton:disabled {{ background-color: #D8CBBB; color: #F1EAE0; border-color: #D8CBBB; }}
+"""
+
+SP_SECONDARY_QSS = f"""
+QPushButton {{
+    background-color: {SP_SECONDARY_BG}; color: {SP_TEXT};
+    border: 1px solid {SP_SECONDARY_BORDER}; border-radius: {SP_BTN_RADIUS}px;
+    font-size: 14px; font-weight: 600;
+}}
+QPushButton:hover    {{ background-color: #EFE7DC; }}
+QPushButton:pressed  {{ background-color: #E4D9C9; border-color: #A89787; }}
+QPushButton:focus    {{ border-color: {SP_PRIMARY}; background-color: #EFE7DC; }}
+QPushButton:disabled {{ background-color: #F0EBE3; color: #B7A595; border-color: #D8C9B9; }}
 """
 
 START_PAGE = 0
@@ -277,6 +332,292 @@ class AnimatedGameCore(GameCore):
 
 
 # =====================================================================
+# 轻量粒子与交互反馈系统（装饰性，与游戏动画完全独立）
+# =====================================================================
+# 参数集中配置：主碎片 / 辅助高光的数量、速度、寿命(秒)、尺寸、重力、阻尼
+PARTICLE_MAX = 240                 # 同屏粒子上限（主碎片 + 高光 合计）
+PARTICLE_CULL_MARGIN = 80          # 左右/下方飞出可视区多少像素后剔除
+PARTICLE_CULL_MARGIN_TOP = 180     # 上方留更大余量：上抛的粒子可能回落，避免误剔
+PARTICLE_PRESETS = {
+    "click_tile":  {"main": 16, "accent": 10, "speed": (60, 190),  "life": (0.30, 0.60),
+                    "size_main": (5, 9), "size_accent": (2, 4),
+                    "gravity": 820.0, "damping": 0.970},
+    "click_empty": {"main": 8,  "accent": 16, "speed": (50, 150),  "life": (0.28, 0.55),
+                    "size_main": (5, 9), "size_accent": (2, 4),
+                    "gravity": 760.0, "damping": 0.970},
+    "merge":       {"main": 20, "accent": 10, "speed": (80, 260),  "life": (0.35, 0.75),
+                    "size_main": (5, 9), "size_accent": (2, 4),
+                    "gravity": 980.0, "damping": 0.960, "up_bias": -60.0},
+    "celebrate":   {"main": 36, "accent": 22, "speed": (130, 340), "life": (0.50, 0.90),
+                    "size_main": (5, 9), "size_accent": (2, 4),
+                    "gravity": 900.0, "damping": 0.965, "up_bias": -120.0},
+    "button":      {"main": 4,  "accent": 8,  "speed": (40, 120),  "life": (0.25, 0.45),
+                    "size_main": (5, 9), "size_accent": (2, 4),
+                    "gravity": 700.0, "damping": 0.970},
+}
+
+# 粒子配色映射：main = 主碎片（沿用数字方块自身背景色），accent = 辅助高光（同色系提亮）
+PARTICLE_COLORS = {
+    2:    {"main": (238, 228, 218), "accent": (250, 244, 238)},
+    4:    {"main": (237, 224, 200), "accent": (249, 240, 224)},
+    8:    {"main": (242, 177, 121), "accent": (251, 214, 178)},
+    16:   {"main": (245, 149,  99), "accent": (252, 196, 163)},
+    32:   {"main": (246, 124,  95), "accent": (252, 180, 162)},
+    64:   {"main": (246,  94,  59), "accent": (252, 166, 146)},
+    128:  {"main": (237, 207, 114), "accent": (249, 231, 177)},
+    256:  {"main": (237, 204,  97), "accent": (249, 229, 167)},
+    512:  {"main": (237, 200,  80), "accent": (249, 226, 156)},
+    1024: {"main": (237, 197,  63), "accent": (249, 224, 144)},
+    2048: {"main": (237, 194,  46), "accent": (250, 222, 132)},
+    4096: {"main": (237, 176,  32), "accent": (249, 211, 114)},
+    8192: {"main": (227, 159,  22), "accent": (245, 198,  96)},
+}
+PARTICLE_COLOR_FALLBACK = {"main": (198, 128, 12), "accent": (245, 198, 96)}   # 16384 及以上回退
+
+COLOR_EMPTY_MAIN = (233, 196, 106)         # 点击空格：米金主碎片
+COLOR_EMPTY_ACCENT = (250, 236, 200)       # 点击空格：高光
+COLOR_CELEBRATE_MAIN = (242, 193, 78)      # 首次达成 2048：金色主碎片
+COLOR_CELEBRATE_ACCENT = (255, 240, 200)   # 首次达成 2048：高光
+PARTICLE_HIGHLIGHT_OUTLINE = (74, 50, 30)   # 高光的细暖棕描边（浅色方块/浅米底上仍清晰，对比≥3:1）
+
+
+def particle_colors_for(value):
+    """按数字取 (主碎片, 高光) 两组配色；超出映射范围时使用回退配色"""
+    entry = PARTICLE_COLORS.get(value, PARTICLE_COLOR_FALLBACK)
+    return entry["main"], entry["accent"]
+
+
+class Particle:
+    """一颗粒子（用 __slots__ 降低内存与属性访问开销）"""
+
+    __slots__ = ("x", "y", "vx", "vy", "life", "max_life", "size", "shape",
+                 "r", "g", "b", "angle", "spin", "gravity", "damping", "outlined")
+
+    def __init__(self, x, y, vx, vy, life, size, shape, rgb, angle, spin,
+                 gravity, damping, outlined):
+        self.x, self.y = x, y
+        self.vx, self.vy = vx, vy
+        self.life = self.max_life = life
+        self.size, self.shape = size, shape
+        self.r, self.g, self.b = rgb
+        self.angle, self.spin = angle, spin
+        self.gravity, self.damping = gravity, damping
+        self.outlined = outlined          # 高光小圆点带细暖棕描边
+
+
+class ParticlePreset:
+    """把集中配置解析成可直接使用的参数对象"""
+
+    def __init__(self, name):
+        cfg = PARTICLE_PRESETS[name]
+        self.name = name
+        self.main = cfg["main"]            # 主碎片数量
+        self.accent = cfg["accent"]        # 辅助高光数量
+        self.speed = cfg["speed"]
+        self.life = cfg["life"]
+        self.size_main = cfg["size_main"]
+        self.size_accent = cfg["size_accent"]
+        self.gravity = cfg["gravity"]
+        self.damping = cfg["damping"]
+        self.up_bias = cfg.get("up_bias", 0.0)
+
+
+_PRESET_CACHE = {}
+
+
+def get_preset(name):
+    if name not in _PRESET_CACHE:
+        _PRESET_CACHE[name] = ParticlePreset(name)
+    return _PRESET_CACHE[name]
+
+
+def _as_rgb(color):
+    if isinstance(color, QColor):
+        return (color.red(), color.green(), color.blue())
+    return tuple(color)
+
+
+class ParticleEngine:
+    """粒子的生命周期与绘制；不依赖任何游戏状态，可被棋盘与按钮共用"""
+
+    def __init__(self, max_particles=PARTICLE_MAX):
+        self.max_particles = max_particles
+        self.particles = []
+        self._bounds = None            # (w, h)：可视区尺寸，用于屏幕外剔除
+
+    def is_active(self):
+        return bool(self.particles)
+
+    def clear(self):
+        self.particles = []
+
+    def set_bounds(self, width, height):
+        """设置可视区尺寸（覆盖层大小），供屏幕外剔除使用"""
+        self._bounds = (float(width), float(height))
+
+    def bounding_rect(self, margin=0):
+        """所有粒子的包围盒；用于只重绘“脏区”而不是整层"""
+        if not self.particles:
+            return QRect()
+        min_x = min_y = float("inf")
+        max_x = max_y = float("-inf")
+        for p in self.particles:
+            r = p.size / 2.0
+            if p.x - r < min_x: min_x = p.x - r
+            if p.x + r > max_x: max_x = p.x + r
+            if p.y - r < min_y: min_y = p.y - r
+            if p.y + r > max_y: max_y = p.y + r
+        return QRect(int(min_x) - margin, int(min_y) - margin,
+                     int(max_x - min_x) + 2 * margin + 1,
+                     int(max_y - min_y) + 2 * margin + 1)
+
+    def emit(self, preset_name, x, y, main_rgb, accent_rgb):
+        """在 (x, y) 喷出“主碎片 + 辅助高光”两层粒子；颜色可为 QColor 或 (r, g, b)"""
+        preset = get_preset(preset_name)
+        main_rgb = _as_rgb(main_rgb)
+        accent_rgb = _as_rgb(accent_rgb)
+        for _ in range(preset.main):
+            self._spawn(x, y, preset, main_rgb, preset.size_main, "shard", False)
+        for _ in range(preset.accent):
+            self._spawn(x, y, preset, accent_rgb, preset.size_accent, "dot", True)
+        overflow = len(self.particles) - self.max_particles
+        if overflow > 0:                       # 上限保护：丢弃最旧的
+            del self.particles[:overflow]
+
+    def _spawn(self, x, y, preset, rgb, size_range, shape, outlined):
+        angle = random.uniform(0.0, 2.0 * math.pi)
+        speed = random.uniform(*preset.speed)
+        self.particles.append(Particle(
+            x, y,
+            math.cos(angle) * speed,
+            math.sin(angle) * speed + preset.up_bias,
+            random.uniform(*preset.life), random.uniform(*size_range),
+            shape, rgb,
+            random.uniform(0.0, 2.0 * math.pi), random.uniform(-8.0, 8.0),
+            preset.gravity, preset.damping, outlined))
+
+    def step(self, dt):
+        """原地推进（不新建列表），并剔除已飞出可视区、不会再回来的粒子"""
+        parts = self.particles
+        bounds = self._bounds
+        write = 0
+        for read in range(len(parts)):
+            p = parts[read]
+            p.life -= dt
+            if p.life <= 0.0:
+                continue
+            p.vy += p.gravity * dt
+            p.vx *= p.damping
+            p.vy *= p.damping
+            p.x += p.vx * dt
+            p.y += p.vy * dt
+            p.angle += p.spin * dt
+            if bounds is not None:
+                w, h = bounds
+                if (p.x < -PARTICLE_CULL_MARGIN or p.x > w + PARTICLE_CULL_MARGIN
+                        or p.y > h + PARTICLE_CULL_MARGIN
+                        or p.y < -PARTICLE_CULL_MARGIN_TOP):
+                    continue                       # 已离开可视区且不会再回来
+            parts[write] = p
+            write += 1
+        if write != len(parts):
+            del parts[write:]
+
+    def draw(self, painter):
+        if not self.particles:
+            return
+        # 复用同一组 QColor / QPen 实例，避免每帧为每颗粒子新建对象
+        color = QColor()
+        pen = QPen()
+        pen.setWidthF(1.0)
+        outline = PARTICLE_HIGHLIGHT_OUTLINE
+        for p in self.particles:
+            remain = max(0.0, min(1.0, p.life / p.max_life))   # 1 -> 0
+            alpha = min(1.0, remain * 1.25)                    # 增强初始不透明度，随后自然淡出
+            size = p.size * (0.4 + 0.6 * remain)
+            color.setRgb(p.r, p.g, p.b, int(255 * alpha))
+            painter.setBrush(color)
+            if p.shape == "shard":                             # 主碎片：圆角方片
+                painter.setPen(Qt.NoPen)
+                painter.save()
+                painter.translate(p.x, p.y)
+                painter.rotate(math.degrees(p.angle))
+                painter.drawRoundedRect(QRectF(-size / 2.0, -size / 2.0, size, size), 1.5, 1.5)
+                painter.restore()
+            else:                                              # 辅助高光：小圆点 + 细暖棕描边
+                if p.outlined:
+                    color.setRgb(outline[0], outline[1], outline[2], int(245 * alpha))
+                    pen.setColor(color)
+                    painter.setPen(pen)
+                else:
+                    painter.setPen(Qt.NoPen)
+                painter.drawEllipse(QRectF(p.x - size / 2.0, p.y - size / 2.0, size, size))
+
+
+class ParticleOverlay(QWidget):
+    """覆盖整窗、鼠标穿透的透明绘制层：只负责推进并绘制粒子"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)   # 鼠标穿透到下方控件
+        self.setFocusPolicy(Qt.NoFocus)
+        self.engine = ParticleEngine()
+        self._last_rect = QRect()          # 上一帧的脏区，用于清除残影
+        self._timer = QTimer(self)
+        self._timer.setInterval(FRAME_INTERVAL)
+        self._timer.timeout.connect(self._tick)
+
+    # ---- 供棋盘 / 按钮上报事件：把控件局部坐标换算到本层坐标 ----
+    def emit_from(self, widget, x, y, main_rgb, accent_rgb, preset_name):
+        # 覆盖层与棋盘/按钮是同窗内的“兄弟分支”，mapTo 只接受祖先，
+        # 因此统一走“全局坐标”中转（对嵌套层级、高 DPI 都安全）。
+        gp = self.mapFromGlobal(widget.mapToGlobal(QPoint(int(round(x)), int(round(y)))))
+        self.engine.emit(preset_name, gp.x(), gp.y(), main_rgb, accent_rgb)
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def is_active(self):
+        return self.engine.is_active()
+
+    def clear(self):
+        self.engine.clear()
+        self._timer.stop()
+        self._last_rect = QRect()
+        self.update()
+
+    def shutdown(self):
+        self._timer.stop()
+        self.engine.clear()
+
+    def _tick(self):
+        if not self.engine.is_active():
+            self._timer.stop()
+            if not self._last_rect.isNull():          # 清掉最后一帧的残留
+                self.update(self._last_rect)
+                self._last_rect = QRect()
+            return
+        self.engine.set_bounds(self.width(), self.height())
+        self.engine.step(self._timer.interval() / 1000.0)
+        rect = self.engine.bounding_rect(margin=4)
+        if not self._last_rect.isNull():
+            rect = rect.united(self._last_rect)       # 连上一帧位置一起重绘，避免残影
+        self.update(rect)                             # 只重绘“脏区”，不再整层重绘
+        if self.engine.is_active():
+            self._last_rect = self.engine.bounding_rect(margin=4)
+        else:
+            self._last_rect = QRect()
+            self._timer.stop()                     # 粒子全部消亡后停表
+
+    def paintEvent(self, event):
+        if not self.engine.is_active():
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        self.engine.draw(painter)
+        painter.end()
+
+
+# =====================================================================
 # View 层：静态背景层（缓存）+ 动画层（逐帧插值）
 # =====================================================================
 class BoardView(QWidget):
@@ -295,6 +636,8 @@ class BoardView(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(FRAME_INTERVAL)
         self.timer.timeout.connect(self._tick)
+
+        self._particle_layer = None      # 由 MainWindow 注入的窗口级粒子绘制层
 
     # ---------------- 几何 ----------------
     def _cell_xy(self, r, c):
@@ -380,6 +723,59 @@ class BoardView(QWidget):
         self.timer.start()
         self.update()
 
+    # ---------------- 交互反馈：点击粒子 / 合并碎片 ----------------
+    def bind_particle_layer(self, layer):
+        """注入窗口级粒子绘制层（可为 None）"""
+        self._particle_layer = layer
+
+    def _emit_particles(self, x, y, main_rgb, accent_rgb, preset_name):
+        if self._particle_layer is not None:
+            self._particle_layer.emit_from(self, x, y, main_rgb, accent_rgb, preset_name)
+
+    def _cell_hit(self, x, y):
+        """把控件坐标映射到格子；落在间隙或边框时返回 None"""
+        step = TILE_SIZE + TILE_GAP
+        col = int((x - BOARD_PADDING) // step)
+        row = int((y - BOARD_PADDING) // step)
+        if not (0 <= row < self.grid_size and 0 <= col < self.grid_size):
+            return None
+        if (x - BOARD_PADDING) % step >= TILE_SIZE:   # 横向落在格间缝隙
+            return None
+        if (y - BOARD_PADDING) % step >= TILE_SIZE:   # 纵向落在格间缝隙
+            return None
+        return (row, col, self.grid[row][col])
+
+    def mousePressEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+        hit = self._cell_hit(event.x(), event.y())
+        if hit is None:                               # 间隙 / 边框：不触发
+            event.accept()
+            return
+        row, col, value = hit
+        if value:                                     # 数字方块：主碎片用该方块自身配色
+            main, accent = particle_colors_for(value)
+            self._emit_particles(event.x(), event.y(), main, accent, "click_tile")
+        else:                                         # 空格：米金主碎片 + 高光
+            self._emit_particles(event.x(), event.y(),
+                                 COLOR_EMPTY_MAIN, COLOR_EMPTY_ACCENT, "click_empty")
+        event.accept()
+
+    def _emit_merge_fragments(self):
+        """一步中的多组合并，各自在目标格释放一次碎片（pop 以目标格为键，天然去重）"""
+        if self._particle_layer is None or not self.anim or not self.anim["pop"]:
+            return
+        target = self.anim["target"]
+        for (row, col) in self.anim["pop"]:
+            value = target[row][col]
+            if not value:
+                continue
+            main, accent = particle_colors_for(value)
+            x, y = self._cell_xy(row, col)
+            self._emit_particles(x + TILE_SIZE / 2.0, y + TILE_SIZE / 2.0,
+                                 main, accent, "merge")
+
     # ---------------- 逐帧推进 ----------------
     def _tick(self):
         if self.anim is None:
@@ -394,6 +790,7 @@ class BoardView(QWidget):
                     return
                 self.anim["phase"] = "pop"
                 self.anim["t"] = 0.0
+                self._emit_merge_fragments()      # 合并落定：与弹性动画同步释放碎片
         else:
             if self.anim["t"] >= POP_DURATION:
                 self._finish_animation()
@@ -490,7 +887,18 @@ class BoardView(QWidget):
         return QColor(*HIGH_COLORS.get(value, (198, 128, 12)))
 
 
-class EnterButton(QPushButton):
+class PressFeedbackButton(QPushButton):
+    """按下时上报按压点（供粒子系统在按钮上撒少量粒子；禁用时不触发）"""
+
+    pressedAt = pyqtSignal(int, int)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self.isEnabled():
+            self.pressedAt.emit(event.x(), event.y())
+        super().mousePressEvent(event)
+
+
+class EnterButton(PressFeedbackButton):
     """可聚焦按钮；额外支持回车键触发（QPushButton 原生只响应空格）"""
 
     def keyPressEvent(self, event):
@@ -499,6 +907,84 @@ class EnterButton(QPushButton):
             event.accept()
             return
         super().keyPressEvent(event)
+
+
+class ArrowButton(EnterButton):
+    """启动页按钮：在右侧自绘一枚简洁箭头。
+
+    箭头画在按钮自身 paintEvent 里，不进入任何布局 —— 文本仍由 QSS 居中，
+    因此不会造成内部布局偏移，也不影响按压点（粒子）坐标。
+    """
+
+    def __init__(self, text, arrow_color="#FFFFFF", arrow_disabled="#F1EAE0", parent=None):
+        super().__init__(text, parent)
+        self._arrow_color = QColor(arrow_color)
+        self._arrow_disabled = QColor(arrow_disabled)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        color = self._arrow_color if self.isEnabled() else self._arrow_disabled
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(color, 2.0)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(pen)
+        ax = self.width() - 22.0
+        ay = self.height() / 2.0
+        painter.drawLine(QPointF(ax - 7.0, ay), QPointF(ax + 1.0, ay))       # 箭杆
+        painter.drawLine(QPointF(ax - 3.0, ay - 4.5), QPointF(ax + 1.5, ay))  # 上翼
+        painter.drawLine(QPointF(ax - 3.0, ay + 4.5), QPointF(ax + 1.5, ay))  # 下翼
+        painter.end()
+
+
+class StartDecorPage(QWidget):
+    """启动页容器：用 QPainter 在页面边缘绘制低对比度 2048 装饰方块。
+
+    - 静态绘制、不启动任何定时器；按窗口尺寸缓存成 QPixmap，仅在尺寸变化时重建
+    - 位于所有子控件之下，不接收鼠标事件，页面中央信息区保持干净
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)   # 整页自绘，避免重复重绘父级
+        self._cache = None
+        self._cache_size = None
+
+    @staticmethod
+    def _draw_decor_tile(painter, value, cx, cy, side, angle, alpha):
+        r, g, b = TILE_COLORS.get(value, (205, 193, 180))
+        radius = side * 0.14
+        painter.save()
+        painter.translate(cx, cy)
+        painter.rotate(angle)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(r, g, b, alpha))
+        painter.drawRoundedRect(QRectF(-side / 2.0, -side / 2.0, side, side), radius, radius)
+        painter.setPen(QColor(119, 110, 101, min(255, alpha + 20)))   # 淡淡的数字
+        font = QFont()
+        font.setPixelSize(max(10, int(side * 0.34)))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(QRectF(-side / 2.0, -side / 2.0, side, side), Qt.AlignCenter, str(value))
+        painter.restore()
+
+    def _build_cache(self):
+        pm = QPixmap(max(1, self.width()), max(1, self.height()))
+        pm.fill(QColor(SP_BG))
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        w, h = pm.width(), pm.height()
+        for value, rx, ry, side, angle, alpha in SP_DECOR_TILES:
+            self._draw_decor_tile(painter, value, rx * w, ry * h, side, angle, alpha)
+        painter.end()
+        return pm
+
+    def paintEvent(self, event):
+        if self._cache is None or self._cache_size != self.size():
+            self._cache = self._build_cache()
+            self._cache_size = self.size()
+        QPainter(self).drawPixmap(0, 0, self._cache)
 
 
 # =====================================================================
@@ -524,77 +1010,132 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self._build_game_page())    # GAME_PAGE
         self.setCentralWidget(self.stack)
 
+        # 窗口级粒子绘制层：覆盖全窗、鼠标穿透，只负责推进与绘制粒子
+        self.particle_layer = ParticleOverlay(self)
+        self.particle_layer.setGeometry(self.rect())
+        self.particle_layer.raise_()
+        self.board_view.bind_particle_layer(self.particle_layer)
+
         self.setFocusPolicy(Qt.StrongFocus)
         self.refresh()
 
     def _build_start_page(self):
-        page = QWidget()
-        page.setObjectName("page")
-        page.setStyleSheet(f"#page {{ background-color: {COLOR_BG}; }}")
+        page = StartDecorPage()                    # 自绘装饰背景的容器
         layout = QVBoxLayout(page)
         layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(0)
-        layout.addStretch()
+        layout.addStretch(3)                       # 内容整体略偏上
 
         title = QLabel("2048")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 70px; font-weight: bold;")
+        title.setStyleSheet(f"color: {SP_TITLE}; font-size: 74px; font-weight: 800;")
+        title.setAttribute(Qt.WA_TranslucentBackground, True)
+        title_shadow = QGraphicsDropShadowEffect(title)   # 极轻的文字阴影
+        title_shadow.setBlurRadius(10)
+        title_shadow.setOffset(0, 2)
+        title_shadow.setColor(QColor(119, 110, 101, 45))
+        title.setGraphicsEffect(title_shadow)
+
         subtitle = QLabel("合并数字，拼出 2048")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet(f"color: {COLOR_SUBTITLE}; font-size: 13px;")
+        subtitle.setStyleSheet(f"color: {SP_SUBTEXT}; font-size: 13px;")
+
         layout.addWidget(title)
-        layout.addSpacing(5)
+        layout.addSpacing(7)
         layout.addWidget(subtitle)
-        layout.addSpacing(30)
+        layout.addSpacing(35)
 
+        layout.addWidget(self._build_last_game_card(), 0, Qt.AlignHCenter)
+        layout.addSpacing(24)
+
+        self.continue_start_button = self._make_button(
+            "继续上一局", self.on_continue_clicked, qss=SP_PRIMARY_QSS,
+            size=(SP_BTN_W, SP_BTN_H), focusable=True,
+            arrow=("#FFFFFF", "#F1EAE0"))
+        self.new_game_start_button = self._make_button(
+            "开始新游戏", self.on_new_game_clicked, qss=SP_SECONDARY_QSS,
+            size=(SP_BTN_W, SP_BTN_H), focusable=True, particle_color="#c7b9a8",
+            arrow=("#776E65", "#B7A595"))
+        layout.addWidget(self.continue_start_button, 0, Qt.AlignHCenter)
+        layout.addSpacing(13)
+        layout.addWidget(self.new_game_start_button, 0, Qt.AlignHCenter)
+        layout.addStretch(4)
+        return page
+
+    def _build_last_game_card(self):
+        """浅米色圆角信息卡：顶部标题（带装饰线）+ 分数 / 最高分双列（中间细竖线）"""
         card = QFrame()
-        card.setObjectName("card")
-        card.setFixedSize(CARD_WIDTH, CARD_HEIGHT)
+        card.setObjectName("infoCard")
+        card.setFixedSize(SP_CARD_W, SP_CARD_H)
         card.setStyleSheet(
-            f"#card {{ background-color: {COLOR_BOARD}; border-radius: 10px; }}")
+            f"#infoCard {{ background-color: {SP_CARD_BG};"
+            f" border: 1px solid {SP_LINE}; border-radius: {SP_CARD_RADIUS}px; }}")
+        card_shadow = QGraphicsDropShadowEffect(card)     # 轻微柔和阴影
+        card_shadow.setBlurRadius(16)
+        card_shadow.setOffset(0, 3)
+        card_shadow.setColor(QColor(119, 110, 101, 40))
+        card.setGraphicsEffect(card_shadow)
+
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(20, 14, 20, 14)
-        card_layout.setSpacing(6)
+        card_layout.setContentsMargins(18, 13, 18, 14)
+        card_layout.setSpacing(0)
 
-        self.last_game_caption = QLabel("上一局")
+        self.last_game_caption = QLabel("上一局记录")
         self.last_game_caption.setAlignment(Qt.AlignCenter)
-        self.last_game_caption.setStyleSheet(f"color: {COLOR_CARD_LABEL}; font-size: 12px;")
-        card_layout.addWidget(self.last_game_caption)
+        self.last_game_caption.setStyleSheet(
+            f"color: {SP_SUBTEXT}; font-size: 12px; font-weight: 600;")
 
-        stats = QHBoxLayout()
-        stats.addStretch()
+        caption_row = QHBoxLayout()
+        caption_row.setSpacing(8)
+        caption_row.addStretch()
+        caption_row.addWidget(self._make_rule())
+        caption_row.addWidget(self.last_game_caption)
+        caption_row.addWidget(self._make_rule())
+        caption_row.addStretch()
+        card_layout.addLayout(caption_row)
+        card_layout.addSpacing(11)
+
         score_box, self.last_score_value = self._make_stat("分数")
         best_box, self.last_best_value = self._make_stat("最高分")
+        stats = QHBoxLayout()
+        stats.setSpacing(0)
+        stats.addStretch()
         stats.addLayout(score_box)
-        stats.addSpacing(48)
+        stats.addSpacing(24)
+        stats.addWidget(self._make_divider())
+        stats.addSpacing(24)
         stats.addLayout(best_box)
         stats.addStretch()
         card_layout.addLayout(stats)
+        return card
 
-        layout.addWidget(card, 0, Qt.AlignHCenter)
-        layout.addSpacing(23)
+    @staticmethod
+    def _make_rule():
+        """卡片标题两侧的短装饰线"""
+        line = QFrame()
+        line.setFixedSize(26, 1)
+        line.setAttribute(Qt.WA_StyledBackground, True)
+        line.setStyleSheet(f"background-color: {SP_LINE}; border: none;")
+        return line
 
-        self.continue_start_button = self._make_button(
-            "继续上一局", self.on_continue_clicked,
-            size=(CARD_WIDTH, 48), focusable=True, enter_ok=True)
-        self.new_game_start_button = self._make_button(
-            "开始新游戏", self.on_new_game_clicked, qss=TEXT_BUTTON_QSS,
-            size=(CARD_WIDTH, BUTTON_HEIGHT), focusable=True, enter_ok=True)
-        layout.addWidget(self.continue_start_button, 0, Qt.AlignHCenter)
-        layout.addSpacing(10)
-        layout.addWidget(self.new_game_start_button, 0, Qt.AlignHCenter)
-        layout.addStretch()
-        return page
+    @staticmethod
+    def _make_divider():
+        """分数与最高分之间的细竖线"""
+        line = QFrame()
+        line.setFixedSize(1, 40)
+        line.setAttribute(Qt.WA_StyledBackground, True)
+        line.setStyleSheet(f"background-color: {SP_LINE}; border: none;")
+        return line
 
     def _make_stat(self, caption):
         box = QVBoxLayout()
-        box.setSpacing(2)
+        box.setSpacing(1)
         value = QLabel("0")
         value.setAlignment(Qt.AlignCenter)
-        value.setStyleSheet(f"color: {COLOR_CARD_VALUE}; font-size: 24px; font-weight: bold;")
+        value.setStyleSheet(f"color: {SP_TEXT}; font-size: 25px; font-weight: 700;")
         cap = QLabel(caption)
         cap.setAlignment(Qt.AlignCenter)
-        cap.setStyleSheet(f"color: {COLOR_CARD_LABEL}; font-size: 11px;")
+        cap.setStyleSheet(f"color: {SP_SUBTEXT}; font-size: 11px;")
         box.addWidget(value)
         box.addWidget(cap)
         return box, value
@@ -629,8 +1170,10 @@ class MainWindow(QMainWindow):
         self.board_view = BoardView(self.model.grid_size)
         self.board_view.animationFinished.connect(self._on_animation_finished)
 
-        self.undo_button = self._make_button("撤销", self.on_undo, qss=SECONDARY_BUTTON_QSS)
-        self.redo_button = self._make_button("重做", self.on_redo, qss=SECONDARY_BUTTON_QSS)
+        self.undo_button = self._make_button("撤销", self.on_undo, qss=SECONDARY_BUTTON_QSS,
+                                             particle_color="#cbbcaa")
+        self.redo_button = self._make_button("重做", self.on_redo, qss=SECONDARY_BUTTON_QSS,
+                                             particle_color="#cbbcaa")
         self.undo_button.setToolTip("撤销上一步（Ctrl+Z）")
         self.redo_button.setToolTip("重做（Ctrl+Y）")
         self.new_game_button = self._make_button("新游戏", self.on_new_game_clicked)
@@ -664,14 +1207,26 @@ class MainWindow(QMainWindow):
             f"<div style='font-size:24px; color:{COLOR_CARD_VALUE}; font-weight:bold;'>{value}</div>")
 
     def _make_button(self, text, slot, qss=PRIMARY_BUTTON_QSS,
-                     size=(BUTTON_WIDTH, BUTTON_HEIGHT), focusable=False, enter_ok=False):
-        button = EnterButton(text) if enter_ok else QPushButton(text)
+                     size=(BUTTON_WIDTH, BUTTON_HEIGHT), focusable=False,
+                     particle_color="#8f7a66", arrow=None):
+        # arrow=(正常色, 禁用色) 时使用带右侧箭头的按钮；箭头不参与布局
+        button = ArrowButton(text, arrow[0], arrow[1]) if arrow else EnterButton(text)
         button.setFixedSize(*size)
         button.setCursor(Qt.PointingHandCursor)
         button.setFocusPolicy(Qt.StrongFocus if focusable else Qt.NoFocus)
         button.setStyleSheet(qss)
         button.clicked.connect(slot)
+        # 启用状态下按下：在按压点撒少量粒子（禁用按钮不触发）
+        button.pressedAt.connect(
+            lambda x, y, b=button, c=particle_color: self._emit_button_particles(b, x, y, c))
         return button
+
+    def _emit_button_particles(self, button, x, y, color_hex):
+        layer = getattr(self, "particle_layer", None)
+        if layer is None or not button.isEnabled():
+            return
+        main = QColor(color_hex)
+        layer.emit_from(button, x, y, main, main.lighter(165), "button")
 
     # ---------------- 刷新视图 ----------------
     def refresh(self):
@@ -727,7 +1282,29 @@ class MainWindow(QMainWindow):
             self.show_game_over()
         elif self.model.won and not self.win_announced:
             self.win_announced = True
+            self._celebrate()                 # 首次达成 2048：金色庆祝（整局一次）
             self.show_game_won()
+
+    def _celebrate(self):
+        """首次达到 2048：在 2048 方块处释放一次金色庆祝粒子"""
+        layer = getattr(self, "particle_layer", None)
+        if layer is None:
+            return
+        row = col = None
+        for i in range(self.model.grid_size):
+            for j in range(self.model.grid_size):
+                if self.model.grid[i][j] == 2048:
+                    row, col = i, j
+                    break
+            if row is not None:
+                break
+        if row is None:
+            x, y = BOARD_SIDE / 2.0, BOARD_SIDE / 2.0
+        else:
+            bx, by = self.board_view._cell_xy(row, col)
+            x, y = bx + TILE_SIZE / 2.0, by + TILE_SIZE / 2.0
+        layer.emit_from(self.board_view, x, y,
+                        COLOR_CELEBRATE_MAIN, COLOR_CELEBRATE_ACCENT, "celebrate")
 
     def on_undo(self):
         if self.board_view.is_animating():
@@ -766,12 +1343,12 @@ class MainWindow(QMainWindow):
 
     def _render_last_game(self, info):
         if info is None:
-            self.last_game_caption.setText("暂无存档")
+            self.last_game_caption.setText("暂无可继续的存档")
             self.last_score_value.setText("—")
-            self.last_best_value.setText("—")
+            self.last_best_value.setText(str(self.model.best_score))   # 历史最高分仍动态显示
             self.continue_start_button.setEnabled(False)
         else:
-            self.last_game_caption.setText("上一局")
+            self.last_game_caption.setText("上一局记录")
             self.last_score_value.setText(str(info.get("score", 0)))
             self.last_best_value.setText(str(info.get("best_score", 0)))
             self.continue_start_button.setEnabled(True)
@@ -807,7 +1384,17 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.No:
             self.start_new_game()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        layer = getattr(self, "particle_layer", None)
+        if layer is not None:                     # 窗口尺寸变化时让粒子层跟随
+            layer.setGeometry(self.rect())
+            layer.raise_()
+
     def closeEvent(self, event):
+        layer = getattr(self, "particle_layer", None)
+        if layer is not None:                     # 窗口销毁前停表并清空粒子
+            layer.shutdown()
         self.model.save_game_state()
         self.model.update_index()
         event.accept()
