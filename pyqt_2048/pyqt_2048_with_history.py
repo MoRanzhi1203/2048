@@ -38,10 +38,10 @@ GAME_PAGE = 1
 # =====================================================================
 COLOR_BG = "#faf8ef"           # 页面背景
 COLOR_TEXT = "#776e65"         # 主标题 / 深色文本
-COLOR_SUBTITLE = "#a39489"     # 副标题
+COLOR_SUBTITLE = "#8f8175"     # 副标题（较原 #a39489 加深，提升小字对比度）
 COLOR_BOARD = "#bbada0"        # 棋盘 / 统计卡背景
 COLOR_EMPTY = "#cdc1b4"        # 空格
-COLOR_CARD_LABEL = "#eee4da"   # 卡片标签
+COLOR_CARD_LABEL = "#f5efe6"   # 卡片标签（较原 #eee4da 提亮，与卡片背景拉开明度差）
 COLOR_CARD_VALUE = "#ffffff"   # 卡片数值
 
 # 棋盘：尺寸由方块推导，保证严格正方形、4×4 每格一致
@@ -83,7 +83,7 @@ QPushButton {{
 QPushButton:hover    {{ background-color: #e2d7ca; }}
 QPushButton:pressed  {{ background-color: #d5c9ba; }}
 QPushButton:focus    {{ border-color: #8f7a66; }}
-QPushButton:disabled {{ background-color: #eee8e1; color: #b7aa9e; }}
+QPushButton:disabled {{ background-color: #e8e0d7; color: #a99a8d; border-color: #ddd1c4; }}
 """
 
 TEXT_BUTTON_QSS = f"""
@@ -92,9 +92,9 @@ QPushButton {{
     border: 2px solid transparent; border-radius: {TILE_RADIUS}px;
     font-size: 14px; font-weight: bold;
 }}
-QPushButton:hover    {{ background-color: #efe9e1; }}
-QPushButton:pressed  {{ background-color: #e6ddd3; }}
-QPushButton:focus    {{ background-color: #efe9e1; border-color: #8f7a66; }}
+QPushButton:hover    {{ background-color: #efe7db; color: #6a5b4e; }}
+QPushButton:pressed  {{ background-color: #e4dacd; color: #5e5245; }}
+QPushButton:focus    {{ background-color: #efe7db; border-color: #8f7a66; }}
 QPushButton:disabled {{ color: #c3b8ad; }}
 """
 
@@ -439,6 +439,12 @@ class TileLabel(QLabel):
     }
     TEXT_DARK = "#776e65"
     TEXT_LIGHT = "#f9f6f2"
+    # 4096 起的深琥珀色阶：与 2048 拉开明度差，同时保证白字可读
+    HIGH_COLORS = {
+        4096: (237, 176, 32),
+        8192: (227, 159, 22),
+        16384: (214, 143, 15),
+    }
 
     def __init__(self, value=0, parent=None):
         super().__init__(parent)
@@ -451,8 +457,7 @@ class TileLabel(QLabel):
         if value == 0:
             bg = QColor(COLOR_EMPTY)
         elif value > 2048:
-            level = min(230, 46 + (value // 2048) * 18)
-            bg = QColor(237, 194, level)
+            bg = QColor(*self.HIGH_COLORS.get(value, (198, 128, 12)))
         else:
             bg = QColor(*self.COLORS.get(value, (60, 58, 50)))
 
