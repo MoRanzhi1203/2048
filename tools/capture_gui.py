@@ -432,8 +432,111 @@ def v3_scene_game(w, app, settle_ms):
 SCENES = {"start": scene_start, "game": scene_game,
           "hover": scene_hover, "merge": scene_merge}
 
+
+# ---------------------------------------------------------- 第 5 版场景 ---
+def _v5_demo_board(w):
+    """给第 5 版游戏页铺一个内存展示盘面（含多位数字），不落盘"""
+    w.stack.setCurrentIndex(1)
+    if hasattr(w, "_grow_for_solver"):
+        w._grow_for_solver()
+    demo = [[2, 4, 8, 16], [128, 512, 1024, 2048], [0, 32, 64, 256], [0, 0, 0, 0]]
+    w.model.grid = [row[:] for row in demo]
+    w.model.score = 20148
+    w.model.best_score = 20148
+    w.board_view.render(w.model.grid)
+    w.refresh()
+
+
+def v5_scene_start(w, app, settle_ms):
+    w.stack.setCurrentIndex(0)
+    pump(app, max(settle_ms, 260))
+    return "start"
+
+
+def v5_scene_game(w, app, settle_ms):
+    w.stack.setCurrentIndex(1)
+    _v5_demo_board(w)
+    pump(app, max(settle_ms, 260))
+    return "game"
+
+
+def v5_scene_solver(w, app, settle_ms):
+    """求解面板“运行中”状态：真实填写面板文案与日志（不启动求解线程）"""
+    w.stack.setCurrentIndex(1)
+    _v5_demo_board(w)
+    w.solver_strategy.setCurrentIndex(1)     # Expectimax
+    w.solver_depth.setCurrentIndex(1)        # 标准
+    w.solver_mode.setCurrentIndex(0)         # 自动连走
+    w.solver_log.clear()
+    for line in (
+        "开始求解：策略=Expectimax，深度=4，模式=自动连走",
+        "第 1 步  向左  评估 1523.4  分数 20180  最大瓦片 2048  (36.2ms)",
+        "第 2 步  向下  评估 1488.9  分数 20212  最大瓦片 2048  (41.0ms)",
+        "第 3 步  向左  评估 1501.2  分数 20244  最大瓦片 2048  (38.7ms)",
+    ):
+        w._log_step(line)
+    w._set_status("状态：<b>运行中</b>　步数 <b>3</b>　当前：<b>向左</b>（评估 1501.2）",
+                  "分数 <b>20244</b>　最大瓦片 <b>2048</b>　用时 <b>0.4s</b>")
+    w.solver_start_btn.setText("停止")
+    if getattr(w, "solver_ai_button", None) is not None:
+        w.solver_ai_button.setText("停止")
+    w.solver_progress.setRange(0, 0)         # 忙态
+    pump(app, max(settle_ms, 260))
+    return "solver"
+
+
+def v5_scene_suggest(w, app, settle_ms):
+    """求解面板“单步建议”结果状态"""
+    w.stack.setCurrentIndex(1)
+    _v5_demo_board(w)
+    w.solver_strategy.setCurrentIndex(1)
+    w.solver_depth.setCurrentIndex(1)
+    w.solver_mode.setCurrentIndex(1)         # 单步建议
+    w.solver_log.clear()
+    for line in (
+        "开始求解：策略=Expectimax，深度=4，模式=单步建议",
+        "建议：向左（评估 1523.4，搜索深度 4，用时 39.5ms）",
+    ):
+        w._log_step(line)
+    w._set_status("建议方向：<b>向左</b>（评估 1523.4）",
+                  "单步建议模式：未自动走子，可自行按方向键。")
+    w.solver_progress.setRange(0, 100)
+    w.solver_progress.setValue(0)
+    pump(app, max(settle_ms, 260))
+    return "suggest"
+
+
+V5_SCENES = {"start": v5_scene_start, "game": v5_scene_game,
+             "solver": v5_scene_solver, "suggest": v5_scene_suggest}
+
+
+def v5_required_text_widgets(w, scene):
+    """第 5 版必需文字：游戏页原有控件 + 求解面板控件"""
+    items = list(required_text_widgets(w, "start" if scene == "start" else "game"))
+    for name, wdg in (
+        ("按钮-AI求解", getattr(w, "solver_ai_button", None)),
+        ("求解标题", getattr(w, "solver_title", None)),
+        ("按钮-开始求解", getattr(w, "solver_start_btn", None)),
+        ("按钮-导出结果", getattr(w, "solver_export_btn", None)),
+        ("按钮-查看结果", getattr(w, "solver_view_btn", None)),
+        ("按钮-对比", getattr(w, "solver_compare_btn", None)),
+    ):
+        if wdg is not None:
+            items.append((name, wdg))
+    return items
+
+
 # 统一入口覆盖的版本：新增 GUI 版本时在此登记（模块目录 / 模块名 / 可用场景 / 出图目录）
 VERSIONS = {
+    "v5": {
+        "label": "第 5 版 · 算法求解版",
+        "dir": "v5_pyqt_2048_solver",
+        "module": "v5_pyqt_2048_solver",
+        "entry": "v5_pyqt_2048_solver.py",
+        "scenes": V5_SCENES,
+        "texts": v5_required_text_widgets,
+        "shots": os.path.join(PROJ, "v5_pyqt_2048_solver", "screenshots"),
+    },
     "v4": {
         "label": "第 4 版 · 动画版",
         "dir": "v4_pyqt_2048_animated",
@@ -458,10 +561,11 @@ SHOT_NAME = "full_%s.png"
 # ---------------------------------------------------------------- main ---
 def main():
     ap = argparse.ArgumentParser(description="2048 统一完整窗口截图工具（跨版本）")
-    ap.add_argument("--version", default="v4", choices=sorted(VERSIONS),
-                    help="目标版本：v4=动画版，v3=MVC/撤销重做版")
+    ap.add_argument("--version", default="v5", choices=sorted(VERSIONS),
+                    help="目标版本：v5=算法求解版，v4=动画版，v3=MVC/撤销重做版")
     ap.add_argument("--scene", required=True,
-                    help="场景，可用值随版本而定：v4=start|game|hover|merge；v3=start|game")
+                    help="场景，可用值随版本而定：v5=start|game|solver|suggest；"
+                         "v4=start|game|hover|merge；v3=start|game")
     ap.add_argument("--out", default=None,
                     help="输出 PNG 路径（默认 <版本>/screenshots/full_<scene>.png）")
     ap.add_argument("--settle-ms", type=int, default=300, help="绘制完成后的稳定等待")
@@ -557,9 +661,10 @@ def main():
             r = widget_rect_in_image(title, frame, dpr)
             title_ratio = dark_ratio(img, r)
 
-        # 全部必需文字元素的对比度校验
+        # 全部必需文字元素的对比度校验（不同版本可自带文字清单）
         texts = {}
-        for name, wdg in required_text_widgets(w, args.scene):
+        text_fn = ver.get("texts") or required_text_widgets
+        for name, wdg in text_fn(w, args.scene):
             if not wdg.isVisible():
                 continue
             r = widget_rect_in_image(wdg, frame, dpr)

@@ -4,3 +4,6 @@ __pycache__/
 
 # 运行时生成的对局存档（不入库，保持仓库精简）
 game_history/
+
+# 第 5 版运行时生成的求解结果 / 导出文件（不入库）
+solver_results/

@@ -1,6 +1,6 @@
 # 2048 · Python 实现系列
 
-用 Python 从零实现 2048：从**数学模型**到**控制台版**、**带历史记录的续玩版**、再到 **PyQt5 桌面版**（MVC 架构 / 撤销重做 / 启动页 / 高 DPI 适配），并附带系列技术博客。
+用 Python 从零实现 2048：从**数学模型**到**控制台版**、**带历史记录的续玩版**、再到 **PyQt5 桌面版**（MVC 架构 / 撤销重做 / 启动页 / 高 DPI 适配）、**平滑动画版**，最后是**算法求解版**（启发式 / Expectimax 接入现有界面），并附带系列技术博客。
 
 ## 目录结构
 
@@ -18,6 +18,14 @@
 ├── v4_pyqt_2048_animated/            # 第 4 篇：PyQt5 动画版（复用第 3 篇 GameCore）
 │   ├── v4_pyqt_2048_animated.py      #   主程序（分层渲染 + 定时器插值动画）
 │   ├── screenshots/                  #   启动页 / 悬停与合并粒子 / 游戏页整窗截图
+│   └── game_history/                 #   对局存档（运行时生成）
+├── v5_pyqt_2048_solver/              # 第 6 篇：算法求解版（复用第 4 篇界面，增量扩展）
+│   ├── v5_pyqt_2048_solver.py        #   主程序（继承第 4 版 MainWindow + 底部求解面板）
+│   ├── solver_2048.py                #   求解算法核心（启发式 / Expectimax，可独立测试）
+│   ├── test_solver.py                #   测试用例（算法核心 + 界面集成，20 条）
+│   ├── 功能说明.md                    #   第 5 版功能说明文档
+│   ├── screenshots/                  #   启动页 / 游戏页 / 求解中 / 单步建议整窗截图
+│   ├── solver_results/               #   求解会话与导出文件（运行时生成）
 │   └── game_history/                 #   对局存档（运行时生成）
 ├── tools/capture_gui.py              # 统一 GUI 截图入口（见 docs/GUI_SCREENSHOT_STANDARD.md）
 ├── docs/GUI_SCREENSHOT_STANDARD.md   # GUI 截图与视觉验收规范（强制）
@@ -41,8 +49,9 @@
 | **v2** | `v2_console_2048_with_history/` | `v2_console_2048_with_history.py` | 第 2 篇 | 控制台版 + 历史记录/续玩 |
 | **v3** | `v3_pyqt_2048/` | `v3_pyqt_2048_with_history.py` | 第 3 篇 | PyQt5 桌面版（MVC + 撤销/重做） |
 | **v4** | `v4_pyqt_2048_animated/` | `v4_pyqt_2048_animated.py` | 第 4 篇 | PyQt5 动画版（复用 v3 的 GameCore） |
+| **v5** | `v5_pyqt_2048_solver/` | `v5_pyqt_2048_solver.py` | 第 6 篇 | PyQt5 算法求解版（复用 v4 界面 + 求解面板） |
 
-> 版本号顺序与系列博客一致；v4 通过 `sys.path` 复用 v3 的 `GameCore`（`from v3_pyqt_2048_with_history import GameCore`）。
+> 版本号顺序与系列博客一致；v4 通过 `sys.path` 复用 v3 的 `GameCore`（`from v3_pyqt_2048_with_history import GameCore`），v5 复用 v4 的界面与模型（`import v4_pyqt_2048_animated`）。
 
 ## 环境依赖
 
@@ -70,6 +79,12 @@ python v3_pyqt_2048/v3_pyqt_2048_with_history.py
 # 第 4 篇：PyQt5 动画版
 python v4_pyqt_2048_animated/v4_pyqt_2048_animated.py
 
+# 第 6 篇：PyQt5 算法求解版（第 5 版）
+python v5_pyqt_2048_solver/v5_pyqt_2048_solver.py
+
+# 第 5 版测试用例（算法核心 + 界面集成）
+python v5_pyqt_2048_solver/test_solver.py
+
 # AI 求解器（Expectimax 自动对局：演示模式 / 批量测试）
 python run_ai_2048.py
 
@@ -85,6 +100,7 @@ python simple_ai_demo.py
 | 桌面版 | 方向键 / `WASD` 移动；`Ctrl+Z` 撤销；`Ctrl+Y` 重做 |
 | 桌面版 · 启动页 | `Tab` 切换焦点；`回车` / `空格` 触发「继续上一局 / 开始新游戏」 |
 | 桌面版 · 动画版 | 操作同桌面版；移动带平滑动画（滑行 / 合并回弹 / 新生放大），撤销 / 重做带反向 / 正向滑行动画 |
+| 桌面版 · 算法求解版（v5） | 操作同上；游戏页点 `AI 求解`（或面板 `开始求解`）触发算法求解，支持 `启发式 / Expectimax`、`单步建议 / 自动连走`，并实时展示进度与逐步结果 |
 | AI 求解器 | 自动对局，`Ctrl+C` 中断并保存；`run_ai_2048.py` 另含批量测试模式 |
 
 桌面版启动时：若检测到未完成的对局会停在**启动页**（展示上一局分数），否则直接进入游戏页。
@@ -98,19 +114,32 @@ python simple_ai_demo.py
 - `index.json` —— 对局索引（分数、是否完成、更新时间）
 - `best_score.json` —— 历史最高分
 
+第 5 版另在 `v5_pyqt_2048_solver/solver_results/` 下保存求解结果：
+
+- `sessions.json` —— 历史求解会话（策略、深度、模式、逐步结果、最终分数等）
+- `exports/<id>.json` / `<id>.csv` —— 单次会话的结构化导出
+- `exports/comparison_*.csv` —— 多会话对比导出
+
 ## 界面预览（桌面版 · 动画版）
 
 | 启动页 | 合并粒子 | 游戏页 |
 | --- | --- | --- |
 | ![启动页](v4_pyqt_2048_animated/screenshots/full_start.png) | ![合并粒子](v4_pyqt_2048_animated/screenshots/full_merge.png) | ![游戏页](v4_pyqt_2048_animated/screenshots/full_game.png) |
 
+## 界面预览（第 5 版 · 算法求解版）
+
+| 游戏页（含求解面板） | 求解中（实时状态） | 单步建议 |
+| --- | --- | --- |
+| ![V5 游戏页](v5_pyqt_2048_solver/screenshots/full_game.png) | ![V5 求解中](v5_pyqt_2048_solver/screenshots/full_solver.png) | ![V5 单步建议](v5_pyqt_2048_solver/screenshots/full_suggest.png) |
+
 ## 开发规范（强制）
 
 - **GUI 截图规范**：[docs/GUI_SCREENSHOT_STANDARD.md](docs/GUI_SCREENSHOT_STANDARD.md) —— 正式截图必须是含 Windows 原生标题栏的完整窗口、不得丢失任何文字，并通过 `CAPTURE/STRUCTURE/TEXT/VISUAL` 门禁；未验证标记 `UNVERIFIED`，不合格不得交付。项目级 Agent 规则见 [AGENTS.md](AGENTS.md) 与 [.trae/rules/project_rules.md](.trae/rules/project_rules.md)。
-- **统一截图入口**：`python tools/capture_gui.py --version v4|v3 --scene <scene>`，正式图输出到各版本 `screenshots/full_<scene>.png`。
+- **统一截图入口**：`python tools/capture_gui.py --version v5|v4|v3 --scene <scene>`，正式图输出到各版本 `screenshots/full_<scene>.png`。
 
 ```bash
-python tools/capture_gui.py --version v4 --scene start   # start | game | hover | merge
+python tools/capture_gui.py --version v5 --scene game    # v5 支持 start | game | solver | suggest
+python tools/capture_gui.py --version v4 --scene start   # v4 支持 start | game | hover | merge
 python tools/capture_gui.py --version v3 --scene game    # v3 支持 start | game
 ```
 
@@ -128,3 +157,4 @@ python tools/capture_gui.py --version v3 --scene game    # v3 支持 start | gam
 - `ai_solver_2048.py`、`run_ai_2048.py`、`simple_ai_demo.py` 为 **Expectimax 自动求解器**，可直接运行：`python run_ai_2048.py`（演示 / 批量测试）或 `python simple_ai_demo.py`（固定步数演示）。求解器复用控制台版的对局与存档接口，对局同样落盘到 `v2_console_2048_with_history/game_history/`。
 - 桌面版的界面为纯视觉优化（布局 / 配色 / 字号 / 间距 / 圆角 / 控件状态），不影响游戏规则、分数与存档逻辑。
 - 动画版（第 4 篇）直接复用第 3 篇的 `GameCore`，只替换 View 层并加入平滑动画；使用自己的 `v4_pyqt_2048_animated/game_history/` 存档目录。
+- 算法求解版（v5）在第 4 版界面上**增量**接入求解能力：启动页与第 4 版逐像素一致，仅游戏页向下扩展一块求解面板；求解在后台线程执行（带时间预算与异常兜底），支持 `启发式 / Expectimax`、`单步建议 / 自动连走`，并提供结果导出、查看与对比。详见 [v5_pyqt_2048_solver/功能说明.md](v5_pyqt_2048_solver/功能说明.md)。
