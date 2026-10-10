@@ -1681,14 +1681,21 @@ class MainWindow(QMainWindow):
                         jitter=HOVER_SPAWN_JITTER)
 
     # ---------------- 刷新视图 ----------------
+    def _sync_history_buttons(self):
+        """撤销/重做按钮的视觉状态只跟随历史栈，与动画状态彻底解耦。
+
+        动画期间不再切换 enabled，因此连续滑动时不会出现“禁用态颜色反复闪烁”；
+        动画期间的操作保护由 on_move / on_undo / on_redo 的入口检查负责。
+        """
+        self.undo_button.setEnabled(self.model.can_undo())
+        self.redo_button.setEnabled(self.model.can_redo())
+
     def refresh(self):
         if not self.board_view.is_animating():
             self.board_view.render(self.model.grid)
         self._render_score(self.score_label, "分数", self.model.score)
         self._render_score(self.best_label, "最高分", self.model.best_score)
-        busy = self.board_view.is_animating()
-        self.undo_button.setEnabled(self.model.can_undo() and not busy)
-        self.redo_button.setEnabled(self.model.can_redo() and not busy)
+        self._sync_history_buttons()
 
     # ---------------- 键盘事件 ----------------
     def keyPressEvent(self, event):
@@ -1717,14 +1724,13 @@ class MainWindow(QMainWindow):
     # ---------------- 交互回调 ----------------
     def on_move(self, direction):
         if self.model.game_over or self.board_view.is_animating():
-            return                      # 动画进行中忽略输入，避免状态错乱
+            return                      # 动画进行中忽略输入（保护历史状态；不影响按钮外观）
         if not self.model.apply_move(direction):
             return
 
         self._render_score(self.score_label, "分数", self.model.score)
         self._render_score(self.best_label, "最高分", self.model.best_score)
-        self.undo_button.setEnabled(False)
-        self.redo_button.setEnabled(False)
+        self._sync_history_buttons()         # 历史已变化：立即更新按钮外观（无动画耦合）
         self.board_view.animate_move(self.model.grid, self.model.last_transitions,
                                      self.model.last_spawn)
 
@@ -1760,26 +1766,24 @@ class MainWindow(QMainWindow):
 
     def on_undo(self):
         if self.board_view.is_animating():
-            return
+            return                      # 动画进行中忽略本次撤销（不改变棋盘与历史栈）
         info = self.model.undo()
         if not info:
             return
         self._render_score(self.score_label, "分数", self.model.score)
         self._render_score(self.best_label, "最高分", self.model.best_score)
-        self.undo_button.setEnabled(False)
-        self.redo_button.setEnabled(False)
+        self._sync_history_buttons()
         self.board_view.animate_undo(self.model.grid, info["transitions"], info["spawn"])
 
     def on_redo(self):
         if self.board_view.is_animating():
-            return
+            return                      # 动画进行中忽略本次重做（不改变棋盘与历史栈）
         info = self.model.redo()
         if not info:
             return
         self._render_score(self.score_label, "分数", self.model.score)
         self._render_score(self.best_label, "最高分", self.model.best_score)
-        self.undo_button.setEnabled(False)
-        self.redo_button.setEnabled(False)
+        self._sync_history_buttons()
         self.board_view.animate_move(self.model.grid, info["transitions"], info["spawn"])
 
     # ---------------- 启动流程 ----------------
