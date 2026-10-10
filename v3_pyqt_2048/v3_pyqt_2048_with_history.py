@@ -774,13 +774,20 @@ class MainWindow(QMainWindow):
         return button
 
     # ---------------- 刷新视图 ----------------
+    def _sync_history_buttons(self):
+        """撤销/重做按钮的视觉状态只跟随历史栈（与第 4 版同名同职责，便于两版一致维护）。
+
+        本版没有滑动动画，按钮状态天然与动画解耦；本方法只做“历史 → 按钮外观”的同步。
+        """
+        self.undo_button.setEnabled(self.model.can_undo())
+        self.redo_button.setEnabled(self.model.can_redo())
+
     def refresh(self):
         """把 Model 的最新状态同步到 View 与分数/按钮状态"""
         self.board_view.render(self.model.grid)
         self._render_score(self.score_label, "分数", self.model.score)
         self._render_score(self.best_label, "最高分", self.model.best_score)
-        self.undo_button.setEnabled(self.model.can_undo())
-        self.redo_button.setEnabled(self.model.can_redo())
+        self._sync_history_buttons()
 
     # ---------------- 键盘事件（Controller 的核心） ----------------
     def keyPressEvent(self, event):
