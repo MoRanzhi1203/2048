@@ -347,6 +347,7 @@ class AnimatedGameCore(GameCore):
 PARTICLE_MAX = 240                 # 同屏粒子上限（主碎片 + 高光 合计）
 PARTICLE_CULL_MARGIN = 80          # 左右/下方飞出可视区多少像素后剔除
 PARTICLE_CULL_MARGIN_TOP = 180     # 上方留更大余量：上抛的粒子可能回落，避免误剔
+PARTICLE_DAMPING_REF_DT = FRAME_INTERVAL / 1000.0   # 阻尼基准步长：60 FPS 下与旧的“每帧乘数”完全等价
 PARTICLE_PRESETS = {
     "click_tile":  {"main": 16, "accent": 10, "speed": (60, 190),  "life": (0.30, 0.60),
                     "size_main": (5, 9), "size_accent": (2, 4),
@@ -363,14 +364,17 @@ PARTICLE_PRESETS = {
     "button":      {"main": 4,  "accent": 8,  "speed": (40, 120),  "life": (0.25, 0.45),
                     "size_main": (5, 9), "size_accent": (2, 4),
                     "gravity": 700.0, "damping": 0.970},
-    # 启动页悬停（持续发射，此处为“每批”数量）：暖金碎片 + 米白高光，每批 4 颗
-    "hover_continue":  {"main": 2, "accent": 2, "speed": (50, 130),  "life": (0.35, 0.60),
-                        "size_main": (4, 7), "size_accent": (2, 4),
-                        "gravity": 620.0, "damping": 0.965, "up_bias": -40.0},
-    # 启动页悬停（持续发射）：浅暖棕碎片 + 米白高光，每批 3 颗，更柔和
-    "hover_new_game":  {"main": 1, "accent": 2, "speed": (35, 90),   "life": (0.28, 0.45),
-                        "size_main": (2, 4), "size_accent": (2, 4),
-                        "gravity": 520.0, "damping": 0.965, "up_bias": -20.0},
+    # 启动页悬停（持续发射，此处为“每批”数量）：暖金碎片 + 米白高光，每批 6 颗
+    # 指数阻尼 k=2.2s⁻¹、弱重力 → 快速扩散后平缓漂浮，扩散范围明显（约 90～130px）
+    "hover_continue":  {"main": 3, "accent": 3, "speed": (180, 300), "life": (0.50, 0.75),
+                        "size_main": (5, 7), "size_accent": (3, 4),
+                        "gravity": 60.0, "damping_k": 2.2, "up_bias": -24.0},
+    # 启动页悬停（持续发射）：浅暖棕碎片 + 米白高光，每批 5 颗；阻尼略强、更柔和（约 70～95px）
+    # 浅色碎片加细暖棕描边提升与米色背景的对比
+    "hover_new_game":  {"main": 2, "accent": 3, "speed": (165, 255), "life": (0.40, 0.60),
+                        "size_main": (3, 5), "size_accent": (2, 4),
+                        "gravity": 40.0, "damping_k": 2.4, "up_bias": -18.0,
+                        "outline_shards": True},
 }
 
 # 启动页两个按钮的持续悬停配置：(主色, 高光, 辅助色) —— 主碎片在主色/辅助色间交替
@@ -378,6 +382,11 @@ HOVER_CONTINUE_COLORS = ("#E8C570", "#FFF4D6", "#C49B65")   # 暖金 + 米白 + 
 HOVER_NEW_GAME_COLORS = ("#B8A392", "#FFF8EE", "#E8D8C6")   # 浅暖棕 + 米白 + 米色
 HOVER_CONTINUE_INTERVAL = 120      # 持续发射间隔（ms），落在 100～140
 HOVER_NEW_GAME_INTERVAL = 180      # 持续发射间隔（ms），落在 160～200
+# 混合发射位置：一部分粒子在鼠标附近（带抖动），其余在按钮安全区内随机
+HOVER_SPAWN_AREA_RATIO = 0.4       # 40% 从按钮内部随机位置生成，60% 在鼠标附近
+HOVER_SPAWN_JITTER = 10.0          # 鼠标附近生成时的位置扰动半径（px）
+HOVER_AREA_PAD_X = 0.18            # 安全区左右内边距比例（相对按钮宽度）
+HOVER_AREA_PAD_Y = 0.30            # 安全区上下内边距比例（相对按钮高度）
 
 # 粒子配色映射：main = 主碎片（沿用数字方块自身背景色），accent = 辅助高光（同色系提亮）
 PARTICLE_COLORS = {
@@ -414,18 +423,18 @@ class Particle:
     """一颗粒子（用 __slots__ 降低内存与属性访问开销）"""
 
     __slots__ = ("x", "y", "vx", "vy", "life", "max_life", "size", "shape",
-                 "r", "g", "b", "angle", "spin", "gravity", "damping", "outlined")
+                 "r", "g", "b", "angle", "spin", "gravity", "damping_k", "outlined")
 
     def __init__(self, x, y, vx, vy, life, size, shape, rgb, angle, spin,
-                 gravity, damping, outlined):
+                 gravity, damping_k, outlined):
         self.x, self.y = x, y
         self.vx, self.vy = vx, vy
         self.life = self.max_life = life
         self.size, self.shape = size, shape
         self.r, self.g, self.b = rgb
         self.angle, self.spin = angle, spin
-        self.gravity, self.damping = gravity, damping
-        self.outlined = outlined          # 高光小圆点带细暖棕描边
+        self.gravity, self.damping_k = gravity, damping_k   # k 单位 s⁻¹：v(t)=v0·exp(-k·t)
+        self.outlined = outlined          # 细暖棕描边（高光小圆点 / 浅色碎片）
 
 
 class ParticlePreset:
@@ -441,7 +450,13 @@ class ParticlePreset:
         self.size_main = cfg["size_main"]
         self.size_accent = cfg["size_accent"]
         self.gravity = cfg["gravity"]
-        self.damping = cfg["damping"]
+        if "damping_k" in cfg:
+            # 新写法：直接给每秒阻尼系数 k（s⁻¹）
+            self.damping_k = float(cfg["damping_k"])
+        else:
+            # 兼容旧写法“每帧乘数”：换算为等效的每秒阻尼系数（60FPS 下完全等价）
+            self.damping_k = -math.log(cfg["damping"]) / PARTICLE_DAMPING_REF_DT
+        self.outline_shards = bool(cfg.get("outline_shards", False))
         self.up_bias = cfg.get("up_bias", 0.0)
 
 
@@ -498,18 +513,39 @@ class ParticleEngine:
                      int(max_x - min_x) + 2 * margin + 1,
                      int(max_y - min_y) + 2 * margin + 1)
 
-    def emit(self, preset_name, x, y, main_rgb, accent_rgb):
-        """在 (x, y) 喷出“主碎片 + 辅助高光”两层粒子；颜色可为 QColor 或 (r, g, b)"""
+    def emit(self, preset_name, x, y, main_rgb, accent_rgb,
+             area=None, area_ratio=0.0, jitter=0.0):
+        """喷出“主碎片 + 辅助高光”两层粒子；颜色可为 QColor 或 (r, g, b)。
+
+        发射位置采用混合策略：
+        - 默认在鼠标点 (x, y) 附近，并附加 jitter 抖动避免同点堆叠；
+        - 当给出 area（覆盖层坐标矩形）且 area_ratio>0 时，按该比例把一部分粒子
+          改放到 area 内的随机位置，使粒子覆盖整个按钮而非只围着鼠标。
+        """
         preset = get_preset(preset_name)
         main_rgb = _as_rgb(main_rgb)
         accent_rgb = _as_rgb(accent_rgb)
         for _ in range(preset.main):
-            self._spawn(x, y, preset, main_rgb, preset.size_main, "shard", False)
+            ox, oy = self._pick_origin(x, y, area, area_ratio, jitter)
+            self._spawn(ox, oy, preset, main_rgb, preset.size_main, "shard",
+                        preset.outline_shards)
         for _ in range(preset.accent):
-            self._spawn(x, y, preset, accent_rgb, preset.size_accent, "dot", True)
+            ox, oy = self._pick_origin(x, y, area, area_ratio, jitter)
+            self._spawn(ox, oy, preset, accent_rgb, preset.size_accent, "dot", True)
         overflow = len(self.particles) - self.max_particles
         if overflow > 0:                       # 上限保护：丢弃最旧的
             del self.particles[:overflow]
+
+    @staticmethod
+    def _pick_origin(x, y, area, area_ratio, jitter):
+        """决定一颗粒子的出生点（覆盖层坐标）"""
+        if area is not None and area_ratio > 0.0 and random.random() < area_ratio:
+            return (random.uniform(area.left(), area.right()),
+                    random.uniform(area.top(), area.bottom()))
+        if jitter > 0.0:
+            return (x + random.uniform(-jitter, jitter),
+                    y + random.uniform(-jitter, jitter))
+        return (x, y)
 
     def _spawn(self, x, y, preset, rgb, size_range, shape, outlined):
         angle = random.uniform(0.0, 2.0 * math.pi)
@@ -521,21 +557,28 @@ class ParticleEngine:
             random.uniform(*preset.life), random.uniform(*size_range),
             shape, rgb,
             random.uniform(0.0, 2.0 * math.pi), random.uniform(-8.0, 8.0),
-            preset.gravity, preset.damping, outlined))
+            preset.gravity, preset.damping_k, outlined))
 
     def step(self, dt):
-        """原地推进（不新建列表），并剔除已飞出可视区、不会再回来的粒子"""
+        """原地推进（不新建列表），并剔除已飞出可视区、不会再回来的粒子。
+
+        阻尼为指数形式 v(t) = v0·exp(-k·t)，按“真实经过时间 dt（秒）”计算，
+        与帧率无关；旧预设的“每帧乘数”已在 ParticlePreset 中换算为等效 k，
+        因此其它预设的运动语义保持不变。
+        """
         parts = self.particles
         bounds = self._bounds
+        step_dt = dt if dt > 0.0 else 0.0
         write = 0
         for read in range(len(parts)):
             p = parts[read]
             p.life -= dt
             if p.life <= 0.0:
                 continue
+            decay = math.exp(-p.damping_k * step_dt)   # 指数阻尼
             p.vy += p.gravity * dt
-            p.vx *= p.damping
-            p.vy *= p.damping
+            p.vx *= decay
+            p.vy *= decay
             p.x += p.vx * dt
             p.y += p.vy * dt
             p.angle += p.spin * dt
@@ -565,7 +608,12 @@ class ParticleEngine:
             color.setRgb(p.r, p.g, p.b, int(255 * alpha))
             painter.setBrush(color)
             if p.shape == "shard":                             # 主碎片：圆角方片
-                painter.setPen(Qt.NoPen)
+                if p.outlined:                                 # 浅色碎片：细暖棕描边提对比
+                    color.setRgb(outline[0], outline[1], outline[2], int(200 * alpha))
+                    pen.setColor(color)
+                    painter.setPen(pen)
+                else:
+                    painter.setPen(Qt.NoPen)
                 painter.save()
                 painter.translate(p.x, p.y)
                 painter.rotate(math.degrees(p.angle))
@@ -595,11 +643,20 @@ class ParticleOverlay(QWidget):
         self._timer.timeout.connect(self._tick)
 
     # ---- 供棋盘 / 按钮上报事件：把控件局部坐标换算到本层坐标 ----
-    def emit_from(self, widget, x, y, main_rgb, accent_rgb, preset_name):
+    def emit_from(self, widget, x, y, main_rgb, accent_rgb, preset_name,
+                  area_rect=None, area_ratio=0.0, jitter=0.0):
         # 覆盖层与棋盘/按钮是同窗内的“兄弟分支”，mapTo 只接受祖先，
         # 因此统一走“全局坐标”中转（对嵌套层级、高 DPI 都安全）。
         gp = self.mapFromGlobal(widget.mapToGlobal(QPoint(int(round(x)), int(round(y)))))
-        self.engine.emit(preset_name, gp.x(), gp.y(), main_rgb, accent_rgb)
+        # 按钮内部的安全区矩形同样经全局坐标换算到覆盖层坐标，避免坐标错位
+        area = None
+        if area_rect is not None and area_ratio > 0.0:
+            # QRectF.topLeft() 返回 QPointF，需转成 QPoint 才能喂给 mapToGlobal
+            tl = self.mapFromGlobal(widget.mapToGlobal(area_rect.topLeft().toPoint()))
+            br = self.mapFromGlobal(widget.mapToGlobal(area_rect.bottomRight().toPoint()))
+            area = QRectF(tl, br).normalized()
+        self.engine.emit(preset_name, gp.x(), gp.y(), main_rgb, accent_rgb,
+                         area=area, area_ratio=area_ratio, jitter=jitter)
         if not self._timer.isActive():
             self._timer.start()
 
@@ -1385,9 +1442,16 @@ class MainWindow(QMainWindow):
             return
         if layer.is_saturated():                  # 达到同屏上限：优先削减新的悬停粒子
             return
+        # 混合发射：鼠标附近（带抖动）60% + 按钮安全区内随机 40%
+        w, h = button.width(), button.height()
+        area = QRectF(HOVER_AREA_PAD_X * w, HOVER_AREA_PAD_Y * h,
+                      w * (1.0 - 2 * HOVER_AREA_PAD_X),
+                      h * (1.0 - 2 * HOVER_AREA_PAD_Y))
         main = QColor(shard_pool[self._hover_shard_toggle % len(shard_pool)])
         self._hover_shard_toggle += 1
-        layer.emit_from(button, x, y, main, QColor(accent_hex), preset_name)
+        layer.emit_from(button, x, y, main, QColor(accent_hex), preset_name,
+                        area_rect=area, area_ratio=HOVER_SPAWN_AREA_RATIO,
+                        jitter=HOVER_SPAWN_JITTER)
 
     # ---------------- 刷新视图 ----------------
     def refresh(self):
