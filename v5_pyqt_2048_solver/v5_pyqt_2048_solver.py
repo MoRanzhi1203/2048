@@ -498,14 +498,14 @@ class SolverMainWindow(v4.MainWindow):
         row1.addWidget(title)
         row1.addStretch()
         self.solver_strategy = self._make_combo(
-            [(solver.STRATEGIES[k], k) for k in ("heuristic", "expectimax")], 86)
+            [(solver.STRATEGIES[k], k) for k in solver.STRATEGY_ORDER], 106)
         self.solver_depth = self._make_combo(
-            [(solver.DEPTH_PRESETS[k]["label"], k) for k in ("fast", "normal", "strong")], 66)
+            [(solver.PRESET_LABELS[k], k) for k in solver.PRESET_ORDER], 66)
         self.solver_depth.setCurrentIndex(1)
         self.solver_mode = self._make_combo([("自动连走", "auto"), ("单步建议", "single")], 84)
-        self.solver_strategy.setCurrentIndex(1)          # 默认 Expectimax
+        self.solver_strategy.setCurrentIndex(solver.STRATEGY_ORDER.index("expectimax"))  # 默认 Expectimax
         self.solver_strategy.currentIndexChanged.connect(self._on_strategy_changed)
-        self._on_strategy_changed()                       # 同步“深度”可用状态
+        self._on_strategy_changed()                       # 同步“强度”可用状态
         row1.addWidget(self.solver_strategy)
         row1.addWidget(self.solver_depth)
         row1.addWidget(self.solver_mode)
@@ -678,9 +678,8 @@ class SolverMainWindow(v4.MainWindow):
         return combo
 
     def _on_strategy_changed(self):
-        # 启发式是单步贪心，深度无意义 —— 置灰但不改变其它控件
-        is_exp = self.solver_strategy.currentData() == "expectimax"
-        self.solver_depth.setEnabled(is_exp)
+        # 仅部分策略有“强度”参数（贪心模拟 / Expectimax / MCTS），其余置灰
+        self.solver_depth.setEnabled(solver.has_presets(self.solver_strategy.currentData()))
 
     # ---------------- 状态文案 ----------------
     def _set_status(self, line1, line2="", error=False):
@@ -738,13 +737,12 @@ class SolverMainWindow(v4.MainWindow):
 
         strategy = self.solver_strategy.currentData()
         preset = self.solver_depth.currentData()
-        depth = solver.DEPTH_PRESETS[preset]["depth"] if strategy == "expectimax" else 1
-        time_limit = solver.DEPTH_PRESETS[preset]["time_limit"]
-        self._solver_config = {"strategy": strategy, "depth": depth, "time_limit": time_limit}
+        self._solver_config = solver.build_config(strategy, preset)
         self._solver_mode = self.solver_mode.currentData()
 
-        self._session = new_session(strategy, solver.DEPTH_PRESETS[preset]["label"],
-                                    time_limit, self._solver_mode)
+        self._session = new_session(strategy, solver.PRESET_LABELS.get(preset, preset),
+                                    self._solver_config.get("time_limit", 0.0),
+                                    self._solver_mode)
         self._session["_start_ts"] = time.time()
         self.solver_log.clear()
         self._solver_running = True
@@ -752,7 +750,7 @@ class SolverMainWindow(v4.MainWindow):
         self._update_solver_buttons()
         self._log_step("开始求解：策略=%s，%s，模式=%s"
                        % (solver.STRATEGIES[strategy],
-                          ("深度=%d" % depth) if strategy == "expectimax" else "单步贪心",
+                          solver.describe_config(self._solver_config),
                           "自动连走" if self._solver_mode == "auto" else "单步建议"))
         self._render_running_status()
         self._request_decision()

@@ -113,6 +113,88 @@ class SolverCoreTest(unittest.TestCase):
         self.assertIsNotNone(result['error'])
         self.assertIsNone(result['best_direction'])
 
+    # ---- 五类策略统一检查（启发式 / rollout / Expectimax / MCTS / RL）----
+    def test_all_strategies_return_legal_move(self):
+        grid = [[2, 4, 8, 16], [32, 64, 128, 256], [0, 512, 1024, 0], [0, 0, 2, 4]]
+        legal = solver.legal_moves(grid)
+        self.assertTrue(legal)
+        for strategy in ('heuristic', 'rollout', 'expectimax', 'mcts'):
+            cfg = solver.build_config(strategy, 'fast')
+            cfg['time_limit'] = 0.15
+            result = solver.solve(grid, **cfg)
+            self.assertIsNone(result['error'], strategy)
+            self.assertIn(result['best_direction'], legal, strategy)
+            self.assertEqual(result['strategy'], strategy)
+
+    def test_rollout_deterministic(self):
+        grid = [[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]]
+        a = solver.solve(grid, strategy='rollout', rollouts=12, rollout_depth=12)
+        b = solver.solve(grid, strategy='rollout', rollouts=12, rollout_depth=12)
+        self.assertEqual(a['best_direction'], b['best_direction'])
+
+    def test_mcts_deterministic_and_bounded(self):
+        grid = [[2, 4, 8, 16], [0, 0, 32, 64], [0, 0, 0, 0], [0, 0, 2, 0]]
+        start = time.time()
+        a = solver.solve(grid, strategy='mcts', simulations=200, time_limit=0.2)
+        self.assertLess(time.time() - start, 2.0)
+        self.assertIn(a['best_direction'], solver.legal_moves(grid))
+        b = solver.solve(grid, strategy='mcts', simulations=200, time_limit=0.2)
+        self.assertEqual(a['best_direction'], b['best_direction'])
+
+    def test_expectimax_pruning_deterministic_and_effective(self):
+        grid = [[2, 4, 8, 16], [32, 64, 0, 0], [0, 0, 0, 0], [0, 2, 0, 0]]
+        on = solver.solve(grid, strategy='expectimax', depth=4, time_limit=0.5, prune=True)
+        on2 = solver.solve(grid, strategy='expectimax', depth=4, time_limit=0.5, prune=True)
+        off = solver.solve(grid, strategy='expectimax', depth=4, time_limit=0.5, prune=False)
+        self.assertEqual(on['best_direction'], on2['best_direction'])       # 剪枝后仍确定
+        self.assertIn(on['best_direction'], solver.legal_moves(grid))
+        self.assertIn(off['best_direction'], solver.legal_moves(grid))
+        self.assertTrue(on.get('pruned'))
+        self.assertGreaterEqual(on.get('tt_entries', 0), 1)                 # 转置表生效
+
+    def test_expectimax_pruning_timeout_still_returns_move(self):
+        grid = [[2, 4, 8, 16], [32, 64, 128, 256], [512, 1024, 2, 4], [0, 0, 8, 16]]
+        start = time.time()
+        result = solver.solve(grid, strategy='expectimax', depth=8, time_limit=0.12)
+        self.assertLess(time.time() - start, 1.5)
+        self.assertIn(result['best_direction'], solver.legal_moves(grid))
+
+    def test_rl_without_model_reports_error(self):
+        import os as _os
+        grid = [[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+        result = solver.solve(grid, strategy='rl',
+                              model_path=_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                                       'no_such_model.npz'))
+        self.assertIsNotNone(result['error'])
+        self.assertIn('模型', result['error'])
+
+    def test_rl_with_model_returns_legal_move(self):
+        import os as _os
+        path = solver.RL_MODEL_PATH
+        if not _os.path.exists(path):
+            self.skipTest('尚无 RL 模型（请先运行 rl_2048.py 训练）')
+        grid = [[2, 4, 8, 16], [32, 64, 128, 256], [0, 512, 0, 0], [0, 0, 2, 0]]
+        a = solver.solve(grid, strategy='rl')
+        b = solver.solve(grid, strategy='rl')
+        self.assertIsNone(a['error'])
+        self.assertIn(a['best_direction'], solver.legal_moves(grid))
+        self.assertEqual(a['best_direction'], b['best_direction'])          # 确定性
+
+    def test_config_api(self):
+        for strategy in solver.STRATEGY_ORDER:
+            self.assertIn(strategy, solver.STRATEGIES)
+            cfg = solver.build_config(strategy, 'normal')
+            self.assertEqual(cfg['strategy'], strategy)
+            self.assertTrue(solver.describe_config(cfg))
+        self.assertTrue(solver.has_presets('mcts'))
+        self.assertFalse(solver.has_presets('heuristic'))
+        self.assertFalse(solver.has_presets('rl'))
+
+    def test_unknown_strategy_returns_error(self):
+        grid = [[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+        result = solver.solve(grid, strategy='not-a-strategy')
+        self.assertIsNotNone(result['error'])
+
 
 # =====================================================================
 # 二、界面集成
