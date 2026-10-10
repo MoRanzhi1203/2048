@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushBu
                              QMessageBox, QVBoxLayout, QHBoxLayout, QStackedWidget,
                              QFrame, QGraphicsDropShadowEffect)
 from PyQt5.QtCore import Qt, QTimer, QRectF, QRect, QPoint, QPointF, pyqtSignal, QEvent
-from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen, QIcon, QCursor
+from PyQt5.QtGui import QColor, QFont, QPainter, QPixmap, QPen, QIcon, QCursor, QFontMetrics
 
 # =====================================================================
 # 复用第 3 篇的 Model（GameCore）：动画版不改动任何棋盘逻辑
@@ -129,6 +129,19 @@ SP_CARD_W, SP_CARD_H = 334, 126
 SP_BTN_W, SP_BTN_H = 328, 48
 SP_BTN_RADIUS = 10
 SP_CARD_RADIUS = 13
+
+# 上一局信息卡内部规格（尺寸/配色/圆角/阴影均由上面的常量与 QSS 保持不变）
+SP_CARD_PAD_X = 20                 # 卡片左右内边距（20～24）
+SP_CARD_VALUE_SIZE = 28            # 分数数字字号（27～28）
+SP_CARD_VALUE_MIN_SIZE = 18        # 长数字受控缩放的兜底最小字号
+SP_CARD_CAPTION_SIZE = 12          # “分数 / 最高分”标签字号
+SP_CARD_TITLE_SIZE = 12            # 卡片标题字号（12～13）
+SP_CARD_TITLE_COLOR = "#837468"    # 卡片标题颜色
+SP_CARD_LABEL_COLOR = "#8F8175"    # 分数 / 最高分标签颜色
+SP_CARD_DIVIDER_W = 1              # 中央分隔线宽度
+SP_CARD_DIVIDER_H = 44             # 中央分隔线高度（42～46）
+# 单列可用宽度：由卡片宽度、边框、左右内边距与中央分隔线推导（布局改动时同步更新）
+SP_CARD_COLUMN_W = (SP_CARD_W - 2 - 2 * SP_CARD_PAD_X - SP_CARD_DIVIDER_W) // 2
 
 # 软件品牌标识：仅用于窗口标题栏 / 任务栏图标（矢量绘制，无外部资源）
 # 2×2 小方块，四格数字连读即 “2048”：(字符, 底色, 字色)
@@ -1263,10 +1276,10 @@ class MainWindow(QMainWindow):
         return page
 
     def _build_last_game_card(self):
-        """浅米色圆角信息卡：顶部标题（带装饰线）+ 分数 / 最高分双列（中间细竖线）"""
+        """浅米色圆角信息卡：顶部标题（带装饰线）+ 分数 / 最高分等宽双列（居中 1px 竖线）"""
         card = QFrame()
         card.setObjectName("infoCard")
-        card.setFixedSize(SP_CARD_W, SP_CARD_H)
+        card.setFixedSize(SP_CARD_W, SP_CARD_H)      # 卡片外框尺寸保持不变
         card.setStyleSheet(
             f"#infoCard {{ background-color: {SP_CARD_BG};"
             f" border: 1px solid {SP_LINE}; border-radius: {SP_CARD_RADIUS}px; }}")
@@ -1277,13 +1290,13 @@ class MainWindow(QMainWindow):
         card.setGraphicsEffect(card_shadow)
 
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 13, 18, 14)
+        card_layout.setContentsMargins(SP_CARD_PAD_X, 13, SP_CARD_PAD_X, 14)
         card_layout.setSpacing(0)
 
         self.last_game_caption = QLabel("上一局记录")
         self.last_game_caption.setAlignment(Qt.AlignCenter)
-        self.last_game_caption.setStyleSheet(
-            f"color: {SP_SUBTEXT}; font-size: 12px; font-weight: 600;")
+        self.last_game_caption.setFont(self._card_title_font())
+        self.last_game_caption.setStyleSheet(f"color: {SP_CARD_TITLE_COLOR};")
 
         caption_row = QHBoxLayout()
         caption_row.setSpacing(8)
@@ -1295,19 +1308,40 @@ class MainWindow(QMainWindow):
         card_layout.addLayout(caption_row)
         card_layout.addSpacing(11)
 
-        score_box, self.last_score_value = self._make_stat("分数")
-        best_box, self.last_best_value = self._make_stat("最高分")
+        # 左右等宽统计列：两列 stretch 相同 → 宽度一致；中央竖线固定 1px 且严格居中，
+        # 不随数字长度变化而偏移（不依赖硬编码坐标）
+        score_col, self.last_score_value = self._make_stat("分数")
+        best_col, self.last_best_value = self._make_stat("最高分")
         stats = QHBoxLayout()
+        stats.setContentsMargins(0, 0, 0, 0)
         stats.setSpacing(0)
-        stats.addStretch()
-        stats.addLayout(score_box)
-        stats.addSpacing(24)
-        stats.addWidget(self._make_divider())
-        stats.addSpacing(24)
-        stats.addLayout(best_box)
-        stats.addStretch()
+        stats.addWidget(score_col, 1)
+        stats.addWidget(self._make_divider(), 0, Qt.AlignVCenter)
+        stats.addWidget(best_col, 1)
         card_layout.addLayout(stats)
         return card
+
+    # ---- 信息卡字体（统一用 QFont 设置字号/字重，家族沿用应用当前 UI 字体） ----
+    @staticmethod
+    def _card_value_font(size=SP_CARD_VALUE_SIZE):
+        font = QFont()
+        font.setPixelSize(int(size))
+        font.setWeight(QFont.DemiBold)               # 600 Semibold
+        return font
+
+    @staticmethod
+    def _card_caption_font():
+        font = QFont()
+        font.setPixelSize(SP_CARD_CAPTION_SIZE)
+        font.setWeight(QFont.Medium)                 # 500
+        return font
+
+    @staticmethod
+    def _card_title_font():
+        font = QFont()
+        font.setPixelSize(SP_CARD_TITLE_SIZE)
+        font.setWeight(QFont.Medium)                 # 500
+        return font
 
     @staticmethod
     def _make_rule():
@@ -1320,25 +1354,52 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _make_divider():
-        """分数与最高分之间的细竖线"""
+        """分数与最高分之间的 1px 竖向分隔线"""
         line = QFrame()
-        line.setFixedSize(1, 40)
+        line.setFixedSize(SP_CARD_DIVIDER_W, SP_CARD_DIVIDER_H)
         line.setAttribute(Qt.WA_StyledBackground, True)
         line.setStyleSheet(f"background-color: {SP_LINE}; border: none;")
         return line
 
     def _make_stat(self, caption):
-        box = QVBoxLayout()
-        box.setSpacing(1)
+        """一列统计（等宽容器）：数值与标签均水平居中，块整体垂直居中"""
+        col = QWidget()
+        box = QVBoxLayout(col)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(4)                            # 数值与标签间距 4px
+        box.addStretch()
+
         value = QLabel("0")
         value.setAlignment(Qt.AlignCenter)
-        value.setStyleSheet(f"color: {SP_TEXT}; font-size: 25px; font-weight: 700;")
+        value.setFont(self._card_value_font())
+        value.setStyleSheet(f"color: {SP_TEXT};")
+
         cap = QLabel(caption)
         cap.setAlignment(Qt.AlignCenter)
-        cap.setStyleSheet(f"color: {SP_SUBTEXT}; font-size: 11px;")
+        cap.setFont(self._card_caption_font())
+        cap.setStyleSheet(f"color: {SP_CARD_LABEL_COLOR};")
+
         box.addWidget(value)
         box.addWidget(cap)
-        return box, value
+        box.addStretch()
+        return col, value
+
+    def _fit_stat_value(self, label, text):
+        """写入数值文本；过长时按 1px 步进缩小字号（下限 SP_CARD_VALUE_MIN_SIZE）。
+
+        用 QFontMetrics 实测文本宽度（不按字符数推断），常规 4～6 位数保持标准 28px。
+        """
+        label.setText(text)
+        col = label.parentWidget()
+        avail = (col.width() if col is not None and col.width() > 0 else SP_CARD_COLUMN_W)
+        size = SP_CARD_VALUE_SIZE
+        font = self._card_value_font(size)
+        fm = QFontMetrics(font)
+        while size > SP_CARD_VALUE_MIN_SIZE and fm.horizontalAdvance(text) > avail - 6:
+            size -= 1
+            font = self._card_value_font(size)
+            fm = QFontMetrics(font)
+        label.setFont(font)
 
     def _build_game_page(self):
         page = QWidget()
@@ -1569,13 +1630,13 @@ class MainWindow(QMainWindow):
     def _render_last_game(self, info):
         if info is None:
             self.last_game_caption.setText("暂无可继续的存档")
-            self.last_score_value.setText("—")
-            self.last_best_value.setText(str(self.model.best_score))   # 历史最高分仍动态显示
+            self._fit_stat_value(self.last_score_value, "—")
+            self._fit_stat_value(self.last_best_value, str(self.model.best_score))  # 历史最高分仍动态显示
             self.continue_start_button.setEnabled(False)
         else:
             self.last_game_caption.setText("上一局记录")
-            self.last_score_value.setText(str(info.get("score", 0)))
-            self.last_best_value.setText(str(info.get("best_score", 0)))
+            self._fit_stat_value(self.last_score_value, str(info.get("score", 0)))
+            self._fit_stat_value(self.last_best_value, str(info.get("best_score", 0)))
             self.continue_start_button.setEnabled(True)
 
     def on_continue_clicked(self):
