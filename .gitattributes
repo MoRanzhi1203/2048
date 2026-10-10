@@ -1,0 +1,27 @@
+# 换行规范：仓库内统一以 LF 存储
+# text=auto —— Git 自动识别文本文件，入库前把 CRLF 归一化为 LF；
+# 检出时按本机 core.autocrlf 处理。若想强制工作区也用 LF，可改成 "* text=auto eol=lf"。
+* text=auto
+
+# 明确声明为文本
+*.py    text
+*.md    text
+*.json  text
+*.csv   text
+*.txt   text
+*.bat   text
+*.sh    text
+*.yml   text
+*.yaml  text
+*.toml  text
+
+# 明确声明为二进制：不做换行转换，也不按文本 diff
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.exe   binary
+*.dll   binary
+*.zip   binary
+*.7z    binary
