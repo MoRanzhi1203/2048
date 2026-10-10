@@ -33,33 +33,65 @@ DIRECTION_NAMES = {'up': '向上', 'down': '向下', 'left': '向左', 'right': 
 START_PAGE = 0
 GAME_PAGE = 1
 
-# 界面尺寸常量（棋盘尺寸由方块尺寸推导，保证方块始终是正方形）
+# =====================================================================
+# 视觉规范常量（集中管理：颜色 / 尺寸 / 圆角 / 按钮样式，避免散落硬编码）
+# =====================================================================
+COLOR_BG = "#faf8ef"           # 页面背景
+COLOR_TEXT = "#776e65"         # 主标题 / 深色文本
+COLOR_SUBTITLE = "#a39489"     # 副标题
+COLOR_BOARD = "#bbada0"        # 棋盘 / 统计卡背景
+COLOR_EMPTY = "#cdc1b4"        # 空格
+COLOR_CARD_LABEL = "#eee4da"   # 卡片标签
+COLOR_CARD_VALUE = "#ffffff"   # 卡片数值
+
+# 棋盘：尺寸由方块推导，保证严格正方形、4×4 每格一致
 TILE_SIZE = 96
 TILE_GAP = 10
 BOARD_PADDING = 10
+TILE_RADIUS = 6
+BOARD_RADIUS = 9
 BOARD_SIDE = BOARD_PADDING * 2 + TILE_SIZE * 4 + TILE_GAP * 3   # 434
 
-# 按钮样式：主按钮（实心棕）与次按钮（浅灰，含禁用态）
-PRIMARY_BUTTON_QSS = """
-QPushButton {
+# 窗口与布局
+WINDOW_WIDTH, WINDOW_HEIGHT = 500, 672
+GAME_MARGIN_X = (WINDOW_WIDTH - BOARD_SIDE) // 2   # 33：使按钮与棋盘左右边缘对齐
+
+# 控件尺寸
+BUTTON_WIDTH, BUTTON_HEIGHT = 100, 44
+CARD_WIDTH, CARD_HEIGHT = 330, 110   # 启动页「上一局」摘要卡
+
+# 按钮样式：主按钮（实心棕）、次按钮（浅色，含禁用态）、文字按钮（无底色）
+PRIMARY_BUTTON_QSS = f"""
+QPushButton {{
     background-color: #8f7a66; color: #f9f6f2;
-    border: none; border-radius: 6px;
+    border: none; border-radius: {TILE_RADIUS}px;
     font-size: 14px; font-weight: bold;
-}
-QPushButton:hover   { background-color: #9f8b78; }
-QPushButton:pressed { background-color: #7c6a58; }
-QPushButton:disabled { background-color: #cbbfb2; color: #efe9e2; }
+}}
+QPushButton:hover    {{ background-color: #9f8b78; }}
+QPushButton:pressed  {{ background-color: #7c6a58; }}
+QPushButton:disabled {{ background-color: #cdc2b6; color: #f2ece5; }}
 """
 
-SECONDARY_BUTTON_QSS = """
-QPushButton {
-    background-color: #d6cdc4; color: #776e65;
-    border: none; border-radius: 6px;
+SECONDARY_BUTTON_QSS = f"""
+QPushButton {{
+    background-color: #eee4da; color: {COLOR_TEXT};
+    border: none; border-radius: {TILE_RADIUS}px;
     font-size: 14px; font-weight: bold;
-}
-QPushButton:hover    { background-color: #c7bcb2; }
-QPushButton:pressed  { background-color: #b7aaa0; }
-QPushButton:disabled { background-color: #e7e0d9; color: #c3b9af; }
+}}
+QPushButton:hover    {{ background-color: #e2d7ca; }}
+QPushButton:pressed  {{ background-color: #d5c9ba; }}
+QPushButton:disabled {{ background-color: #eee8e1; color: #b7aa9e; }}
+"""
+
+TEXT_BUTTON_QSS = f"""
+QPushButton {{
+    background-color: transparent; color: {COLOR_TEXT};
+    border: none; border-radius: {TILE_RADIUS}px;
+    font-size: 14px; font-weight: bold;
+}}
+QPushButton:hover    {{ background-color: #efe9e1; }}
+QPushButton:pressed  {{ background-color: #e6ddd3; }}
+QPushButton:disabled {{ color: #c3b8ad; }}
 """
 
 
@@ -387,9 +419,8 @@ class GameCore:
 class TileLabel(QLabel):
     """单个方块（View 的最小元素）"""
 
-    # 经典 2048 配色，0 为空格底色
+    # 经典 2048 配色（空格底色单独用 COLOR_EMPTY）
     COLORS = {
-        0: (205, 193, 180),
         2: (238, 228, 218),
         4: (237, 224, 200),
         8: (242, 177, 121),
@@ -413,27 +444,30 @@ class TileLabel(QLabel):
 
     def set_value(self, value):
         """根据数值刷新圆角背景、字色与字号"""
-        if value > 2048:
+        if value == 0:
+            bg = QColor(COLOR_EMPTY)
+        elif value > 2048:
             level = min(230, 46 + (value // 2048) * 18)
             bg = QColor(237, 194, level)
         else:
             bg = QColor(*self.COLORS.get(value, (60, 58, 50)))
 
         color = self.TEXT_DARK if value <= 4 else self.TEXT_LIGHT
+        # 字号随位数自适应：2–64 常规 36px，逐级递减，保证大数值不溢出
         if value == 0:
             size = 1
         elif value < 100:
-            size = 32
+            size = 36
         elif value < 1000:
-            size = 26
+            size = 30
         elif value < 10000:
-            size = 20
+            size = 24
         else:
-            size = 15
+            size = 17
 
         self.setStyleSheet(
             f"QLabel {{ background-color: {bg.name()}; color: {color};"
-            f" border-radius: 6px; font-size: {size}px; font-weight: bold; }}")
+            f" border-radius: {TILE_RADIUS}px; font-size: {size}px; font-weight: bold; }}")
         self.setText("" if value == 0 else str(value))
 
 
@@ -443,7 +477,8 @@ class BoardView(QWidget):
         super().__init__(parent)
         self.grid_size = grid_size
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet("background-color: #bbada0; border-radius: 10px;")
+        self.setStyleSheet(
+            f"background-color: {COLOR_BOARD}; border-radius: {BOARD_RADIUS}px;")
         side = BOARD_PADDING * 2 + TILE_SIZE * grid_size + TILE_GAP * (grid_size - 1)
         self.setFixedSize(side, side)
 
@@ -482,8 +517,8 @@ class MainWindow(QMainWindow):
     # ---------------- 界面搭建 ----------------
     def init_ui(self):
         self.setWindowTitle("2048")
-        self.setFixedSize(500, 660)
-        self.setStyleSheet("QMainWindow { background-color: #faf8ef; }")
+        self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.setStyleSheet(f"QMainWindow {{ background-color: {COLOR_BG}; }}")
 
         # 用 QStackedWidget 承载「启动页」与「游戏页」
         self.stack = QStackedWidget()
@@ -497,10 +532,10 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def _build_start_page(self):
-        """启动页：标题 + 上一局信息卡 + 继续/新局按钮（替代原来的确认弹窗）"""
+        """启动页：标题 + 上一局摘要卡 + 主/次操作（同一中心轴）"""
         page = QWidget()
         page.setObjectName("page")
-        page.setStyleSheet("#page { background-color: #faf8ef; }")
+        page.setStyleSheet(f"#page {{ background-color: {COLOR_BG}; }}")
         layout = QVBoxLayout(page)
         layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(0)
@@ -508,27 +543,30 @@ class MainWindow(QMainWindow):
 
         title = QLabel("2048")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("color: #776e65; font-size: 76px; font-weight: bold;")
+        title.setStyleSheet(
+            f"color: {COLOR_TEXT}; font-size: 70px; font-weight: bold;")
         subtitle = QLabel("合并数字，拼出 2048")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet("color: #a39489; font-size: 14px;")
+        subtitle.setStyleSheet(f"color: {COLOR_SUBTITLE}; font-size: 13px;")
         layout.addWidget(title)
-        layout.addSpacing(6)
+        layout.addSpacing(5)
         layout.addWidget(subtitle)
-        layout.addSpacing(34)
+        layout.addSpacing(30)
 
-        # --- 上一局信息卡：标题 + 分数/最高分 两列 ---
+        # --- 上一局摘要卡：小标题 + 两列（大数字 / 下方标签）---
         card = QFrame()
         card.setObjectName("card")
-        card.setFixedHeight(106)
-        card.setStyleSheet("#card { background-color: #bbada0; border-radius: 10px; }")
+        card.setFixedSize(CARD_WIDTH, CARD_HEIGHT)
+        card.setStyleSheet(
+            f"#card {{ background-color: {COLOR_BOARD}; border-radius: 10px; }}")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(20, 14, 20, 14)
-        card_layout.setSpacing(8)
+        card_layout.setSpacing(6)
 
-        self.last_game_caption = QLabel("上一局进行中")
+        self.last_game_caption = QLabel("上一局")
         self.last_game_caption.setAlignment(Qt.AlignCenter)
-        self.last_game_caption.setStyleSheet("color: #eee4da; font-size: 12px;")
+        self.last_game_caption.setStyleSheet(
+            f"color: {COLOR_CARD_LABEL}; font-size: 12px;")
         card_layout.addWidget(self.last_game_caption)
 
         stats = QHBoxLayout()
@@ -541,50 +579,53 @@ class MainWindow(QMainWindow):
         stats.addStretch()
         card_layout.addLayout(stats)
 
-        layout.addWidget(card)
-        layout.addSpacing(24)
+        layout.addWidget(card, 0, Qt.AlignHCenter)
+        layout.addSpacing(23)
 
-        # 继续 = 主操作（实心棕），开始新游戏 = 次操作（浅灰）
+        # 继续 = 主操作（实心棕，与卡片同宽）；开始新游戏 = 轻量文字按钮
         self.continue_start_button = self._make_button(
-            "继续上一局", self.on_continue_clicked, size=(220, 48))
-        new_game_start_button = self._make_button(
-            "开始新游戏", self.on_new_game_clicked, secondary=True, size=(220, 48))
+            "继续上一局", self.on_continue_clicked, size=(CARD_WIDTH, 48))
+        self.new_game_start_button = self._make_button(
+            "开始新游戏", self.on_new_game_clicked,
+            qss=TEXT_BUTTON_QSS, size=(CARD_WIDTH, BUTTON_HEIGHT))
         layout.addWidget(self.continue_start_button, 0, Qt.AlignHCenter)
-        layout.addSpacing(12)
-        layout.addWidget(new_game_start_button, 0, Qt.AlignHCenter)
+        layout.addSpacing(10)
+        layout.addWidget(self.new_game_start_button, 0, Qt.AlignHCenter)
         layout.addStretch()
         return page
 
     def _make_stat(self, caption):
-        """信息卡里的一列统计：上小字标题，下加粗数值；返回 (布局, 数值标签)"""
+        """摘要卡里的一列统计：上方大数字，下方小标签；返回 (布局, 数值标签)"""
         box = QVBoxLayout()
         box.setSpacing(2)
-        cap = QLabel(caption)
-        cap.setAlignment(Qt.AlignCenter)
-        cap.setStyleSheet("color: #eee4da; font-size: 11px;")
         value = QLabel("0")
         value.setAlignment(Qt.AlignCenter)
-        value.setStyleSheet("color: #ffffff; font-size: 22px; font-weight: bold;")
-        box.addWidget(cap)
+        value.setStyleSheet(
+            f"color: {COLOR_CARD_VALUE}; font-size: 24px; font-weight: bold;")
+        cap = QLabel(caption)
+        cap.setAlignment(Qt.AlignCenter)
+        cap.setStyleSheet(f"color: {COLOR_CARD_LABEL}; font-size: 11px;")
         box.addWidget(value)
+        box.addWidget(cap)
         return box, value
 
     def _build_game_page(self):
         """游戏页：标题 + 分数卡 + 棋盘 + 操作按钮"""
         page = QWidget()
         page.setObjectName("page")
-        page.setStyleSheet("#page { background-color: #faf8ef; }")
+        page.setStyleSheet(f"#page {{ background-color: {COLOR_BG}; }}")
         main_layout = QVBoxLayout(page)
-        main_layout.setContentsMargins(30, 24, 30, 26)
-        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(GAME_MARGIN_X, 30, GAME_MARGIN_X, 24)
+        main_layout.setSpacing(0)
 
-        # --- 顶部：标题 + 副标题 + 两张分数卡 ---
+        # --- 顶部：标题 + 副标题 + 两张统计卡（顶边对齐）---
         title_box = QVBoxLayout()
-        title_box.setSpacing(0)
+        title_box.setSpacing(2)
         title = QLabel("2048")
-        title.setStyleSheet("color: #776e65; font-size: 46px; font-weight: bold;")
+        title.setStyleSheet(
+            f"color: {COLOR_TEXT}; font-size: 48px; font-weight: bold;")
         subtitle = QLabel("合并数字，拼出 2048")
-        subtitle.setStyleSheet("color: #a39489; font-size: 12px;")
+        subtitle.setStyleSheet(f"color: {COLOR_SUBTITLE}; font-size: 13px;")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
 
@@ -595,52 +636,58 @@ class MainWindow(QMainWindow):
         header.setSpacing(10)
         header.addLayout(title_box)
         header.addStretch()
-        header.addWidget(self.score_label)
-        header.addWidget(self.best_label)
+        header.addWidget(self.score_label, 0, Qt.AlignTop)
+        header.addWidget(self.best_label, 0, Qt.AlignTop)
 
-        # --- 中部：棋盘 ---
+        # --- 中部：棋盘（宽度与内容区一致，左右边缘即棋盘边缘）---
         self.board_view = BoardView(self.model.grid_size)
 
-        # --- 底部：操作按钮（撤销/重做为次要按钮，新游戏为主按钮）---
-        self.undo_button = self._make_button("撤销", self.on_undo, secondary=True)
-        self.redo_button = self._make_button("重做", self.on_redo, secondary=True)
+        # --- 底部：撤销/重做居左，新游戏居右，均与棋盘边缘对齐 ---
+        self.undo_button = self._make_button(
+            "撤销", self.on_undo, qss=SECONDARY_BUTTON_QSS)
+        self.redo_button = self._make_button(
+            "重做", self.on_redo, qss=SECONDARY_BUTTON_QSS)
         self.undo_button.setToolTip("撤销上一步（Ctrl+Z）")
         self.redo_button.setToolTip("重做（Ctrl+Y）")
-        new_game_button = self._make_button("新游戏", self.on_new_game_clicked)
+        self.new_game_button = self._make_button("新游戏", self.on_new_game_clicked)
 
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
         button_layout.addWidget(self.undo_button)
         button_layout.addWidget(self.redo_button)
         button_layout.addStretch()
-        button_layout.addWidget(new_game_button)
+        button_layout.addWidget(self.new_game_button)
 
         main_layout.addLayout(header)
-        main_layout.addWidget(self.board_view, 0, Qt.AlignHCenter)
-        main_layout.addStretch()
+        main_layout.addSpacing(18)     # 顶部区 → 棋盘
+        main_layout.addWidget(self.board_view)
+        main_layout.addSpacing(32)     # 棋盘 → 底部操作组
         main_layout.addLayout(button_layout)
+        main_layout.addStretch()
         return page
 
     def _make_score_card(self):
-        """分数卡：上方小字标题 + 下方加粗数值"""
+        """分数卡：上方小字标签 + 下方加粗数值"""
         label = QLabel()
         label.setAlignment(Qt.AlignCenter)
         label.setFixedSize(96, 62)
-        label.setStyleSheet("background-color: #bbada0; border-radius: 6px;")
+        label.setStyleSheet(
+            f"background-color: {COLOR_BOARD}; border-radius: {TILE_RADIUS}px;")
         return label
 
     def _render_score(self, label, caption, value):
         label.setText(
-            f"<div style='font-size:11px; color:#eee4da;'>{caption}</div>"
-            f"<div style='font-size:22px; color:#ffffff; font-weight:bold;'>{value}</div>")
+            f"<div style='font-size:11px; color:{COLOR_CARD_LABEL};'>{caption}</div>"
+            f"<div style='font-size:24px; color:{COLOR_CARD_VALUE}; font-weight:bold;'>{value}</div>")
 
-    def _make_button(self, text, slot, secondary=False, size=(100, 44)):
+    def _make_button(self, text, slot, qss=PRIMARY_BUTTON_QSS,
+                     size=(BUTTON_WIDTH, BUTTON_HEIGHT)):
         button = QPushButton(text)
         button.setFixedSize(*size)
         button.setCursor(Qt.PointingHandCursor)
         # 不参与焦点：否则方向键会被 Qt 的焦点导航拦下，无法传到主窗口
         button.setFocusPolicy(Qt.NoFocus)
-        button.setStyleSheet(SECONDARY_BUTTON_QSS if secondary else PRIMARY_BUTTON_QSS)
+        button.setStyleSheet(qss)
         button.clicked.connect(slot)
         return button
 
@@ -712,12 +759,12 @@ class MainWindow(QMainWindow):
 
     def _render_last_game(self, info):
         if info is None:
-            self.last_game_caption.setText("暂无未完成的存档")
+            self.last_game_caption.setText("暂无存档")
             self.last_score_value.setText("—")
             self.last_best_value.setText("—")
             self.continue_start_button.setEnabled(False)
         else:
-            self.last_game_caption.setText("上一局进行中")
+            self.last_game_caption.setText("上一局")
             self.last_score_value.setText(str(info.get("score", 0)))
             self.last_best_value.setText(str(info.get("best_score", 0)))
             self.continue_start_button.setEnabled(True)
@@ -764,8 +811,15 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # 高 DPI 适配：需在创建 QApplication 之前设置，125%/150% 缩放下自适应放大
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
-    app.setFont(QFont("Microsoft YaHei", 10))
+    # 字体回退链：优先系统 UI 字体，缺失时逐级回退，避免换行/截断
+    font = QFont("Microsoft YaHei", 10)
+    if hasattr(font, "setFamilies"):
+        font.setFamilies(["Microsoft YaHei", "Microsoft YaHei UI", "SimHei"])
+    app.setFont(font)
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
