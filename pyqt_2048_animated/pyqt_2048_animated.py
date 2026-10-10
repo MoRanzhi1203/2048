@@ -30,7 +30,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _V3_DIR = os.path.join(os.path.dirname(_HERE), "pyqt_2048")
 if _V3_DIR not in sys.path:
     sys.path.insert(0, _V3_DIR)
-from pyqt_2048_with_history import GameCore  # noqa: E402
+from pyqt_2048_with_history import GameCore, DIRECTION_NAMES  # noqa: E402
 
 
 # =====================================================================
@@ -222,6 +222,59 @@ class AnimatedGameCore(GameCore):
             self.grid = [list(row) for row in zip(*self.grid)]
         return moved
 
+    # ---- 覆盖一个完整回合：把本步的过渡信息一并压栈，供撤回/重做播放 ----
+    def apply_move(self, direction):
+        snapshot = self._snapshot()
+        if not self._slide(direction):
+            return False                     # 非法移动，不产生快照
+
+        transitions = list(self.last_transitions)
+
+        self.redo_stack.clear()
+        self._sync_best_score()
+        self.record_move(DIRECTION_NAMES[direction])
+        self.add_new_tile()
+        spawn = self.last_spawn
+        self.record_move("添加新方块")
+
+        # 栈里存“状态 + 本步过渡”：撤回时反向播、重做时正向播
+        self.undo_stack.append({"snapshot": snapshot,
+                                "transitions": transitions, "spawn": spawn})
+
+        self.check_win()
+        self.check_game_over()
+        return True
+
+    def undo(self):
+        """回退一步；返回本次要播放的过渡信息（没有可撤销时返回 None）"""
+        if not self.undo_stack:
+            return None
+        entry = self.undo_stack.pop()
+        self.redo_stack.append({"snapshot": self._snapshot(),
+                                "transitions": entry["transitions"],
+                                "spawn": entry["spawn"]})
+        self._restore(entry["snapshot"])
+        self._sync_best_score()
+        self.save_game_state()
+        self.update_index()
+        return {"kind": "undo", "transitions": entry["transitions"],
+                "spawn": entry["spawn"]}
+
+    def redo(self):
+        """重做被撤回的一步；返回本次要播放的过渡信息（没有可重做时返回 None）"""
+        if not self.redo_stack:
+            return None
+        entry = self.redo_stack.pop()
+        self.undo_stack.append({"snapshot": self._snapshot(),
+                                "transitions": entry["transitions"],
+                                "spawn": entry["spawn"]})
+        self._restore(entry["snapshot"])
+        self._sync_best_score()
+        self.save_game_state()
+        self.update_index()
+        return {"kind": "redo", "transitions": entry["transitions"],
+                "spawn": entry["spawn"]}
+
 
 # =====================================================================
 # View 层：静态背景层（缓存）+ 动画层（逐帧插值）
@@ -291,12 +344,38 @@ class BoardView(QWidget):
                 pop_cells[dst] = True
 
         self.anim = {
+            "mode": "forward",
             "phase": "move",
             "t": 0.0,
             "moving": moving,
             "pop": pop_cells,
             "spawn": spawn,
-            "final": [row[:] for row in final_grid],
+            "spawn_value": final_grid[spawn[0]][spawn[1]] if spawn else None,
+            "target": [row[:] for row in final_grid],
+        }
+        self.timer.start()
+        self.update()
+
+    def animate_undo(self, target_grid, transitions, spawn):
+        """回退动画：方块从落点滑回起点，新生方块同时缩小消失"""
+        spawn_value = None
+        if spawn is not None:
+            spawn_value = self.grid[spawn[0]][spawn[1]]   # 回退前盘面上的新生方块值
+        moving = []
+        for src, dst, value, merged in transitions:
+            sx, sy = self._cell_xy(*src)
+            tx, ty = self._cell_xy(*dst)
+            moving.append((value, sx, sy, tx, ty))
+
+        self.anim = {
+            "mode": "reverse",
+            "phase": "move",
+            "t": 0.0,
+            "moving": moving,
+            "pop": {},
+            "spawn": spawn,
+            "spawn_value": spawn_value,
+            "target": [row[:] for row in target_grid],
         }
         self.timer.start()
         self.update()
@@ -310,17 +389,24 @@ class BoardView(QWidget):
 
         if self.anim["phase"] == "move":
             if self.anim["t"] >= MOVE_DURATION:
+                if self.anim["mode"] == "reverse":
+                    self._finish_animation()      # 回退只有“滑回”一个阶段
+                    return
                 self.anim["phase"] = "pop"
                 self.anim["t"] = 0.0
         else:
             if self.anim["t"] >= POP_DURATION:
-                self.grid = self.anim["final"]
-                self.anim = None
-                self.timer.stop()
-                self.update()
-                self.animationFinished.emit()
+                self._finish_animation()
                 return
         self.update()
+
+    def _finish_animation(self):
+        """动画结束：落定到目标盘面并通知 Controller"""
+        self.grid = self.anim["target"]
+        self.anim = None
+        self.timer.stop()
+        self.update()
+        self.animationFinished.emit()
 
     # ---------------- 绘制 ----------------
     def paintEvent(self, event):
@@ -338,10 +424,21 @@ class BoardView(QWidget):
 
         elif self.anim["phase"] == "move":
             prog = ease_out_cubic(min(1.0, self.anim["t"] / MOVE_DURATION))
-            for value, sx, sy, tx, ty in self.anim["moving"]:
-                x = sx + (tx - sx) * prog
-                y = sy + (ty - sy) * prog
-                self._draw_tile(p, value, x, y, 1.0)
+            if self.anim["mode"] == "reverse":
+                for value, sx, sy, tx, ty in self.anim["moving"]:
+                    x = tx + (sx - tx) * prog      # 从落点滑回起点
+                    y = ty + (sy - ty) * prog
+                    self._draw_tile(p, value, x, y, 1.0)
+                spawn = self.anim["spawn"]
+                if spawn is not None and self.anim["spawn_value"] is not None:
+                    x, y = self._cell_xy(*spawn)
+                    self._draw_tile(p, self.anim["spawn_value"], x, y,
+                                    max(0.01, 1.0 - prog))   # 新生方块缩小消失
+            else:
+                for value, sx, sy, tx, ty in self.anim["moving"]:
+                    x = sx + (tx - sx) * prog
+                    y = sy + (ty - sy) * prog
+                    self._draw_tile(p, value, x, y, 1.0)
 
         else:   # pop：落定后，合并处回弹放大、新生方块放大出现
             prog = min(1.0, self.anim["t"] / POP_DURATION)
@@ -349,7 +446,7 @@ class BoardView(QWidget):
             spawn = self.anim["spawn"]
             for r in range(self.grid_size):
                 for c in range(self.grid_size):
-                    v = self.anim["final"][r][c]
+                    v = self.anim["target"][r][c]
                     if not v:
                         continue
                     scale = 1.0
@@ -635,14 +732,26 @@ class MainWindow(QMainWindow):
     def on_undo(self):
         if self.board_view.is_animating():
             return
-        if self.model.undo():
-            self.refresh()
+        info = self.model.undo()
+        if not info:
+            return
+        self._render_score(self.score_label, "分数", self.model.score)
+        self._render_score(self.best_label, "最高分", self.model.best_score)
+        self.undo_button.setEnabled(False)
+        self.redo_button.setEnabled(False)
+        self.board_view.animate_undo(self.model.grid, info["transitions"], info["spawn"])
 
     def on_redo(self):
         if self.board_view.is_animating():
             return
-        if self.model.redo():
-            self.refresh()
+        info = self.model.redo()
+        if not info:
+            return
+        self._render_score(self.score_label, "分数", self.model.score)
+        self._render_score(self.best_label, "最高分", self.model.best_score)
+        self.undo_button.setEnabled(False)
+        self.redo_button.setEnabled(False)
+        self.board_view.animate_move(self.model.grid, info["transitions"], info["spawn"])
 
     # ---------------- 启动流程 ----------------
     def startup(self):
