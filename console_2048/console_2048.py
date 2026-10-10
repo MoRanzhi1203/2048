@@ -60,18 +60,21 @@ class Console2048:
     def _merge_line(self, line):
         """合并单行（核心算法），返回新行与是否移动标志"""
         original = list(line)
-        new_line = [num for num in line if num != 0]
+        compressed = [num for num in line if num != 0]
+
+        merged = []
         i = 0
-        while i < len(new_line) - 1:
-            if new_line[i] == new_line[i + 1]:
-                new_line[i] *= 2
-                self.score += new_line[i]
-                new_line.pop(i + 1)
-                new_line.append(0)
+        while i < len(compressed):
+            if i + 1 < len(compressed) and compressed[i] == compressed[i + 1]:
+                merged.append(compressed[i] * 2)
+                self.score += compressed[i] * 2
+                i += 2          # 合并后一次跳过两个元素，避免 [x, x, x, x] 下标错位
+            else:
+                merged.append(compressed[i])
                 i += 1
-            i += 1
-        new_line += [0] * (self.grid_size - len(new_line))
-        return new_line, new_line != original
+
+        merged += [0] * (self.grid_size - len(merged))
+        return merged, merged != original
 
     def _move(self, direction):
         """通用移动逻辑（方向: up/down/left/right）"""
