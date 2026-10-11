@@ -561,6 +561,32 @@ def v5_scene_suggest_right(w, app, settle_ms):
     return _v5_scene_suggest_dir(w, app, settle_ms, "right")
 
 
+def v5_scene_auto(w, app, settle_ms):
+    """自动连走“运行中”：AI 驱动棋盘走子，并**同样**在棋盘原生边框内高亮本步方向。"""
+    w.stack.setCurrentIndex(1)
+    _v5_demo_board(w)
+    w.solver_strategy.setCurrentIndex(1)     # Expectimax
+    w.solver_depth.setCurrentIndex(1)        # 标准
+    w.solver_mode.setCurrentIndex(0)         # 自动连走
+    w.solver_log.clear()
+    for line in (
+        "开始求解：策略=Expectimax，深度=4，模式=自动连走",
+        "第 1 步  向下  评估 1488.9  分数 20212  最大瓦片 2048  (41.0ms)",
+        "第 2 步  向左  评估 1501.2  分数 20244  最大瓦片 2048  (38.7ms)",
+    ):
+        w._log_step(line)
+    w._set_status("状态：<b>运行中</b>　步数 <b>2</b>　当前：<b>向左</b>（评估 1501.2）",
+                  "分数 <b>20244</b>　最大瓦片 <b>2048</b>　用时 <b>0.4s</b>")
+    w.solver_start_btn.setText("停止")
+    if getattr(w, "solver_ai_button", None) is not None:
+        w.solver_ai_button.setText("停止")
+    w.solver_progress.setRange(0, 0)         # 忙态
+    if hasattr(w, "_show_hint"):
+        w._show_hint("left")                 # 自动连走同样高亮本步方向
+    pump(app, max(settle_ms, 260))
+    return "auto"
+
+
 def v5_scene_collapsed(w, app, settle_ms):
     """右栏折叠态：仅保留窄条与“展开”入口，左栏游戏区照常显示（V5.1）。"""
     w.stack.setCurrentIndex(1)
@@ -736,6 +762,7 @@ V3_SCENES = {"start": v3_scene_start, "game": v3_scene_game, "recover": v3_scene
 V5_SCENES_ALL = dict(V5_SCENES)
 V5_SCENES_ALL.update({"gameover": v5_scene_gameover, "export": v5_scene_export,
                       "results": v5_scene_results, "recover": v5_scene_recover})
+V5_SCENES_ALL.update({"auto": v5_scene_auto})
 
 
 # 统一入口覆盖的版本：新增 GUI 版本时在此登记（模块目录 / 模块名 / 可用场景 / 出图目录）
@@ -785,7 +812,7 @@ def main():
     ap.add_argument("--version", default="v5", choices=sorted(VERSIONS),
                     help="目标版本：v5=算法求解版，v4=动画版，v3=MVC/撤销重做版")
     ap.add_argument("--scene", required=True,
-                    help="场景，可用值随版本而定：v5=start|game|solver|suggest|collapsed|gameover|export|results|recover；"
+                    help="场景，可用值随版本而定：v5=start|game|solver|suggest|collapsed|auto|gameover|export|results|recover；"
                          "v4=start|game|hover|merge|gameover|won|recover；v3=start|game|recover")
     ap.add_argument("--out", default=None,
                     help="输出 PNG 路径（默认 <版本>/screenshots/full_<scene>.png）")

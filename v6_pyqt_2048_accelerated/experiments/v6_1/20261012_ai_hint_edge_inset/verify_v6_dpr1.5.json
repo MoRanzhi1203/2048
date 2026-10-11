@@ -1,0 +1,133 @@
+{
+  "version": "v6",
+  "dpr_requested": 1.5,
+  "dpr_actual": 1.5,
+  "board_wd": 651,
+  "directions": {
+    "up": {
+      "alpha_pixels": 10505,
+      "outside_outer": 0,
+      "on_tile": 0,
+      "other_bands": 0,
+      "bright_extent_pct": 77.1,
+      "groove_R": 102,
+      "face_R": 255,
+      "groove_alpha": 233,
+      "face_alpha": 255
+    },
+    "down": {
+      "alpha_pixels": 10506,
+      "outside_outer": 0,
+      "on_tile": 0,
+      "other_bands": 0,
+      "bright_extent_pct": 77.1,
+      "groove_R": 103,
+      "face_R": 255,
+      "groove_alpha": 233,
+      "face_alpha": 255
+    },
+    "left": {
+      "alpha_pixels": 10505,
+      "outside_outer": 0,
+      "on_tile": 0,
+      "other_bands": 0,
+      "bright_extent_pct": 77.1,
+      "groove_R": 102,
+      "face_R": 255,
+      "groove_alpha": 233,
+      "face_alpha": 255
+    },
+    "right": {
+      "alpha_pixels": 10504,
+      "outside_outer": 0,
+      "on_tile": 0,
+      "other_bands": 0,
+      "bright_extent_pct": 77.1,
+      "groove_R": 102,
+      "face_R": 255,
+      "groove_alpha": 233,
+      "face_alpha": 255
+    }
+  },
+  "geometry": {
+    "baseline": {
+      "ov": [
+        434,
+        434
+      ],
+      "bv": [
+        434,
+        434
+      ],
+      "nonzero": 10504
+    },
+    "collapsed": {
+      "ov": [
+        434,
+        434
+      ],
+      "bv": [
+        434,
+        434
+      ],
+      "nonzero": 10505
+    },
+    "expanded": {
+      "ov": [
+        434,
+        434
+      ],
+      "bv": [
+        434,
+        434
+      ],
+      "nonzero": 10506
+    },
+    "resize_640x700": {
+      "ov": [
+        434,
+        434
+      ],
+      "bv": [
+        434,
+        434
+      ],
+      "nonzero": 10505
+    },
+    "resize_920x820": {
+      "ov": [
+        434,
+        434
+      ],
+      "bv": [
+        434,
+        434
+      ],
+      "nonzero": 10508
+    },
+    "resize_back": {
+      "ov": [
+        434,
+        434
+      ],
+      "bv": [
+        434,
+        434
+      ],
+      "nonzero": 10506
+    }
+  },
+  "paint_ms": {
+    "A_only": {
+      "mean": 0.446,
+      "p95": 0.784
+    },
+    "A_plus_B": {
+      "mean": 1.506,
+      "p95": 2.21
+    },
+    "flow_active": true,
+    "note": "直接复刻 paintEvent 两步绘制（不含 QWidget.render 开销）"
+  },
+  "edge_pixmap_rebuild_ms": 6.311
+}

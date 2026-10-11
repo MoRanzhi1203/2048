@@ -213,7 +213,8 @@ class ArrowKeyV6Test(unittest.TestCase):
 
 
     def test_hint_overlay_shared_renderer_and_ab_border(self):
-        """V6 复用 V5 渲染器；A+B 不越出外轮廓/不覆盖瓦片/其他三边不变；A 亮区 65–80%；B 在内部间隙。"""
+        """V6 复用 V5 渲染器；A+B 不越出外轮廓/不覆盖瓦片/其他三边不变；A 亮区 72–82%；
+        A 横截面为“外侧深色隔离槽 + 奶油暖白亮面 + 暖杏过渡”；B 在内部间隙。"""
         from PyQt5.QtCore import QRectF
         from PyQt5.QtGui import QPainterPath, QImage, QColor
         import numpy as np
@@ -279,8 +280,23 @@ class ArrowKeyV6Test(unittest.TestCase):
             self.assertGreater(len(idx), 0, 'V6 %s A 层暖白缺失' % d)
             ext = int(idx.max() - idx.min() + 1)
             L = H if d in ('left', 'right') else Wd
-            self.assertGreaterEqual(ext / L, 0.65, 'V6 %s 暖白亮区过短' % d)
-            self.assertLessEqual(ext / L, 0.80, 'V6 %s 暖白亮区过长' % d)
+            self.assertGreaterEqual(ext / L, 0.72, 'V6 %s 暖白亮区过短' % d)
+            self.assertLessEqual(ext / L, 0.82, 'V6 %s 暖白亮区过长' % d)
+            # 三段式横截面：外侧深色隔离槽（offset≈1）须显著暗于中部主亮面（offset≈4）
+            cx, cy = Wd // 2, H // 2
+            if d == 'up':
+                gpx, fpx = arr[1, cx], arr[off, cx]
+            elif d == 'down':
+                gpx, fpx = arr[H - 2, cx], arr[H - 1 - off, cx]
+            elif d == 'left':
+                gpx, fpx = arr[cy, 1], arr[cy, off]
+            else:
+                gpx, fpx = arr[cy, Wd - 2], arr[cy, Wd - 1 - off]
+            # Format_ARGB32_Premultiplied 内存序为 BGRA：index 2=R、index 3=A
+            self.assertGreater(int(gpx[3]), 0, 'V6 %s 外侧隔离槽缺失' % d)
+            self.assertGreater(int(fpx[3]), 0, 'V6 %s 主亮面缺失' % d)
+            self.assertGreaterEqual(int(fpx[2]) - int(gpx[2]), 60,
+                                    'V6 %s 外侧隔离槽未与主亮面形成明暗分离' % d)
             self.assertGreater(int(((alpha > 0) & gaps).sum()), 0, 'V6 %s B 层流光缺失' % d)
         self.w._clear_hint()
         pump(self.app, 40)

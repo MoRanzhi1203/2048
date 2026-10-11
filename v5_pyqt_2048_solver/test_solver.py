@@ -691,6 +691,65 @@ class SolverGuiTest(unittest.TestCase):
                                    and not self.w._solve_in_flight))
         self.assertIsNone(self.w._hint_direction, "停止后应清除棋盘高亮")
 
+    def test_auto_mode_also_shows_hint(self):
+        """自动连走：同样在棋盘原生边框内高亮本步建议方向；停止后清除高亮并停表。"""
+        self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        self._select_mode("auto")                      # 自动连走
+        self._select_strategy("heuristic")             # 启发式
+        self.w.on_solver_clicked()
+        ok = wait_until(self.app, lambda: self.w._hint_direction in
+                        ("up", "down", "left", "right"))
+        self.assertTrue(ok, "自动连走应显示棋盘建议方向高亮")
+        ov = self.w._hint_overlay
+        self.assertIsNotNone(ov)
+        self.assertTrue(ov.isVisible(), "自动连走高亮层应可见")
+        # 停止：清除高亮并停下动画时钟
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(self.app, lambda: not self.w._solver_running))
+        pump(self.app, 60)
+        self.assertIsNone(self.w._hint_direction, "停止后应清除棋盘高亮")
+        self.assertFalse(ov.isVisible())
+        self.assertFalse(ov._timer.isActive(), "停止后不应残留动画时钟")
+
+    def test_strategy_switch_while_running(self):
+        """求解进行中切换算法：配置热更新、旧任务作废、会话记录切换、后续按新算法计算。"""
+        self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        self._select_mode("single")                    # 单步建议（常驻跟随）
+        self._select_strategy("heuristic")
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(self.app, lambda: self.w._hint_direction in
+                                   ("up", "down", "left", "right")))
+        self.assertEqual(self.w._solver_config.get("strategy"), "heuristic")
+        job_before = self.w._job_id
+        uniq_before = len(self.w._sessions)
+        # 运行中切换算法
+        self._select_strategy("mcts")
+        self.assertEqual(self.w._solver_config.get("strategy"), "mcts", "配置应热更新")
+        self.assertEqual(len(self.w._sessions), uniq_before, "不应切断/新建会话")
+        self.assertGreater(self.w._job_id, job_before, "切换算法应作废旧任务身份")
+        session = self.w._session
+        self.assertTrue(session.get("strategy_changes"), "会话应记录算法切换")
+        self.assertEqual(session["strategy_changes"][-1]["strategy"], "mcts")
+        self.assertIn("MCTS", self.v5.session_rows(session)["strategy"])
+        self.assertGreaterEqual(self.w.solver_log.count(), 1)
+        self.assertIn("切换算法", self.w.solver_log.item(self.w.solver_log.count() - 1).text())
+        # 在途计算期间再次切换：应作废在途结果并立即按新算法重算
+        self.assertTrue(self.w._solve_in_flight, "MCTS 应在途计算中")
+        inflight_token = self.w._solver_cancel
+        job2 = self.w._job_id
+        self._select_strategy("heuristic")
+        self.assertEqual(self.w._solver_config.get("strategy"), "heuristic")
+        self.assertGreater(self.w._job_id, job2, "在途切换同样应作废旧任务身份")
+        self.assertTrue(inflight_token.is_set(), "在途计算的取消令牌应被置位（作废旧算法结果）")
+        self.assertEqual(len(session["strategy_changes"]), 2)
+        # 新算法给出建议后仍处于跟随状态
+        self.assertTrue(wait_until(self.app, lambda: not self.w._solve_in_flight))
+        self.assertTrue(self.w._solver_running)
+        self.assertIn(self.w._hint_direction, ("up", "down", "left", "right"))
+        self.w.on_solver_clicked()                     # 停止
+        self.assertTrue(wait_until(self.app, lambda: not self.w._solver_running))
+        self.assertIsNone(self.w._hint_direction)
+
     def test_single_mode_follows_user_moves(self):
         """跟随预测：单步建议给出建议后，用户走子会自动重算下一步最优解。"""
         self._set_grid([[2, 2, 4, 0], [0, 4, 8, 0], [0, 0, 16, 0], [0, 0, 0, 2]])
@@ -954,7 +1013,8 @@ class SolverGuiTest(unittest.TestCase):
         return tile, gaps, bands, corner
 
     def test_hint_overlay_within_native_border(self):
-        """A+B：着色不越出外轮廓、不覆盖瓦片、其他三边不变；A 亮区占边 65%–80%；B 出现在内部间隙。"""
+        """A+B：着色不越出外轮廓、不覆盖瓦片、其他三边不变；A 亮区占边 72%–82%；
+        A 横截面为“外侧深色隔离槽 + 中部奶油暖白亮面 + 内侧暖杏过渡”的明暗轮廓分离；B 出现在内部间隙。"""
         from PyQt5.QtCore import Qt, QRectF
         import numpy as np
         outer, inner, W, PAD = self._border_paths()
@@ -997,8 +1057,23 @@ class SolverGuiTest(unittest.TestCase):
             self.assertGreater(len(idx), 0, '%s A 层暖白缺失' % d)
             ext = int(idx.max() - idx.min() + 1)
             L = H if d in ('left', 'right') else Wd
-            self.assertGreaterEqual(ext / L, 0.65, '%s 暖白亮区过短' % d)
-            self.assertLessEqual(ext / L, 0.80, '%s 暖白亮区过长' % d)
+            self.assertGreaterEqual(ext / L, 0.72, '%s 暖白亮区过短' % d)
+            self.assertLessEqual(ext / L, 0.82, '%s 暖白亮区过长' % d)
+            # 三段式横截面：外侧深色隔离槽（offset≈1）须显著暗于中部主亮面（offset≈4）
+            cx, cy = Wd // 2, H // 2
+            if d == 'up':
+                gpx, fpx = arr[1, cx], arr[off, cx]
+            elif d == 'down':
+                gpx, fpx = arr[H - 2, cx], arr[H - 1 - off, cx]
+            elif d == 'left':
+                gpx, fpx = arr[cy, 1], arr[cy, off]
+            else:
+                gpx, fpx = arr[cy, Wd - 2], arr[cy, Wd - 1 - off]
+            # Format_ARGB32_Premultiplied 内存序为 BGRA：index 2=R、index 3=A
+            self.assertGreater(int(gpx[3]), 0, '%s 外侧隔离槽缺失' % d)
+            self.assertGreater(int(fpx[3]), 0, '%s 主亮面缺失' % d)
+            self.assertGreaterEqual(int(fpx[2]) - int(gpx[2]), 60,
+                                    '%s 外侧隔离槽未与主亮面形成明暗分离' % d)
             self.assertGreater(int(((alpha > 0) & gaps).sum()), 0, '%s B 层流光缺失' % d)
         self.w._clear_hint()
         pump(self.app, 40)

@@ -450,6 +450,7 @@ def new_session(strategy, depth_label, time_limit, mode):
         "game_over": False,
         "stopped_reason": "",
         "timeout_count": 0,
+        "strategy_changes": [],           # 会话内“求解进行中切换算法/强度”的记录
     }
 
 
@@ -459,9 +460,15 @@ def session_rows(session):
     avg = 0.0
     if steps:
         avg = sum(s.get("elapsed_ms", 0.0) for s in steps) / len(steps)
+    # 会话内若切换过算法，摘要按“起始 → 后续”链路展示，避免与导出的实际过程不符
+    names = [session.get("strategy_name", "")]
+    for ch in session.get("strategy_changes", []):
+        nm = ch.get("strategy_name")
+        if nm and nm != names[-1]:
+            names.append(nm)
     return {
         "id": session.get("id", ""),
-        "strategy": session.get("strategy_name", ""),
+        "strategy": " → ".join(n for n in names if n),
         "depth": session.get("depth_label", ""),
         "mode": session.get("mode_name", ""),
         "steps": len(steps),
@@ -651,27 +658,38 @@ class SolverResultsDialog(QDialog):
 # 主窗口：在第 4 版基础上“向下扩展”求解面板
 # =====================================================================
 class _SolverHintOverlay(QWidget):
-    """棋盘“建议方向”高亮层：**A+B 组合**（辨识度增强）。
+    """棋盘“建议方向”高亮层：**A+B 组合**（A 层=原生边框内嵌明暗轮廓）。
 
-    A（目标边暖白）：在棋盘**已有外轮廓内部、且属背景像素**的 10px 内侧边框带中做“双层明暗”：
-      暖白主亮面（#FFF4E7，中心 #FFF9F2，峰值不透明度 0.90，贯穿带宽大部分）+ 靠瓦片一侧
-      1–2px 暖灰棕过渡边界（#9E8D7F）衬托轮廓；ΔL≥30 的明亮识别区约占边长 75%，两端消隐；
-      其余三边完全不变。
+    A（目标边内嵌明暗轮廓）：在棋盘**已有外轮廓内部、且属背景像素**的 10px 内侧边框带中，
+      自外向内做三段式“明暗轮廓分离”结构（消除暖白亮面与窗口米白背景融在一起的问题）：
+        ① 外侧深色隔离槽（#705B4C）——把亮面与外轮廓外沿/窗口米白背景明确分开；
+        ② 中部奶油暖白主亮面（#FFF5E8）——主识别区；
+        ③ 内侧暖杏过渡（#E0C4A5）——向瓦片一侧柔和消隐。
+      亮面沿边两端柔和消隐，明亮识别区约占边长 72%–82%；其余三边完全不变。
     B（内向梭形流光）：在既有 10px 格间留白中绘制 3 条**短梭形**渐变光段（每条对应一条内部
       缝隙，中心宽 ~4.4px、长 ~34px、峰值 alpha 0.80），沿推荐方向汇聚、临边收缩消隐；单时钟 26FPS。
     所有绘制裁剪到“圆角外轮廓 ∖ 16 个圆角瓦片”：**绝不越出外轮廓、绝不覆盖瓦片**。
     静态光带缓存为 QPixmap（仅尺寸/DPR/方向变化重建）；动画只刷新局部脏矩形。
     几何不足/不可见/禁用时降级为 A-only 并真正停表。
     """
-    _WARM_PRIMARY = (255, 244, 231)   # #FFF4E7
-    _WARM_CENTER = (255, 249, 242)    # #FFF9F2
-    _WARM_EDGE = (158, 141, 127)      # #9E8D7F 暖灰棕过渡边界
-    _EDGE_SPAN = 0.96                 # A 渐变轴跨度
-    _EDGE_PEAK = 0.90                 # 主亮面峰值不透明度（暖白、非纯白）
-    _EDGE_SHOULDER = 0.45             # 轴 11.5%/88.5% 处不透明度 ⇒ ΔL≥30 覆盖 ≈75% 边长
-    _TRANSITION_PX = 1.6              # 靠瓦片一侧过渡边界厚度（1–2 逻辑像素）
-    _TRANSITION_GAP = 0.6             # 过渡边界与瓦片矩形的间隙
-    _TRANSITION_ALPHA = 0.58
+    # 三段式横截面配色（外→内）：① 深色隔离槽 ② 奶油暖白主亮面 ③ 暖杏过渡
+    _EDGE_GROOVE = (112, 91, 76)      # #705B4C 外侧深色隔离槽
+    _EDGE_FACE = (255, 245, 232)      # #FFF5E8 中部奶油暖白主亮面
+    _EDGE_APRICOT = (224, 196, 165)   # #E0C4A5 内侧暖杏过渡
+    # 三段厚度（单位=逻辑像素，合计 ≤ 边框带 10px）
+    _GROOVE_PX = 1.8                  # ① 外侧深色隔离槽（1.5–2px）
+    _FACE_PX = 5.0                    # ② 主亮面（4–5px）
+    _TRANS_PX = 1.8                   # ③ 内侧暖杏过渡（1–2px）
+    _ZONE_BLEND = 0.3                 # 段间平滑过渡宽度
+    _GROOVE_IN_ALPHA = 0.85           # 隔离槽靠外缘不透明度
+    _GROOVE_ALPHA = 0.95              # 隔离槽芯部不透明度
+    _FACE_ALPHA = 1.00                # 主亮面不透明度
+    _TRANS_ALPHA = 0.95               # 暖杏过渡起始不透明度
+    _TAIL_ALPHA = 0.62                # 靠瓦片一侧残余不透明度（再向 0 消隐）
+    _EDGE_ENV_LO = 0.115              # 沿边包络 0.5 位置（左端）⇒ 识别区 ≈ 77% 边长
+    _EDGE_ENV_HI = 0.885              # 沿边包络 0.5 位置（右端）
+    _EDGE_SPAN = 1.0                  # 沿边渐变轴跨度（铺满整条边，消隐由包络控制）
+    _WARM_CENTER = (255, 249, 242)    # #FFF9F2 B 层流光主色
     _STREAK_COUNT = 3                 # 梭形光段组数 = 内部缝隙数（三条通道全部参与）
     _FLOW_FPS = 26                    # 24–30
     _FLOW_PERIOD_S = 1.30
@@ -778,62 +796,95 @@ class _SolverHintOverlay(QWidget):
             return QRectF(0.0, 0.0, pad, h), (0.0, a0 * h, 0.0, a1 * h)
         return QRectF(w - pad, 0.0, pad, h), (w, a0 * h, w, a1 * h)
 
-    def _along_axis(self, axis, peak, shoulder):
-        pr, pg, pb = self._WARM_CENTER
-        mr, mg, mb = self._WARM_PRIMARY
+    def _along_envelope(self, axis):
+        """沿边方向的柔和消隐包络（两端 0，0.5 位置在 11.5%/88.5%）。"""
         g = QLinearGradient(axis[0], axis[1], axis[2], axis[3])
-        g.setColorAt(0.000, QColor(mr, mg, mb, 0))
-        g.setColorAt(0.115, QColor(pr, pg, pb, int(255 * shoulder)))
-        g.setColorAt(0.500, QColor(pr, pg, pb, int(255 * peak)))
-        g.setColorAt(0.885, QColor(pr, pg, pb, int(255 * shoulder)))
-        g.setColorAt(1.000, QColor(mr, mg, mb, 0))
+        g.setColorAt(0.000, QColor(0, 0, 0, 0))
+        g.setColorAt(self._EDGE_ENV_LO, QColor(0, 0, 0, 128))
+        g.setColorAt(0.250, QColor(0, 0, 0, 255))
+        g.setColorAt(0.750, QColor(0, 0, 0, 255))
+        g.setColorAt(self._EDGE_ENV_HI, QColor(0, 0, 0, 128))
+        g.setColorAt(1.000, QColor(0, 0, 0, 0))
+        return g
+
+    def _cross_section(self, w, h, d):
+        """A 层横截面渐变（外→内）：① 深色隔离槽 → ② 奶油暖白主亮面 → ③ 暖杏过渡 → 消隐。"""
+        pad = float(v4.BOARD_PADDING)
+        gr, gg, gb = self._EDGE_GROOVE
+        fr, fg, fb = self._EDGE_FACE
+        ar, ag, ab = self._EDGE_APRICOT
+        if d == "up":
+            p1, p2 = (0.0, 0.0), (0.0, pad)
+        elif d == "down":
+            p1, p2 = (0.0, h), (0.0, h - pad)
+        elif d == "left":
+            p1, p2 = (0.0, 0.0), (pad, 0.0)
+        else:
+            p1, p2 = (w, 0.0), (w - pad, 0.0)
+        g = QLinearGradient(p1[0], p1[1], p2[0], p2[1])
+
+        def nz(px):
+            return min(1.0, max(0.0, px / pad))
+
+        s1 = self._GROOVE_PX - self._ZONE_BLEND
+        s2 = self._GROOVE_PX
+        s3 = self._GROOVE_PX + self._ZONE_BLEND
+        s4 = s3 + self._FACE_PX
+        s5 = s4 + self._ZONE_BLEND
+        s6 = s5 + self._TRANS_PX
+        g.setColorAt(nz(0.0), QColor(gr, gg, gb, int(255 * self._GROOVE_IN_ALPHA)))
+        g.setColorAt(nz(s1), QColor(gr, gg, gb, int(255 * self._GROOVE_ALPHA)))
+        g.setColorAt(nz(s2), QColor(gr, gg, gb, int(255 * self._GROOVE_ALPHA)))
+        g.setColorAt(nz(s3), QColor(fr, fg, fb, int(255 * self._FACE_ALPHA)))
+        g.setColorAt(nz(s4), QColor(fr, fg, fb, int(255 * self._FACE_ALPHA)))
+        g.setColorAt(nz(s5), QColor(ar, ag, ab, int(255 * self._TRANS_ALPHA)))
+        g.setColorAt(nz(s6), QColor(ar, ag, ab, int(255 * self._TAIL_ALPHA)))
+        g.setColorAt(1.0, QColor(ar, ag, ab, 0))
         return g
 
     def _paint_edge(self, p, w, h, d):
+        """在**无裁剪**的画布上绘制 A 层三段式光带（横截面 × 沿边包络）。
+
+        注意：这里刻意不设置裁剪路径——DestinationIn 与抗锯齿裁剪路径同用时，在裁剪边界像素上
+        Qt 光栅器的 alpha 相乘不正确（会在圆角处残留高不透明度碎片）。因此先在本层无裁剪地
+        合成好，再由 `_edge_pixmap` 以“外轮廓 ∖ 瓦片”裁剪后 SourceOver 贴出。
+        """
         band, axis = self._edge_geom(w, h, d)
-        pad = float(v4.BOARD_PADDING)
-        p.save()
-        p.setClipPath(self._background(w, h))           # 只在背景像素内（外轮廓 ∩ ∖瓦片）
-        # 1) 暖白主亮面：贯穿带宽、沿边柔和变化 + 稳定明亮填充
-        p.setBrush(self._along_axis(axis, self._EDGE_PEAK, self._EDGE_SHOULDER))
+        # 1) 横截面三段式明暗结构（隔离槽/亮面/过渡），横跨整条边框带
+        p.setBrush(self._cross_section(w, h, d))
         p.drawRect(band)
-        # 2) 靠瓦片一侧 1–2px 暖灰棕过渡边界（衬托暖白，不形成深色粗框）
-        t = self._TRANSITION_PX
-        gp = self._TRANSITION_GAP
-        if d == "up":
-            strip = QRectF(0.0, pad - gp - t, w, t)
-        elif d == "down":
-            strip = QRectF(0.0, h - pad + gp, w, t)
-        elif d == "left":
-            strip = QRectF(pad - gp - t, 0.0, t, h)
-        else:
-            strip = QRectF(w - pad + gp, 0.0, t, h)
-        er, eg, eb = self._WARM_EDGE
-        g = QLinearGradient(axis[0], axis[1], axis[2], axis[3])
-        g.setColorAt(0.000, QColor(er, eg, eb, 0))
-        g.setColorAt(0.115, QColor(er, eg, eb, int(255 * self._TRANSITION_ALPHA * 0.62)))
-        g.setColorAt(0.500, QColor(er, eg, eb, int(255 * self._TRANSITION_ALPHA)))
-        g.setColorAt(0.885, QColor(er, eg, eb, int(255 * self._TRANSITION_ALPHA * 0.62)))
-        g.setColorAt(1.000, QColor(er, eg, eb, 0))
-        p.setBrush(g)
-        p.drawRect(strip)
-        p.restore()
+        # 2) 沿边两端柔和消隐：DestinationIn 以包络 alpha 乘到已绘制像素（不改变颜色）
+        p.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+        p.setBrush(self._along_envelope(axis))
+        p.drawRect(band)
+        p.setCompositionMode(QPainter.CompositionMode_SourceOver)
 
     def _edge_pixmap(self, w, h, d):
-        """缓存静态暖白光带（仅尺寸/DPR/方向变化时重建）。"""
+        """缓存静态光带（仅尺寸/DPR/方向变化时重建）。"""
         dpr = self.devicePixelRatioF() or 1.0
         key = (round(w, 1), round(h, 1), d, round(dpr, 2))
         if self._edge_key == key and self._edge_pm is not None:
             return self._edge_pm
         Wd = int(round(w * dpr))
         Hd = int(round(h * dpr))
+        # 1) 无裁剪地合成 A 层光带（保证沿边消隐的 alpha 相乘正确）
+        layer = QPixmap(Wd, Hd)
+        layer.setDevicePixelRatio(dpr)
+        layer.fill(Qt.transparent)
+        lp = QPainter(layer)
+        lp.setRenderHint(QPainter.Antialiasing, True)
+        lp.setPen(Qt.NoPen)
+        self._paint_edge(lp, w, h, d)
+        lp.end()
+        # 2) 以“外轮廓 ∖ 16 瓦片”裁剪，SourceOver 贴到缓存位图（抗锯齿裁剪在 SourceOver 下正确）
         pm = QPixmap(Wd, Hd)
         pm.setDevicePixelRatio(dpr)
         pm.fill(Qt.transparent)
         pp = QPainter(pm)
         pp.setRenderHint(QPainter.Antialiasing, True)
         pp.setPen(Qt.NoPen)
-        self._paint_edge(pp, w, h, d)
+        pp.setClipPath(self._background(w, h))
+        pp.drawPixmap(0, 0, layer)
         pp.end()
         self._edge_key = key
         self._edge_pm = pm
@@ -1360,9 +1411,13 @@ class SolverMainWindow(v4.MainWindow):
         self.solver_mode = self._make_combo([("自动连走", "auto"), ("单步建议", "single")])
         self.solver_mode.currentIndexChanged.connect(lambda _i: self._clear_hint())  # 切换模式清除旧提示
         self.solver_mode.setToolTip(
-            "自动连走：AI 驱动棋盘走子；单步建议：常驻跟随——你每走一步即自动给出下一步最佳方向（棋盘高亮）")
+            "自动连走：AI 驱动棋盘走子；单步建议：常驻跟随——你每走一步即自动给出下一步最佳方向。"
+            "两种模式都会在棋盘原生边框内高亮推荐方向")
         self.solver_strategy.setCurrentIndex(solver.STRATEGY_ORDER.index("expectimax"))  # 默认 Expectimax
         self.solver_strategy.currentIndexChanged.connect(self._on_strategy_changed)
+        self.solver_strategy.setToolTip(
+            "选择求解算法（启发式 / 贪心模拟 / Expectimax / MCTS / 强化学习）；求解进行中切换会立即生效")
+        self.solver_depth.currentIndexChanged.connect(self._on_preset_changed)
 
         for row, (text, wdg) in enumerate((("算法", self.solver_strategy),
                                            ("运行方式", self.solver_depth),
@@ -1741,6 +1796,46 @@ class SolverMainWindow(v4.MainWindow):
         # 仅部分策略有“强度”参数（贪心模拟 / Expectimax / MCTS），其余置灰
         self.solver_depth.setEnabled(solver.has_presets(self.solver_strategy.currentData()))
         self._refresh_advanced_text()
+        self._hot_update_solver_config()
+
+    def _on_preset_changed(self):
+        self._refresh_advanced_text()
+        self._hot_update_solver_config()
+
+    def _hot_update_solver_config(self):
+        """求解进行中切换算法/强度 → 热更新配置并立即按新算法重算。
+
+        未在求解时只刷新界面文案（配置在「开始求解」时才读取）。
+        在途计算按协作式取消作废（并自增 job_id，丢弃其过期结果），随后按新配置重新发起求解。
+        """
+        if not self._solver_running:
+            return
+        strategy = self.solver_strategy.currentData()
+        preset = self.solver_depth.currentData()
+        new_cfg = solver.build_config(strategy, preset)
+        if new_cfg == self._solver_config:
+            return
+        self._solver_config = new_cfg
+        self._job_id += 1                     # 旧任务身份作废：在途的旧算法结果将被丢弃
+        if self._solve_in_flight and self._solver_cancel is not None:
+            self._solver_cancel.set()         # 协作式取消在途计算
+        self._solve_in_flight = False
+        self._pending_result = None
+        self.solver_progress.setRange(0, 100)
+        self.solver_progress.setValue(0)
+        if self._session is not None:         # 记录会话内的算法/强度变更（保证导出的会话数据不失真）
+            self._session.setdefault("strategy_changes", []).append({
+                "step": len(self._session.get("steps", [])),
+                "strategy": strategy,
+                "strategy_name": solver.STRATEGIES.get(strategy, strategy),
+                "depth_label": solver.PRESET_LABELS.get(preset, preset),
+                "time_limit": new_cfg.get("time_limit", 0.0),
+            })
+        self._log_step("切换算法：%s，%s（后续步骤按新算法计算）"
+                       % (solver.STRATEGIES.get(strategy, strategy),
+                          solver.describe_config(new_cfg)))
+        self._render_running_status()
+        self._request_decision()
 
     def _refresh_advanced_text(self):
         """高级参数区只展示“当前真实生效的配置”，不显示伪控件/伪指标。"""
@@ -1769,7 +1864,8 @@ class SolverMainWindow(v4.MainWindow):
 
     def _render_idle_status(self):
         self._set_status("就绪：选择策略后点击「开始求解」",
-                         "自动连走会驱动棋盘走子；单步建议会常驻跟随——你每走一步即自动给出下一步建议。")
+                         "自动连走会驱动棋盘走子；单步建议会常驻跟随——你每走一步即自动给出下一步建议。"
+                         "两种模式都会在棋盘原生边框内高亮推荐方向。")
         self._render_metrics()
 
     def _render_running_status(self, computing=False):
@@ -1920,6 +2016,8 @@ class SolverMainWindow(v4.MainWindow):
             return
 
         # 自动连走：走这一步（复用 v4 的移动 + 动画路径）
+        # 与单步建议一致，在棋盘原生边框内高亮本步方向（A 内嵌明暗轮廓 + B 三通道流光）。
+        self._show_hint(direction)
         self._ai_apply(direction)
 
     def _on_solver_failed(self, job_id, message):
