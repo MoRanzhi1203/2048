@@ -71,8 +71,24 @@ class V6MainWindow(_v5gui.SolverMainWindow):
         super().init_ui()                       # 复用 V5 全部界面构建（含双栏/把手）
         self.model.set_history_dir(
             _store.resolve_history_dir(V6_HISTORY_ROOT, 'v6'), 'v6')   # 切到 V6 存档目录
+        self._prune_inherited_history_dirs()    # 清理继承链遗留的空版本目录
         self.setWindowTitle(self._title_text())
         self._install_backend_selector()
+
+    def _prune_inherited_history_dirs(self):
+        """删除继承链（v3/v4/v5）在 V6 存档根下遗留的**空**目录，使其只保留 v6/。
+
+        成因：V6 GUI 继承 v5/v4/v3，构造期间各版本依次设置自己的存档目录
+        （经 `2048_HISTORY_DIR` 全部落在 V6 根下）。仅 v6 会真正写入数据，
+        v3/v4/v5 目录保持为空；此处只删除**空**目录，绝不触碰任何非空目录。
+        """
+        for tag in ('v3', 'v4', 'v5'):
+            d = os.path.join(V6_HISTORY_ROOT, tag)
+            try:
+                if os.path.isdir(d) and not os.listdir(d):
+                    os.rmdir(d)
+            except OSError:
+                pass
 
     # ---------------- 路径隔离：会话与导出 ----------------
     def _load_sessions(self):
