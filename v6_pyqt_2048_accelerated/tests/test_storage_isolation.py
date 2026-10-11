@@ -33,8 +33,15 @@ class StorageIsolationTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # 必须**完整关闭**窗口（而非只 hide）：closeEvent 会释放单实例锁并移除方向键事件过滤器，
+        # 否则遗留窗口会占用存档锁，令后续测试类的窗口进入只读并弹出模态提示（离屏下卡死）。
         try:
-            cls.w.hide()
+            cls.w.close()
+        except Exception:                                    # noqa: BLE001
+            pass
+        try:
+            for _ in range(3):
+                cls.app.processEvents()
         except Exception:                                    # noqa: BLE001
             pass
 

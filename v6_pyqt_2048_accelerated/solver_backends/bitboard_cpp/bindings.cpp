@@ -132,4 +132,23 @@ PYBIND11_MODULE(bitboard_cpp, m) {
         return rollout_events(bb, gained, depth, cell_ev.data(), value_ev.data(),
                               move_ev.data(), n, &cursor, w.data());
     });
+
+    // 一次 API 调用完成“一组 rollout”（n_rollouts 次），共享同一事件流游标，
+    // 每次 rollout 消费不同事件；用于把完整 N 步模拟全部下沉到原生，降低跨边界次数。
+    m.def("rollout_batch", [](const std::vector<int>& vals, int gained, int depth, int n_rollouts,
+                              py::array_t<double, py::array::c_style | py::array::forcecast> cell_ev,
+                              py::array_t<double, py::array::c_style | py::array::forcecast> value_ev,
+                              py::array_t<double, py::array::c_style | py::array::forcecast> move_ev,
+                              const std::vector<double>& w) {
+        uint64_t bb = encode_or_throw(vals);
+        if (w.size() != 7) throw std::invalid_argument("权重须为长度 7");
+        int n = int(cell_ev.size());
+        int cursor = 0;
+        std::vector<double> out;
+        out.reserve(n_rollouts > 0 ? n_rollouts : 0);
+        for (int i = 0; i < n_rollouts; ++i)
+            out.push_back(rollout_events(bb, gained, depth, cell_ev.data(), value_ev.data(),
+                                         move_ev.data(), n, &cursor, w.data()));
+        return out;
+    });
 }

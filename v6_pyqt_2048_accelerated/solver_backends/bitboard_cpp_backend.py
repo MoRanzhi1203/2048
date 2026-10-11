@@ -20,6 +20,7 @@ class CppBitboardBackend(BackendBase):
     name = 'cpp'
     kind = 'cpp'
     supports_batch = True
+    supports_native_rollout = True
 
     def __init__(self, mod):
         if mod is None:
@@ -102,3 +103,26 @@ class CppBitboardBackend(BackendBase):
         except self.m.BoardOverflowError as e:
             raise BoardOverflowError(str(e))
         return [(_unflatten(o), int(s), bool(ch)) for o, s, ch in zip(outs, scores, changed)]
+
+    # ---- 原生整段 rollout（把完整 N 步模拟下沉到 C++，消费显式事件流） ----
+    def rollout_events(self, board, gained, depth, cell_ev, value_ev, move_ev, weights=None):
+        """单次 rollout：与 Python 事件流驱动 rollout_py 在同一事件流下逐位一致。"""
+        from .numpy_core import _weight_array
+        w = _weight_array(weights).tolist()
+        try:
+            return float(self.m.rollout_events(_flatten(board), int(gained), int(depth),
+                                               cell_ev, value_ev, move_ev, w))
+        except self.m.BoardOverflowError as e:
+            raise BoardOverflowError(str(e))
+
+    def rollout_batch(self, board, gained, depth, n_rollouts,
+                      cell_ev, value_ev, move_ev, weights=None):
+        """一次 API 调用完成一组 rollout（共享事件流游标），降低跨边界调用次数。"""
+        from .numpy_core import _weight_array
+        w = _weight_array(weights).tolist()
+        try:
+            return [float(x) for x in self.m.rollout_batch(
+                _flatten(board), int(gained), int(depth), int(n_rollouts),
+                cell_ev, value_ev, move_ev, w)]
+        except self.m.BoardOverflowError as e:
+            raise BoardOverflowError(str(e))

@@ -671,17 +671,243 @@ class SolverGuiTest(unittest.TestCase):
             self.w._solver_running = False
         self.assertEqual(self.w.model.grid[0][0], 2)
 
-    # ---- 单步建议 ----
+    # ---- 单步建议（常驻跟随预测） ----
     def test_single_step_suggestion(self):
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
-        self.w.solver_mode.setCurrentIndex(1)          # 单步建议
+        self.w.solver_mode.setCurrentIndex(1)          # 单步建议（常驻跟随）
         self._select_strategy("heuristic")             # 启发式
         self.w.on_solver_clicked()
-        ok = wait_until(self.app, lambda: not self.w._solver_running and not self.w._solve_in_flight)
+        # 给出建议后**保持待命**（不再自动停止）
+        ok = wait_until(self.app, lambda: not self.w._solve_in_flight
+                        and self.w.solver_log.count() >= 2)
         self.assertTrue(ok)
-        # 未自动走子
-        self.assertEqual(self.w.model.grid[0][0], 2)
+        self.assertTrue(self.w._solver_running, "单步建议应常驻跟随，不再给一次就停")
+        self.assertEqual(self.w.model.grid[0][0], 2)   # 未自动走子
+        self.assertIn(self.w._hint_direction, ("up", "down", "left", "right"))  # 棋盘高亮建议
         self.assertGreaterEqual(self.w.solver_log.count(), 2)
+        # 停止跟随：清除高亮并结算会话
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(self.app, lambda: not self.w._solver_running
+                                   and not self.w._solve_in_flight))
+        self.assertIsNone(self.w._hint_direction, "停止后应清除棋盘高亮")
+
+    def test_single_mode_follows_user_moves(self):
+        """跟随预测：单步建议给出建议后，用户走子会自动重算下一步最优解。"""
+        self._set_grid([[2, 2, 4, 0], [0, 4, 8, 0], [0, 0, 16, 0], [0, 0, 0, 2]])
+        self.w.solver_mode.setCurrentIndex(1)
+        self._select_strategy("heuristic")
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(self.app, lambda: not self.w._solve_in_flight
+                                   and self.w.solver_log.count() >= 2), "首次建议未给出")
+        self.assertTrue(self.w._solver_running)
+        n1 = self.w.solver_log.count()
+        # 用户走一步（left 合法：2,2 合并）
+        self.w.on_move("left")
+        # 走子动画结束后应自动再算一次并记录新建议
+        self.assertTrue(wait_until(self.app, lambda: self.w.solver_log.count() > n1,
+                                   timeout_ms=6000), "走子后未自动重算下一步")
+        self.assertTrue(self.w._solver_running, "跟随预测应持续待命")
+        self.w.on_solver_clicked()
+        wait_until(self.app, lambda: not self.w._solver_running)
+
+    # ================= 方向键冲突修复（QTest 回归） =================
+    _DIRKEY_BASE = [[2, 2, 0, 0],
+                    [2, 2, 0, 0],
+                    [0, 0, 2, 2],
+                    [0, 0, 2, 2]]      # 四个方向都合法
+
+    def _dirkey_press(self, widget, key, modifier=None):
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtTest import QTest
+        QTest.keyClick(widget, key, Qt.NoModifier if modifier is None else modifier)
+        pump(self.app, 240)
+
+    def _grid_without_spawn(self):
+        g = [row[:] for row in self.w.model.grid]
+        sp = getattr(self.w.model, "last_spawn", None)
+        if sp is not None:
+            g[sp[0]][sp[1]] = 0
+        return g
+
+    def test_dirkey_maps_to_four_moves(self):
+        """四方向键正确映射为 up/down/left/right，且一次按键只走一步。"""
+        from PyQt5.QtCore import Qt
+        for key, direction in ((Qt.Key_Up, "up"), (Qt.Key_Down, "down"),
+                               (Qt.Key_Left, "left"), (Qt.Key_Right, "right")):
+            self._set_grid(self._DIRKEY_BASE)
+            self.w.model.game_over = False
+            self.w.setFocus()
+            pump(self.app, 40)
+            n0 = len(self.w.model.undo_stack)
+            self._dirkey_press(self.w, key)
+            expected, _g, moved = solver.move_grid(self._DIRKEY_BASE, direction)
+            self.assertTrue(moved, "%s 在测试棋盘上本应合法" % direction)
+            self.assertEqual(len(self.w.model.undo_stack), n0 + 1,
+                             "%s 一次按键应只走一步" % direction)
+            self.assertEqual(self._grid_without_spawn(), expected,
+                             "方向键未正确映射为 %s" % direction)
+
+    def test_dirkey_combo_focused_keeps_option(self):
+        """QComboBox 获得焦点时，方向键不得改变选项，且仍应走子。"""
+        from PyQt5.QtCore import Qt
+        combo = self.w.solver_strategy
+        combo.setCurrentIndex(1)
+        for key in (Qt.Key_Up, Qt.Key_Down):
+            self._set_grid(self._DIRKEY_BASE)
+            self.w.model.game_over = False
+            combo.setFocus()
+            pump(self.app, 60)
+            idx0 = combo.currentIndex()
+            n0 = len(self.w.model.undo_stack)
+            self._dirkey_press(combo, key)
+            self.assertEqual(combo.currentIndex(), idx0, "方向键不应改变下拉选项")
+            self.assertEqual(len(self.w.model.undo_stack), n0 + 1,
+                             "下拉聚焦时方向键仍应走子")
+
+    def test_dirkey_button_focused_not_clicked(self):
+        """QPushButton 获得焦点时，方向键不得触发按钮，且仍应走子。"""
+        from PyQt5.QtCore import Qt
+        self._set_grid(self._DIRKEY_BASE)
+        self.w.model.game_over = False
+        btn = self.w.new_game_button
+        hits = []
+        btn.clicked.connect(lambda: hits.append(1))
+        btn.setFocus()
+        pump(self.app, 60)
+        n0 = len(self.w.model.undo_stack)
+        self._dirkey_press(btn, Qt.Key_Left)
+        self.assertEqual(hits, [], "方向键不应触发按钮点击")
+        self.assertEqual(len(self.w.model.undo_stack), n0 + 1, "按钮聚焦时方向键仍应走子")
+
+    def test_dirkey_blocked_states_ignore(self):
+        """游戏结束 / 动画中 / AI 求解中：方向键不得走子。"""
+        from PyQt5.QtCore import Qt
+        self._set_grid(self._DIRKEY_BASE)
+        self.w.model.game_over = True
+        n0 = len(self.w.model.undo_stack)
+        self._dirkey_press(self.w, Qt.Key_Left)
+        self.assertEqual(len(self.w.model.undo_stack), n0, "游戏结束后方向键不应走子")
+        self.w.model.game_over = False
+        orig = self.w.board_view.is_animating
+        self.w.board_view.is_animating = lambda: True          # 受控模拟“动画中”
+        try:
+            n1 = len(self.w.model.undo_stack)
+            self._dirkey_press(self.w, Qt.Key_Left)
+            self.assertEqual(len(self.w.model.undo_stack), n1, "动画中方向键不应走子")
+        finally:
+            self.w.board_view.is_animating = orig
+        self.w._solver_running = True
+        self.w._solver_mode = "auto"
+        try:
+            n2 = len(self.w.model.undo_stack)
+            self._dirkey_press(self.w, Qt.Key_Left)
+            self.assertEqual(len(self.w.model.undo_stack), n2, "AI 求解中方向键不应走子")
+        finally:
+            self.w._solver_running = False
+
+    def test_dirkey_invalid_move_no_spawn_no_history(self):
+        """无效移动不得生成随机方块或新增历史。"""
+        from PyQt5.QtCore import Qt
+        grid = [[2, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+        self._set_grid(grid)
+        self.w.model.game_over = False
+        self.w.setFocus()
+        pump(self.app, 40)
+        n0 = len(self.w.model.undo_stack)
+        before = [r[:] for r in self.w.model.grid]
+        self._dirkey_press(self.w, Qt.Key_Up)                  # up 非法（仅首列一格且已在顶部）
+        self.assertEqual(self.w.model.grid, before, "无效移动不应改变棋盘")
+        self.assertEqual(len(self.w.model.undo_stack), n0, "无效移动不应新增历史")
+
+    def test_dirkey_welcome_page_no_board_move(self):
+        """欢迎页方向键不操作棋盘（保持原生、不落到隐藏棋盘）。"""
+        from PyQt5.QtCore import Qt
+        self.w.stack.setCurrentIndex(0)
+        pump(self.app, 100)
+        n0 = len(self.w.model.undo_stack)
+        before = [r[:] for r in self.w.model.grid]
+        self._dirkey_press(self.w, Qt.Key_Left)
+        self.assertEqual(self.w.model.grid, before, "欢迎页方向键不应操作棋盘")
+        self.assertEqual(len(self.w.model.undo_stack), n0)
+        self.w.stack.setCurrentIndex(1)
+        pump(self.app, 100)
+
+    def test_dirkey_other_keys_no_regression(self):
+        """WASD / Ctrl+Z / Ctrl+Y / Tab / 鼠标点击 / Enter-Space 不回归。"""
+        from PyQt5.QtCore import Qt, QPoint
+        from PyQt5.QtTest import QTest
+        for key, direction in ((Qt.Key_W, "up"), (Qt.Key_A, "left"),
+                               (Qt.Key_S, "down"), (Qt.Key_D, "right")):
+            self._set_grid(self._DIRKEY_BASE)
+            self.w.model.game_over = False
+            self.w.setFocus()
+            pump(self.app, 40)
+            n0 = len(self.w.model.undo_stack)
+            self._dirkey_press(self.w, key)
+            self.assertEqual(len(self.w.model.undo_stack), n0 + 1, "WASD(%s) 未走子" % direction)
+        # Ctrl+Z 撤销
+        self._set_grid(self._DIRKEY_BASE)
+        self.w.model.game_over = False
+        self.w.setFocus()
+        pump(self.app, 40)
+        self._dirkey_press(self.w, Qt.Key_Left)
+        wait_until(self.app, lambda: not self.w.board_view.is_animating(), 2000)
+        after_move = [r[:] for r in self.w.model.grid]
+        self._dirkey_press(self.w, Qt.Key_Z, Qt.ControlModifier)
+        self.assertNotEqual(self.w.model.grid, after_move, "Ctrl+Z 未撤销")
+        # Tab / Shift+Tab 只移动焦点
+        self._set_grid(self._DIRKEY_BASE)
+        self.w.model.game_over = False
+        self.w.setFocus()
+        pump(self.app, 40)
+        n0 = len(self.w.model.undo_stack)
+        self._dirkey_press(self.w, Qt.Key_Tab)
+        self._dirkey_press(self.w, Qt.Key_Backtab)
+        self.assertEqual(len(self.w.model.undo_stack), n0, "Tab/Shift+Tab 不应走子")
+        # 鼠标点击棋盘不触发行走
+        self._set_grid(self._DIRKEY_BASE)
+        self.w.model.game_over = False
+        pump(self.app, 40)
+        n0 = len(self.w.model.undo_stack)
+        QTest.mouseClick(self.w.board_view, Qt.LeftButton, Qt.NoModifier, QPoint(12, 12))
+        pump(self.app, 120)
+        self.assertEqual(len(self.w.model.undo_stack), n0, "鼠标点击不应走子")
+        # Space 仍能激活按钮（原生）
+        btn = self.w.new_game_button
+        hits = []
+        btn.clicked.connect(lambda: hits.append(1))
+        btn.setFocus()
+        pump(self.app, 60)
+        QTest.keyClick(btn, Qt.Key_Space)
+        pump(self.app, 120)
+        self.assertEqual(len(hits), 1, "Space 应仍能激活按钮")
+
+    def test_dirkey_release_and_auto_repeat(self):
+        """KeyRelease 不走子；连续 KeyPress（自动重复）每次至多走一步。"""
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtTest import QTest
+        self._set_grid(self._DIRKEY_BASE)
+        self.w.model.game_over = False
+        self.w.setFocus()
+        pump(self.app, 40)
+        n0 = len(self.w.model.undo_stack)
+        QTest.keyRelease(self.w, Qt.Key_Left)
+        pump(self.app, 200)
+        self.assertEqual(len(self.w.model.undo_stack), n0, "KeyRelease 不应走子")
+        grid = [[2, 2, 2, 2], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+        self._set_grid(grid)
+        self.w.model.game_over = False
+        self.w.setFocus()
+        pump(self.app, 40)
+        m0 = len(self.w.model.undo_stack)
+        QTest.keyPress(self.w, Qt.Key_Left)
+        pump(self.app, 240)
+        m1 = len(self.w.model.undo_stack)
+        self.assertLessEqual(m1 - m0, 1, "一次 KeyPress 只应走一步")
+        QTest.keyPress(self.w, Qt.Key_Left)
+        pump(self.app, 240)
+        m2 = len(self.w.model.undo_stack)
+        self.assertLessEqual(m2 - m1, 1, "自动重复每次至多走一步")
 
     # ---- 自动连走 ----
     def test_auto_solving_runs_and_records(self):
@@ -706,6 +932,10 @@ class SolverGuiTest(unittest.TestCase):
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
         self.w.solver_mode.setCurrentIndex(1)
         self._select_strategy("heuristic")
+        self.w.on_solver_clicked()
+        # 单步建议为常驻跟随：等首次建议给出后显式停止以结算会话
+        wait_until(self.app, lambda: not self.w._solve_in_flight
+                   and self.w.solver_log.count() >= 2)
         self.w.on_solver_clicked()
         wait_until(self.app, lambda: not self.w._solver_running)
         session = self.w._sessions[-1]
@@ -759,7 +989,9 @@ class SolverGuiTest(unittest.TestCase):
         self._select_strategy("heuristic")
         self.w.solver_depth.setCurrentIndex(1)
         self.w.on_solver_clicked()
-        wait_until(self.app, lambda: not self.w._solver_running)
+        # 单步建议为常驻跟随：等首次建议给出（不再自动停止）
+        wait_until(self.app, lambda: not self.w._solve_in_flight
+                   and self.w.solver_log.count() >= 2)
         log_count = self.w.solver_log.count()
         self.assertGreaterEqual(log_count, 2)
         right_before = self.w.splitter.sizes()[1]
@@ -781,6 +1013,8 @@ class SolverGuiTest(unittest.TestCase):
         self.assertAlmostEqual(self.w.splitter.sizes()[1], right_before, delta=6)
         self.assertEqual(self.w.solver_strategy.currentData(), strategy_before)
         self.assertEqual(self.w.solver_mode.currentData(), mode_before)
+        self.w.on_solver_clicked()                                 # 停止常驻跟随
+        wait_until(self.app, lambda: not self.w._solver_running)
 
     def test_ai_button_reopens_panel_without_solving(self):
         """折叠后点击左侧「AI 求解」只重新展开面板，不自动开始求解。"""

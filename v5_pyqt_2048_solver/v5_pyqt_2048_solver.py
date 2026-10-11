@@ -53,7 +53,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,   # noq
                              QDialog, QTableWidget, QTableWidgetItem,
                              QAbstractItemView, QHeaderView, QFrame)
 from PyQt5.QtCore import (Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot,   # noqa: E402
-                          QRect)
+                          QRect, QRectF, QEvent)
 from PyQt5.QtGui import (QColor, QFont, QPainter, QPen, QPainterPath)   # noqa: E402
 
 
@@ -649,6 +649,108 @@ class SolverResultsDialog(QDialog):
 # =====================================================================
 # 主窗口：在第 4 版基础上“向下扩展”求解面板
 # =====================================================================
+class _SolverHintOverlay(QWidget):
+    """棋盘上的“建议方向”高亮层（跟随预测模式使用）。
+
+    覆盖在 BoardView 之上：沿建议方向画一条半透明高亮带 + 居中指向箭头；
+    默认隐藏，且对鼠标透明（不拦截棋盘的点击粒子反馈）。不修改 v4 的 BoardView。
+    """
+
+    _HINT_RGB = (74, 176, 132)        # 青绿：与主题配色区分且不刺眼
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.direction = None
+        self.hide()
+
+    def set_direction(self, direction):
+        self.direction = direction
+        if direction is None:
+            self.hide()
+        else:
+            self.show()
+            self.raise_()
+        self.update()
+
+    def paintEvent(self, event):
+        d = self.direction
+        if not d:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setPen(Qt.NoPen)
+        r, g, b = self._HINT_RGB
+        w, h = float(self.width()), float(self.height())
+        m, thick = 8.0, 14.0
+        # 1) 方向侧高亮带
+        p.setBrush(QColor(r, g, b, 70))
+        if d == "left":
+            band = QRectF(m, m, thick, h - 2 * m)
+        elif d == "right":
+            band = QRectF(w - m - thick, m, thick, h - 2 * m)
+        elif d == "up":
+            band = QRectF(m, m, w - 2 * m, thick)
+        else:  # down
+            band = QRectF(m, h - m - thick, w - 2 * m, thick)
+        p.drawRoundedRect(band, 7.0, 7.0)
+        # 2) 居中指向箭头
+        cx, cy = w / 2.0, h / 2.0
+        a = 26.0
+        path = QPainterPath()
+        if d == "left":
+            path.moveTo(cx - a, cy)
+            path.lineTo(cx + a * 0.5, cy - a)
+            path.lineTo(cx + a * 0.5, cy + a)
+        elif d == "right":
+            path.moveTo(cx + a, cy)
+            path.lineTo(cx - a * 0.5, cy - a)
+            path.lineTo(cx - a * 0.5, cy + a)
+        elif d == "up":
+            path.moveTo(cx, cy - a)
+            path.lineTo(cx - a, cy + a * 0.5)
+            path.lineTo(cx + a, cy + a * 0.5)
+        else:  # down
+            path.moveTo(cx, cy + a)
+            path.lineTo(cx - a, cy - a * 0.5)
+            path.lineTo(cx + a, cy - a * 0.5)
+        path.closeSubpath()
+        p.fillPath(path, QColor(r, g, b, 150))
+        p.end()
+
+
+_ARROW_DIRECTIONS = {Qt.Key_Up: 'up', Qt.Key_Down: 'down',
+                     Qt.Key_Left: 'left', Qt.Key_Right: 'right'}
+
+
+class _ArrowKeyRouter(QObject):
+    """单一方向键分发入口（应用内事件过滤器；**非系统级钩子**，不影响其他程序）。
+
+    背景：方向键原本只在“获得焦点的子控件忽略它”时才到达 MainWindow.keyPressEvent；
+    QComboBox 会消费 Up/Down（改选项），QAbstractButton 会消费四方向键（autoExclusive 导航），
+    导致焦点落在这些控件上时棋盘不响应、选项被误改。此过滤器在事件到达任何子控件之前，
+    于“游戏窗口前台 + 位于游戏页 + 无模态对话框 + 焦点在本窗口内”时，把四个方向键
+    统一路由到游戏移动控制器并消费，保证一次 KeyPress 只走一次移动路径。
+
+    仅安装一次（由 V5 子类安装，V6 继承不重复安装）；窗口关闭时移除。
+    """
+
+    def __init__(self, window):
+        super().__init__(window)
+        self._window = window
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            try:
+                if self._window._consume_arrow(event.key()):
+                    event.accept()
+                    return True
+            except RuntimeError:
+                return False          # 窗口已销毁：放行
+        return False
+
+
 class SolverMainWindow(v4.MainWindow):
 
     # 主线程 -> 工作线程 的求解请求（跨线程自动排队）
@@ -690,6 +792,8 @@ class SolverMainWindow(v4.MainWindow):
             _store.resolve_history_dir(os.path.join(_HERE, "game_history"), "v5"), "v5")
 
         self._init_solver()
+        self._attach_hint_overlay()          # 建议方向高亮层（跟随预测模式）
+        self._install_arrow_router()         # 方向键单一分发入口（避免被聚焦控件抢占）
         self._restructure_two_columns()
         # 启动页尺寸与第 4 版完全一致；进入游戏页时再切换为双栏可调整尺寸
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -786,10 +890,20 @@ class SolverMainWindow(v4.MainWindow):
     def start_new_game(self):
         self._grow_for_solver()          # 先扩好尺寸，再切页，避免出现被压扁的一帧
         super().start_new_game()
+        self._clear_hint()
+        self._resync_follow_after_board_reset()
 
     def on_continue_clicked(self):
         self._grow_for_solver()
         super().on_continue_clicked()
+        self._clear_hint()
+        self._resync_follow_after_board_reset()
+
+    def _resync_follow_after_board_reset(self):
+        """跟随预测模式：新游戏/继续后棋盘已变，自动重算下一步建议。"""
+        if (self._solver_running and self._solver_mode == "single"
+                and not self._solve_in_flight):
+            self._request_decision()
 
     # ---------------- 求解状态初始化 ----------------
     def _init_solver(self):
@@ -797,6 +911,9 @@ class SolverMainWindow(v4.MainWindow):
         self._solve_in_flight = False
         self._ai_applying = False
         self._solver_mode = "auto"
+        self._hint_direction = None       # 跟随预测：当前建议方向（棋盘高亮）
+        self._hint_overlay = None         # 建议方向高亮层（覆盖在 board_view 之上）
+        self._arrow_router = None         # 方向键单一分发入口（应用内事件过滤器）
         self._solver_config = {"strategy": "expectimax", "depth": 4, "time_limit": 0.3}
         self._session = None
         self._pending_result = None
@@ -821,6 +938,86 @@ class SolverMainWindow(v4.MainWindow):
     def _board_signature(grid):
         """棋盘快照签名（用于校验结果对应的棋盘状态）。"""
         return tuple(tuple(int(v) for v in row) for row in grid)
+
+    # ---------------- 跟随预测：棋盘建议方向高亮 ----------------
+    def _attach_hint_overlay(self):
+        bv = getattr(self, "board_view", None)
+        if bv is None or self._hint_overlay is not None:
+            return
+        self._hint_overlay = _SolverHintOverlay(bv)
+        self._hint_overlay.setGeometry(0, 0, bv.width(), bv.height())
+        self._hint_overlay.hide()
+
+    def _show_hint(self, direction):
+        """在棋盘上高亮建议方向（跟随预测模式）。"""
+        self._hint_direction = direction
+        ov = getattr(self, "_hint_overlay", None)
+        bv = getattr(self, "board_view", None)
+        if ov is not None and bv is not None:
+            ov.setGeometry(0, 0, bv.width(), bv.height())
+            ov.set_direction(direction)
+
+    def _clear_hint(self):
+        self._hint_direction = None
+        ov = getattr(self, "_hint_overlay", None)
+        if ov is not None:
+            ov.set_direction(None)
+
+    # ---------------- 方向键：单一分发入口（应用内事件过滤器） ----------------
+    def _install_arrow_router(self):
+        """安装唯一的方向键路由（V6 继承时不会重复安装）。"""
+        if getattr(self, "_arrow_router", None) is not None:
+            return
+        self._arrow_router = _ArrowKeyRouter(self)
+        QApplication.instance().installEventFilter(self._arrow_router)
+
+    def _detach_arrow_router(self):
+        r = getattr(self, "_arrow_router", None)
+        if r is None:
+            return
+        app = QApplication.instance()
+        if app is not None:
+            try:
+                app.removeEventFilter(r)
+            except Exception:                             # noqa: BLE001
+                pass
+        self._arrow_router = None
+
+    @staticmethod
+    def _is_keyboard_input(widget):
+        """文本/数字输入类控件：方向键应保持原生行为（本游戏页内一般不存在，防御性判断）。"""
+        try:
+            from PyQt5.QtWidgets import (QLineEdit, QTextEdit, QPlainTextEdit,
+                                         QAbstractSpinBox)
+            return isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit,
+                                       QAbstractSpinBox))
+        except Exception:                                 # noqa: BLE001
+            return False
+
+    def _consume_arrow(self, key):
+        """消费方向键（返回 True 表示已处理，事件不再下传）。
+
+        规则（仅在“本窗口可见 + 焦点在本窗口内 + 无模态对话框 + 非输入控件”时生效）：
+        - 游戏页可见：执行一次棋盘移动（复用既有控制器/动画/计分/历史/随机生成）；
+        - 其他页（欢迎页等）：仅消费，不操作棋盘（避免落到基类 keyPressEvent 操作隐藏棋盘）。
+        不在本窗口/模态对话框/输入控件上的方向键一律放行，保持原生行为。
+        """
+        if key not in _ARROW_DIRECTIONS:
+            return False
+        if not self.isVisible():
+            return False
+        fw = QApplication.focusWidget()
+        if fw is not None:
+            if fw is not self and not self.isAncestorOf(fw):
+                return False                              # 焦点不在本窗口：放行（其他窗口/对话框）
+            if self._is_keyboard_input(fw):
+                return False                              # 输入控件：保持原生
+        if QApplication.activeModalWidget() is not None:
+            return False                                  # 模态对话框：保持原生
+        gp = getattr(self, "game_page", None)
+        if gp is not None and gp.isVisible():
+            self.on_move(_ARROW_DIRECTIONS[key])          # 游戏页：走子（内部自带状态门禁）
+        return True
 
     def _ensure_worker(self):
         """惰性创建并启动后台求解线程（已运行则直接复用）。"""
@@ -947,6 +1144,8 @@ class SolverMainWindow(v4.MainWindow):
             [(solver.PRESET_LABELS[k], k) for k in solver.PRESET_ORDER])
         self.solver_depth.setCurrentIndex(1)
         self.solver_mode = self._make_combo([("自动连走", "auto"), ("单步建议", "single")])
+        self.solver_mode.setToolTip(
+            "自动连走：AI 驱动棋盘走子；单步建议：常驻跟随——你每走一步即自动给出下一步最佳方向（棋盘高亮）")
         self.solver_strategy.setCurrentIndex(solver.STRATEGY_ORDER.index("expectimax"))  # 默认 Expectimax
         self.solver_strategy.currentIndexChanged.connect(self._on_strategy_changed)
 
@@ -1355,7 +1554,7 @@ class SolverMainWindow(v4.MainWindow):
 
     def _render_idle_status(self):
         self._set_status("就绪：选择策略后点击「开始求解」",
-                         "自动连走会驱动棋盘走子；单步建议只提示方向。")
+                         "自动连走会驱动棋盘走子；单步建议会常驻跟随——你每走一步即自动给出下一步建议。")
         self._render_metrics()
 
     def _render_running_status(self, computing=False):
@@ -1489,6 +1688,8 @@ class SolverMainWindow(v4.MainWindow):
             self._session["timeout_count"] += 1
 
         if self._solver_mode == "single":
+            # 跟随预测：给出建议后**保持待命**（不再自动停止），
+            # 用户在棋盘上走子后会自动重算下一步最优解；棋盘高亮建议方向。
             ev = result["evaluations"].get(direction)
             self._log_step("建议：%s（评估 %s，搜索深度 %d，用时 %.1fms）"
                            % (result["best_name"],
@@ -1496,8 +1697,11 @@ class SolverMainWindow(v4.MainWindow):
                               result.get("depth_reached", 0), result.get("elapsed_ms", 0.0)))
             self._set_status("建议方向：<b>%s</b>（评估 %s）"
                              % (result["best_name"], "—" if ev is None else "%.1f" % ev),
-                             "单步建议模式：未自动走子，可自行按方向键。")
-            self._stop_solver("已给出建议")
+                             "跟随预测：请按方向键走子，走子后会自动重算下一步。")
+            self._show_hint(direction)
+            self._pending_result = None            # 单步模式不作为自动走子的待执行结果
+            self._update_solver_buttons()          # 保持“停止”文案（仍处于跟随状态）
+            self._render_metrics()
             return
 
         # 自动连走：走这一步（复用 v4 的移动 + 动画路径）
@@ -1541,6 +1745,17 @@ class SolverMainWindow(v4.MainWindow):
             else:
                 QTimer.singleShot(STEP_DELAY_MS, self._request_decision)
             return
+        if self._solver_running and self._solver_mode == "single":
+            # 跟随预测：用户走子动画结束 → 清除旧高亮并自动重算下一步最优解
+            self._clear_hint()
+            self._pending_result = None
+            if self.model.game_over:
+                self._finish_solver("游戏结束")
+            elif solver.legal_moves(self.model.grid):
+                QTimer.singleShot(STEP_DELAY_MS, self._request_decision)
+            else:
+                self._finish_solver("无可行移动")
+            return
         # 非求解状态：完全沿用第 4 版行为（胜负弹窗等）
         super()._on_animation_finished()
 
@@ -1576,6 +1791,7 @@ class SolverMainWindow(v4.MainWindow):
         self._solver_running = False
         self._solve_in_flight = False
         self._ai_applying = False
+        self._clear_hint()
         self.solver_progress.setRange(0, 100)
         self.solver_progress.setValue(0)
         if not silent and was_running:
@@ -1591,6 +1807,7 @@ class SolverMainWindow(v4.MainWindow):
         self._solver_running = False
         self._solve_in_flight = False
         self._ai_applying = False
+        self._clear_hint()
         self.solver_progress.setRange(0, 100)
         self.solver_progress.setValue(0)
         summary = self._finalize_session(reason)
@@ -1641,8 +1858,16 @@ class SolverMainWindow(v4.MainWindow):
     # ---------------- 覆盖：求解期间屏蔽手动操作 ----------------
     def on_move(self, direction):
         if self._solver_running and not self._ai_applying:
-            return
+            if self._solver_mode == "auto":
+                return                     # 自动连走：求解期间屏蔽手动走子（原行为）
+            if self._solve_in_flight:
+                return                     # 跟随预测：计算中忽略按键，待建议给出后再走
+        before = self._board_signature(self.model.grid)
         super().on_move(direction)
+        # 跟随预测：确实走子后清除旧高亮（无效方向不触发动画，保留当前建议）
+        if (self._solver_running and self._solver_mode == "single"
+                and self._board_signature(self.model.grid) != before):
+            self._clear_hint()
 
     def on_undo(self):
         if self._solver_running:
@@ -1763,6 +1988,7 @@ class SolverMainWindow(v4.MainWindow):
 
     # ---------------- 生命周期 ----------------
     def closeEvent(self, event):
+        self._detach_arrow_router()          # 移除应用内方向键过滤器，避免残留到其他窗口
         try:
             if self._solver_running or self._session is not None:
                 self._stop_solver("窗口关闭", silent=True)

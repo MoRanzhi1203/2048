@@ -1,0 +1,79 @@
+{
+  "release": "V6.1",
+  "evidence_dir": "v6_pyqt_2048_accelerated/experiments/v6_1/20261011_195221",
+  "date": "2026-10-11",
+  "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+  "gates": {
+    "G0_SOURCE_BASELINE": {
+      "status": "PASS",
+      "evidence": ["git_before.txt", "git_after.txt", "source_hash_before.json", "source_hash_after.json", "model_hash_before.json", "model_hash_after.json"],
+      "detail": "HEAD 前后一致 0296ab2f…；V1–V5 源码/模型哈希不变；仅 6 个 V6 文件变更（含重编译 pyd）；未 git 提交。"
+    },
+    "G1_RULE_AND_ALGO_PARITY": {
+      "status": "PASS",
+      "command": "python -m unittest test_row_table test_backend_equivalence test_search_equivalence -v",
+      "exit_code": 0,
+      "samples": {"row_table_codes": 65536, "non_overflow_checked": 64769, "random_boards": 10000, "dirs": 4},
+      "evidence": ["tests.log", "correctness_results.json"],
+      "detail": "65536 行表 0 mismatch（溢出标志 0 mismatch，767 溢出行按官方口径跳过行结果）；10000 随机盘 ×4 方向 0 mismatch；边界拒收 8/8；五策略 best_direction 跨四后端一致且与 V5 一致。"
+    },
+    "G2_NATIVE_HOTPATH": {
+      "status": "PASS",
+      "evidence": ["profiles/search_profile.json", "profiles/rollout_events_equivalence.json", "benchmarks/search_fixed_work.json"],
+      "detail": "剖析确认 cpp 原语确实位于 rollout/expectimax/mcts 热路径（rollout 单盘 ~3800 次原语调用）。原生整段 rollout `rollout_events` 原为死接口，已加薄适配层并按“同事件流逐位一致”验证（141 比较 0 mismatch），可选接入（native_rollout）。"
+    },
+    "G3_SEARCH_BENCH_FAIRNESS": {
+      "status": "PASS",
+      "command": "run_micro.py / search_fixed_work.py / run_pilot.py --mode smoke",
+      "exit_code": 0,
+      "samples": {"boards": 48, "boards_sha256_match": true},
+      "evidence": ["benchmarks/micro.csv", "benchmarks/search_fixed_work.csv", "benchmarks/time_budget_smoke.csv", "benchmarks/search_fixed_work.json"],
+      "detail": "同工作量（固定 rollouts/depth/sims）与固定墙钟（20ms/步 smoke）分开报告；动作一致率 1.0（默认路径）；未用不同 nodes 口径推断速度。"
+    },
+    "G4_FALLBACK_AND_OVERFLOW": {
+      "status": "PASS",
+      "evidence": ["correctness_results.json", "profiles/fallback_chain.json"],
+      "detail": "修复后：含 ≥65536 的盘在 cpp 下经预检查即回退 reference（backend_used=reference，reason 含 BoardOverflow）；相邻 32768 合并溢出显式拒绝；cpp/numba 不可用回退首个可用后端并记录原因；原生异常安全网改用 reference，不再崩溃。"
+    },
+    "G5_STORAGE_ISOLATION": {
+      "status": "PASS",
+      "command": "subprocess with unique 2048_HISTORY_DIR; full GUI lifecycle",
+      "exit_code": 0,
+      "evidence": ["storage_isolation.json"],
+      "detail": "真实 V1–V5 目录（solver_results/game_history/锁）前后无新增/删除/修改；四模型不变；V6 会话/导出/存档均落在 V6 目录或隔离临时根。"
+    },
+    "G6_GUI_QTHREAD": {
+      "status": "PASS",
+      "command": "python -m unittest ... test_gui_integration ; v5 test_solver",
+      "exit_code": 0,
+      "samples": {"v6_tests": 32, "v5_tests": 80},
+      "evidence": ["tests.log", "v5_regression.log", "profiles/fallback_chain.json"],
+      "detail": "V6 32 项 + V5 80 项全部通过；无 QThread.terminate()（源码仅有“不使用”注释）；折叠/展开 20 次无漂移；后端选择器与降级链验证通过。"
+    },
+    "G7_GUI_AUTOMATED": {
+      "status": "PASS",
+      "command": "python tools/capture_gui.py --version v6 --scene start|game|solver|collapsed",
+      "exit_code": 0,
+      "samples": {"scenes": 4, "grab": "screen-bitblt", "frame_from": "dwm"},
+      "evidence": ["gui_capture.jsonl"],
+      "detail": "四场景整窗截图（含原生标题栏/图标/按钮），CAPTURE_PASS/STRUCTURE_PASS/TEXT_PASS 均为 true。"
+    },
+    "G8_GUI_VISUAL_AND_DPI": {
+      "status": "UNVERIFIED",
+      "evidence": ["gui_capture.jsonl", "manual_visual_checklist.md"],
+      "detail": "未进行人工目视核对（未加 --visual-confirm）；未在真实 125%/150% DPI 下测试。按规范保持 UNVERIFIED，不得越级 PASS。"
+    },
+    "G9_REPORT_INTEGRITY": {
+      "status": "PASS",
+      "evidence": ["final_report.md", "correctness_results.json", "benchmarks/*", "profiles/*", "backend_policy_v6_1.json"],
+      "detail": "原始 JSON/CSV、参数、棋盘 SHA、后端 pyd 哈希、测试数、门禁状态一致可复现；历史不可溯源说法已标 UNVERIFIED。"
+    },
+    "G10_V6_1_RELEASE_READY": {
+      "status": "PARTIAL_PASS",
+      "blocking": ["G8_GUI_VISUAL_AND_DPI=UNVERIFIED"],
+      "detail": "全部强制门禁通过；仅“人工视觉/DPI”待确认，故 PARTIAL_PASS，不越级为 PASS。"
+    }
+  },
+  "mandatory_gate_result": "PASS(G0-G7,G9) / UNVERIFIED(G8)",
+  "final_status": "PARTIAL_PASS"
+}

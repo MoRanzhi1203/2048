@@ -25,6 +25,7 @@ if _V6_DIR_SELF not in sys.path:
 
 from solver_backends import api as _api                        # noqa: E402
 from solver_backends.dispatch import get_backend, probe_backends   # noqa: E402
+from solver_backends.events import SpawnEventStream            # noqa: E402
 
 # 复用 V5 的常量与 RL 实现（只读）
 _V5_DIR = os.path.join(os.path.dirname(_V6_DIR_SELF), 'v5_pyqt_2048_solver')
@@ -155,24 +156,38 @@ def _rollout_score(backend, grid_after_move, gained, depth, weights, rng,
 
 
 def _rollout_decision(backend, grid, rollouts=20, rollout_depth=16, weights=None,
-                      seed=DEFAULT_SEED, policy='random', epsilon=0.2, paired=True):
+                      seed=DEFAULT_SEED, policy='random', epsilon=0.2, paired=True,
+                      native_rollout=False):
     start = time.time()
     weights = weights or DEFAULT_WEIGHTS
     nodes = 0
     evaluations = {}
     details = {}
     best_dir, best_value = None, -float('inf')
+    # 原生整段 rollout（可选）：仅 random 策略且后端声明支持时启用；
+    # 同一显式事件流下与 Python 驱动逐位一致（见 benchmarks/verify_rollout_events）。
+    native = (bool(native_rollout) and policy == 'random'
+              and getattr(backend, 'supports_native_rollout', False))
     for d, after_move, gain in _ordered_moves(backend, grid, weights, order=True):
         if paired:
-            rng = random.Random(seed)
+            dir_seed = int(seed)
         else:
             idx = DIRECTIONS.index(d)
-            rng = random.Random((seed * 1000003 + idx * 7919) & 0xFFFFFFFF)
-        sims = []
-        for _ in range(max(1, rollouts)):
-            sims.append(_rollout_score(backend, after_move, gain, max(1, rollout_depth),
-                                       weights, rng, policy, epsilon))
-            nodes += 1
+            dir_seed = (seed * 1000003 + idx * 7919) & 0xFFFFFFFF
+        n_roll = max(1, rollouts)
+        if native:
+            stream = SpawnEventStream(dir_seed, max(4096, n_roll * max(1, rollout_depth) * 4))
+            cell_ev, value_ev, move_ev = stream.as_arrays()
+            sims = backend.rollout_batch(after_move, gain, max(1, rollout_depth),
+                                         n_roll, cell_ev, value_ev, move_ev, weights)
+            nodes += len(sims)
+        else:
+            rng = random.Random(dir_seed)
+            sims = []
+            for _ in range(n_roll):
+                sims.append(_rollout_score(backend, after_move, gain, max(1, rollout_depth),
+                                           weights, rng, policy, epsilon))
+                nodes += 1
         mean = sum(sims) / len(sims)
         var = sum((x - mean) ** 2 for x in sims) / max(1, len(sims) - 1)
         evaluations[d] = mean
@@ -183,7 +198,9 @@ def _rollout_decision(backend, grid, rollouts=20, rollout_depth=16, weights=None
     return _result('rollout', best_dir, evaluations, max(1, rollout_depth), nodes, start,
                    extra={'rollouts': rollouts, 'policy': policy, 'paired': bool(paired),
                           'epsilon': epsilon if policy == 'heuristic_biased' else None,
+                          'native_rollout': bool(native),
                           'details': details})
+
 
 
 # =====================================================================
@@ -568,7 +585,8 @@ def _run_strategy(be, grid, strategy, options, weights):
             seed=int(options.get('seed', DEFAULT_SEED)),
             policy=str(options.get('rollout_policy', 'random')),
             epsilon=float(options.get('rollout_epsilon', 0.2)),
-            paired=bool(options.get('paired', True)))
+            paired=bool(options.get('paired', True)),
+            native_rollout=bool(options.get('native_rollout', False)))
     if strategy == 'expectimax':
         time_limit = max(0.001, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT))
         return _expectimax_decision(
@@ -617,9 +635,22 @@ def solve(grid, strategy='expectimax', backend='auto', **options):
         return res
 
     weights = options.get('weights')
-    be, backend_used, fallback_reason = get_backend(backend, allow_fallback=True)
+    # 分策略默认（H9-4）：对无端到端收益的策略（heuristic/rl）auto 走 reference，
+    # 避免“cpp 全局一刀切”；rollout/expectimax/mcts 仍读 backend_default.json（cpp）。
+    resolved = backend
+    if backend in (None, 'auto') and strategy in ('heuristic', 'rl'):
+        resolved = 'reference'
+    be, backend_used, fallback_reason = get_backend(resolved, allow_fallback=True)
 
-    if not be.legal_moves(grid):
+    try:
+        no_moves = not be.legal_moves(grid)
+    except _api.BoardOverflowError as ovf:
+        # 预检查也要走同一溢出回退：位棋盘后端遇到 >=65536 时显式回退 reference（非静默替换）
+        be, backend_used = get_backend('reference', allow_fallback=True)[0], 'reference'
+        fallback_reason = 'BoardOverflow(%s) -> reference' % ovf
+        no_moves = not be.legal_moves(grid)
+
+    if no_moves:
         data = {
             'strategy': strategy, 'best_direction': None, 'best_name': '',
             'evaluations': {}, 'depth_reached': 0, 'nodes': 0,
@@ -645,6 +676,10 @@ def solve(grid, strategy='expectimax', backend='auto', **options):
             res['strategy'] = strategy
             res['error'] = '%s: %s' % (type(exc).__name__, exc)
     except Exception as exc:                                # noqa: BLE001
+        # 后端原语/原生调用异常：安全网必须改用 reference 重算，绝不在异常后端上二次失败；
+        # 记录真实 backend_used/fallback_reason，不静默替换算法语义。
+        be, backend_used = get_backend('reference', allow_fallback=True)[0], 'reference'
+        fallback_reason = '%s(%s) -> reference' % (type(exc).__name__, exc)
         res = _heuristic_decision(be, grid, weights)
         res['strategy'] = strategy
         res['error'] = '%s: %s' % (type(exc).__name__, exc)

@@ -19,6 +19,11 @@ class GuiIntegrationTest(unittest.TestCase):
     def setUpClass(cls):
         from PyQt5.QtWidgets import QApplication
         cls.app = QApplication.instance() or QApplication(sys.argv[:1])
+        # 隔离存档根目录：避免与同类窗口争用同一 history 目录而触发单实例锁的
+        # 模态“只读运行”提示（离屏平台下模态弹窗无法关闭会卡住后续测试）。
+        import tempfile
+        cls._old_hist = os.environ.get('2048_HISTORY_DIR')
+        os.environ['2048_HISTORY_DIR'] = tempfile.mkdtemp(prefix='v6_gui_hist_root_')
         import v6_pyqt_2048_accelerated as m
         import solver_v6
         cls.m = m
@@ -28,10 +33,20 @@ class GuiIntegrationTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # 完整关闭窗口（释放单实例锁 + 移除方向键事件过滤器），不留残余。
         try:
-            cls.w.hide()
+            cls.w.close()
         except Exception:                                    # noqa: BLE001
             pass
+        try:
+            for _ in range(3):
+                cls.app.processEvents()
+        except Exception:                                    # noqa: BLE001
+            pass
+        if cls._old_hist is None:
+            os.environ.pop('2048_HISTORY_DIR', None)
+        else:
+            os.environ['2048_HISTORY_DIR'] = cls._old_hist
 
     def test_window_title(self):
         self.assertTrue(self.w.windowTitle().startswith('2048 V6'))

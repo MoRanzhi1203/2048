@@ -1,0 +1,13 @@
+{
+  "python_executable": "E:\\anaconda3\\envs\\2048\\python.exe",
+  "python_version": "3.12.3",
+  "platform": "Windows-10-10.0.19042-SP0",
+  "processor": "Intel64 Family 6 Model 141 Stepping 1, GenuineIntel",
+  "cpu_count": 16,
+  "numpy": "1.26.4",
+  "numba": "0.60.0",
+  "llvmlite": "0.43.0",
+  "PYTHONNOUSERSITE": "1",
+  "conda_default_env": null,
+  "date": "2026-10-11"
+}

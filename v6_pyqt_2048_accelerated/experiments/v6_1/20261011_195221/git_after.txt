@@ -1,0 +1,19 @@
+# git status --short
+ M v6_pyqt_2048_accelerated/screenshots/full_collapsed.png
+ M v6_pyqt_2048_accelerated/screenshots/full_game.png
+ M v6_pyqt_2048_accelerated/screenshots/full_solver.png
+ M v6_pyqt_2048_accelerated/screenshots/full_start.png
+ M v6_pyqt_2048_accelerated/solver_backends/api.py
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bindings.cpp
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard.cpp
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard_cpp.cp312-win_amd64.pyd
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp_backend.py
+ M v6_pyqt_2048_accelerated/solver_v6.py
+?? "2048_V6_1_\345\216\237\347\224\237\346\220\234\347\264\242\346\200\247\350\203\275\344\270\216\351\232\224\347\246\273\345\217\221\345\270\203\346\224\266\345\217\243_Trae\345\256\214\346\225\264\346\214\207\344\273\244.md"
+?? "2048_V6_\345\237\272\344\272\216V5_1\347\250\263\345\256\232\347\211\210_\351\253\230\346\200\247\350\203\275\345\220\216\347\253\257\344\270\216\345\205\254\345\271\263\345\237\272\345\207\206_Trae\346\233\264\346\226\260\345\256\214\346\225\264\346\214\207\344\273\244.md"
+?? v6_pyqt_2048_accelerated/experiments/
+
+# HEAD
+0296ab2fb515a5c3fa9aa95ba7e5e631c954e97d
+# branch
+main

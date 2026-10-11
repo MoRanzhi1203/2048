@@ -1,0 +1,82 @@
+{
+  "kind": "native_rollout_distribution",
+  "seeds": 200,
+  "note": "同一盘上多种子；两路径应估计同一期望值（均值/标准差接近）",
+  "board_0": {
+    "board_index": 0,
+    "group": "empty_ge10",
+    "reference": {
+      "n": 200,
+      "mean": 64.51818750000001,
+      "std": 5.923533547097859,
+      "dir_hist": {
+        "down": 71,
+        "right": 88,
+        "up": 31,
+        "left": 10
+      }
+    },
+    "cpp_native": {
+      "n": 200,
+      "mean": 64.6175,
+      "std": 6.472066903238872,
+      "dir_hist": {
+        "down": 68,
+        "up": 32,
+        "right": 88,
+        "left": 12
+      }
+    },
+    "mean_rel_diff": 0.001539294636856577
+  },
+  "board_1": {
+    "board_index": 1,
+    "group": "empty_le4",
+    "reference": {
+      "n": 200,
+      "mean": 538.1101249999999,
+      "std": 57.48309545518035,
+      "dir_hist": {
+        "down": 188,
+        "up": 12
+      }
+    },
+    "cpp_native": {
+      "n": 200,
+      "mean": 543.3193125,
+      "std": 57.718025263418305,
+      "dir_hist": {
+        "down": 184,
+        "up": 16
+      }
+    },
+    "mean_rel_diff": 0.00968052310851876
+  },
+  "board_2": {
+    "board_index": 2,
+    "group": "high_tiles",
+    "reference": {
+      "n": 200,
+      "mean": 22.00125,
+      "std": 4.7850475115196085,
+      "dir_hist": {
+        "down": 24,
+        "right": 45,
+        "up": 96,
+        "left": 35
+      }
+    },
+    "cpp_native": {
+      "n": 200,
+      "mean": 22.0399375,
+      "std": 4.4456990622784796,
+      "dir_hist": {
+        "right": 41,
+        "up": 106,
+        "left": 34,
+        "down": 19
+      }
+    },
+    "mean_rel_diff": 0.0017584228168055606
+  }
+}

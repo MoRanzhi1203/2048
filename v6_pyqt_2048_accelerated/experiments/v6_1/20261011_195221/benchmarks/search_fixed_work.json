@@ -1,0 +1,322 @@
+{
+  "kind": "search_fixed_work",
+  "run_id": "20261011_195221",
+  "boards_count": 48,
+  "boards_sha256_match": true,
+  "fixed_workload": {
+    "heuristic": {},
+    "rollout": {
+      "rollouts": 20,
+      "rollout_depth": 16,
+      "seed": 2048
+    },
+    "rollout_native": {
+      "rollouts": 20,
+      "rollout_depth": 16,
+      "seed": 2048,
+      "native_rollout": true
+    },
+    "expectimax_noprune_d3": {
+      "depth": 3,
+      "prune": false,
+      "time_limit": 30.0,
+      "seed": 2048
+    },
+    "mcts_sims60": {
+      "simulations": 60,
+      "rollout_depth": 12,
+      "time_limit": 30.0,
+      "seed": 2048
+    }
+  },
+  "backend_availability": {
+    "reference": {
+      "available": true,
+      "reason": "v5_pyqt_2048_solver/solver_2048.py (frozen reference)",
+      "kind": "python"
+    },
+    "numpy": {
+      "available": true,
+      "reason": "numpy 1.26.4",
+      "kind": "numpy"
+    },
+    "numba": {
+      "available": true,
+      "reason": "numba 0.60.0 (llvmlite 0.43.0)",
+      "kind": "numba"
+    },
+    "cpp": {
+      "available": true,
+      "reason": "bitboard_cpp C++20/pybind11",
+      "kind": "cpp"
+    }
+  },
+  "timing_boundary": "median/p95/std over 48 boards; fixed workload (not wall-clock)",
+  "env": {
+    "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+    "python_version": "3.12.3",
+    "platform": "Windows-10-10.0.19042-SP0",
+    "cpu_count": 16,
+    "thread_env": {
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "NUMBA_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    }
+  },
+  "results": [
+    {
+      "algorithm": "heuristic",
+      "backend": "reference",
+      "median_ms_per_solve": 0.0,
+      "mean_ms_per_solve": 0.1333,
+      "median_nodes": 4.0,
+      "p95_ms": 0.947,
+      "std_ms": 0.2919,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 0.101
+    },
+    {
+      "algorithm": "heuristic",
+      "backend": "numpy",
+      "median_ms_per_solve": 1.0925,
+      "mean_ms_per_solve": 1.2101,
+      "median_nodes": 4.0,
+      "p95_ms": 2.111,
+      "std_ms": 0.7309,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 0.184,
+      "speedup_vs_ref": 0.0
+    },
+    {
+      "algorithm": "heuristic",
+      "backend": "numba",
+      "median_ms_per_solve": 0.0,
+      "mean_ms_per_solve": 0.5198,
+      "median_nodes": 4.0,
+      "p95_ms": 1.004,
+      "std_ms": 2.1554,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 0.205
+    },
+    {
+      "algorithm": "heuristic",
+      "backend": "cpp",
+      "median_ms_per_solve": 0.0,
+      "mean_ms_per_solve": 0.0636,
+      "median_nodes": 4.0,
+      "p95_ms": 0.516,
+      "std_ms": 0.1917,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 0.097
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "reference",
+      "median_ms_per_solve": 85.3845,
+      "mean_ms_per_solve": 73.3857,
+      "median_nodes": 80.0,
+      "p95_ms": 104.823,
+      "std_ms": 35.9726,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 3.657,
+      "speedup_vs_ref": 1.0
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "numpy",
+      "median_ms_per_solve": 1043.5975,
+      "mean_ms_per_solve": 919.8505,
+      "median_nodes": 80.0,
+      "p95_ms": 1441.76,
+      "std_ms": 496.5931,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 44.332,
+      "speedup_vs_ref": 0.082
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "numba",
+      "median_ms_per_solve": 249.1665,
+      "mean_ms_per_solve": 215.65,
+      "median_nodes": 80.0,
+      "p95_ms": 332.743,
+      "std_ms": 113.2981,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 10.57,
+      "speedup_vs_ref": 0.343
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "cpp",
+      "median_ms_per_solve": 31.4945,
+      "mean_ms_per_solve": 30.8337,
+      "median_nodes": 80.0,
+      "p95_ms": 55.815,
+      "std_ms": 20.8524,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 1.596,
+      "speedup_vs_ref": 2.711
+    },
+    {
+      "algorithm": "rollout_native",
+      "backend": "cpp",
+      "median_ms_per_solve": 11.921,
+      "mean_ms_per_solve": 10.5163,
+      "median_nodes": 80.0,
+      "p95_ms": 15.924,
+      "std_ms": 5.1413,
+      "action_agreement_vs_ref": 0.4792,
+      "mean_eval_dev_vs_ref": 1545.54225,
+      "n_boards": 48,
+      "native_rollout": true,
+      "wall_s": 0.635,
+      "speedup_vs_ref": 7.163
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "reference",
+      "median_ms_per_solve": 16.2735,
+      "mean_ms_per_solve": 14.0985,
+      "median_nodes": 66.0,
+      "p95_ms": 25.194,
+      "std_ms": 8.3125,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 0.806,
+      "speedup_vs_ref": 1.0
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "numpy",
+      "median_ms_per_solve": 121.011,
+      "mean_ms_per_solve": 107.4901,
+      "median_nodes": 66.0,
+      "p95_ms": 207.312,
+      "std_ms": 69.4651,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 5.374,
+      "speedup_vs_ref": 0.134
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "numba",
+      "median_ms_per_solve": 9.4575,
+      "mean_ms_per_solve": 9.189,
+      "median_nodes": 66.0,
+      "p95_ms": 18.271,
+      "std_ms": 5.6891,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 0.65,
+      "speedup_vs_ref": 1.721
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "cpp",
+      "median_ms_per_solve": 7.443,
+      "mean_ms_per_solve": 6.3468,
+      "median_nodes": 66.0,
+      "p95_ms": 10.699,
+      "std_ms": 3.9799,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 0.427,
+      "speedup_vs_ref": 2.186
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "reference",
+      "median_ms_per_solve": 41.1375,
+      "mean_ms_per_solve": 41.3605,
+      "median_nodes": 67.5,
+      "p95_ms": 69.006,
+      "std_ms": 22.2892,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 2.093,
+      "speedup_vs_ref": 1.0
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "numpy",
+      "median_ms_per_solve": 606.0915,
+      "mean_ms_per_solve": 525.627,
+      "median_nodes": 67.5,
+      "p95_ms": 856.81,
+      "std_ms": 289.2655,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 25.397,
+      "speedup_vs_ref": 0.068
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "numba",
+      "median_ms_per_solve": 107.2765,
+      "mean_ms_per_solve": 94.5078,
+      "median_nodes": 67.5,
+      "p95_ms": 139.553,
+      "std_ms": 49.3999,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 4.732,
+      "speedup_vs_ref": 0.383
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "cpp",
+      "median_ms_per_solve": 20.5575,
+      "mean_ms_per_solve": 19.3628,
+      "median_nodes": 67.5,
+      "p95_ms": 30.206,
+      "std_ms": 11.0718,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "native_rollout": false,
+      "wall_s": 1.047,
+      "speedup_vs_ref": 2.001
+    }
+  ],
+  "note": "native_rollout 消费显式事件流，序列与 reference 不同（分布等价）"
+}

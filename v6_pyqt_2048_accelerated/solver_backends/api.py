@@ -121,6 +121,7 @@ class BackendBase:
     name = 'base'
     kind = 'python'          # python | numpy | numba | cpp
     supports_batch = False
+    supports_native_rollout = False   # 原生整段 rollout（消费显式事件流）是否可用
 
     def available(self):     # -> (bool, reason)
         raise NotImplementedError

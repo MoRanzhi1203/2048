@@ -1,0 +1,48 @@
+﻿E:\anaconda3\envs\2048\python.exe : test_cpp_row_table (test_row_table.RowTableTest.test_cpp_row_table) ... ok
+At line:15 char:3817
++ ... ated\tests; E:\anaconda3\envs\2048\python.exe -m unittest test_row_ta ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (test_cpp_row_ta...w_table) ... ok:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+test_numba_row_table (test_row_table.RowTableTest.test_numba_row_table) ... ok
+test_numpy_row_table (test_row_table.RowTableTest.test_numpy_row_table) ... ok
+test_cpp_full (test_backend_equivalence.BackendEquivalenceTest.test_cpp_full) ... ok
+test_evaluate_equivalence (test_backend_equivalence.BackendEquivalenceTest.test_evaluate_equivalence) ... ok
+test_input_not_mutated (test_backend_equivalence.BackendEquivalenceTest.test_input_not_mutated) ... ok
+test_numba_full (test_backend_equivalence.BackendEquivalenceTest.test_numba_full) ... ok
+test_numpy_alldirs_small (test_backend_equivalence.BackendEquivalenceTest.test_numpy_alldirs_small) ... ok
+test_numpy_left_full (test_backend_equivalence.BackendEquivalenceTest.test_numpy_left_full) ... ok
+test_accept_powers_of_two (test_backend_equivalence.ProtocolBoundaryTest.test_accept_powers_of_two) ... ok
+test_merge_result_overflow_rejected (test_backend_equivalence.ProtocolBoundaryTest.test_merge_result_overflow_rejected)
+相邻两个 32768 合并 -> 65536，位棋盘后端必须拒绝。 ... ok
+test_overflow_behavior (test_backend_equivalence.ProtocolBoundaryTest.test_overflow_behavior)
+参考支持 >=65536，位棋盘后端必须显式拒绝（不静默截断）。 ... ok
+test_reject_bool_negative_float_nan (test_backend_equivalence.ProtocolBoundaryTest.test_reject_bool_negative_float_nan)
+ ... ok
+test_reject_non_4x4 (test_backend_equivalence.ProtocolBoundaryTest.test_reject_non_4x4) ... ok
+test_reject_non_power_of_two (test_backend_equivalence.ProtocolBoundaryTest.test_reject_non_power_of_two) ... ok
+test_expectimax_noprune (test_search_equivalence.SearchEquivalenceTest.test_expectimax_noprune) ... ok
+test_heuristic (test_search_equivalence.SearchEquivalenceTest.test_heuristic) ... ok
+test_mcts (test_search_equivalence.SearchEquivalenceTest.test_mcts) ... ok
+test_mcts_backprop_invariant (test_search_equivalence.SearchEquivalenceTest.test_mcts_backprop_invariant) ... ok
+test_rl_returns_legal (test_search_equivalence.SearchEquivalenceTest.test_rl_returns_legal) ... ok
+test_rollout (test_search_equivalence.SearchEquivalenceTest.test_rollout) ... ok
+test_corrupt_primary_falls_back_to_bak (test_storage_isolation.StorageIsolationTest.test_corrupt_primary_falls_back_to_
+bak) ... ok
+test_export_under_v6 (test_storage_isolation.StorageIsolationTest.test_export_under_v6) ... ok
+test_no_v6_model_override (test_storage_isolation.StorageIsolationTest.test_no_v6_model_override) ... ok
+test_paths_under_v6 (test_storage_isolation.StorageIsolationTest.test_paths_under_v6) ... ok
+test_session_atomic_save_and_bak (test_storage_isolation.StorageIsolationTest.test_session_atomic_save_and_bak) ... ok
+test_backend_selector (test_gui_integration.GuiIntegrationTest.test_backend_selector) ... ok
+test_collapse_expand_20x_no_drift (test_gui_integration.GuiIntegrationTest.test_collapse_expand_20x_no_drift) ... ok
+test_open_panel_does_not_start_solver (test_gui_integration.GuiIntegrationTest.test_open_panel_does_not_start_solver) .
+.. ok
+test_solve_uses_backend (test_gui_integration.GuiIntegrationTest.test_solve_uses_backend) ... ok
+test_solver_widgets_present (test_gui_integration.GuiIntegrationTest.test_solver_widgets_present) ... ok
+test_window_title (test_gui_integration.GuiIntegrationTest.test_window_title) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 15.457s
+
+OK

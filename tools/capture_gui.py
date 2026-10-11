@@ -519,7 +519,7 @@ def v5_scene_suggest(w, app, settle_ms):
     _v5_demo_board(w)
     w.solver_strategy.setCurrentIndex(1)
     w.solver_depth.setCurrentIndex(1)
-    w.solver_mode.setCurrentIndex(1)         # 单步建议
+    w.solver_mode.setCurrentIndex(1)         # 单步建议（常驻跟随）
     w.solver_log.clear()
     for line in (
         "开始求解：策略=Expectimax，深度=4，模式=单步建议",
@@ -527,7 +527,9 @@ def v5_scene_suggest(w, app, settle_ms):
     ):
         w._log_step(line)
     w._set_status("建议方向：<b>向左</b>（评估 1523.4）",
-                  "单步建议模式：未自动走子，可自行按方向键。")
+                  "跟随预测：请按方向键走子，走子后会自动重算下一步。")
+    if hasattr(w, "_show_hint"):
+        w._show_hint("left")                 # 棋盘高亮建议方向（跟随预测）
     w.solver_progress.setRange(0, 100)
     w.solver_progress.setValue(0)
     pump(app, max(settle_ms, 260))

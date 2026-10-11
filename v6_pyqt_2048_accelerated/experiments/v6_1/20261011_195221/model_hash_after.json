@@ -1,0 +1,22 @@
+{
+  "v5_pyqt_2048_solver/rl_model.npz": {
+    "exists": true,
+    "sha256": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40",
+    "size": 135856
+  },
+  "v5_pyqt_2048_solver/rl_model.candidate.npz": {
+    "exists": true,
+    "sha256": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40",
+    "size": 135856
+  },
+  "v5_pyqt_2048_solver/rl_model.npz.prev.npz": {
+    "exists": true,
+    "sha256": "724c4eea877421cf728fdaa56b7e8c710d98accf6c8a13ea69d9c0aa5ee9f4f9",
+    "size": 135602
+  },
+  "experiments/baseline/rl_model_v1.npz": {
+    "exists": true,
+    "sha256": "724c4eea877421cf728fdaa56b7e8c710d98accf6c8a13ea69d9c0aa5ee9f4f9",
+    "size": 135602
+  }
+}

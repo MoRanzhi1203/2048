@@ -255,11 +255,12 @@ double rollout_events(uint64_t bb, int gained, int depth,
     double score = gained;
     for (int step = 0; step < depth; ++step) {
         if (is_game_over(cur)) break;
-        // spawn：收集空位 nibble 下标
+        // spawn：按行主序（左→右）收集空位 nibble 下标，与 Python empty_cells 顺序一致
         int empties[16];
         int ne = 0;
-        for (int p = 0; p < 16; ++p)
-            if (((cur >> (4 * p)) & 0xF) == 0) empties[ne++] = p;
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+                if (cell_exp(cur, r, c) == 0) empties[ne++] = 4 * r + (3 - c);
         if (ne == 0) break;
         int c0 = *cursor % n_events;
         double uc = cell_ev[c0];

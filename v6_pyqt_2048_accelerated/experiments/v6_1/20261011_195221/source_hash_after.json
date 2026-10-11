@@ -1,0 +1,137 @@
+{
+  "v6_pyqt_2048_accelerated/solver_v6.py": {
+    "exists": true,
+    "sha256": "b0358bd280465641f2886cceead7b8b491e002f252dd723579ea7d24c83c539b",
+    "size": 29261
+  },
+  "v6_pyqt_2048_accelerated/v6_pyqt_2048_accelerated.py": {
+    "exists": true,
+    "sha256": "53f79a93f87b2e9fdd71bbba093bd29485f495c772732f81be9aec4fbc646eb4",
+    "size": 10632
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/api.py": {
+    "exists": true,
+    "sha256": "05ce0dc95c9c3c497084611c5fc3d9f758aa75e25f08c61c067b43074909aa75",
+    "size": 6575
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/dispatch.py": {
+    "exists": true,
+    "sha256": "b9ed211aa2c99dc19146de76ffd8c84968148ec2714ddc796374a52b27db1cc5",
+    "size": 5874
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/reference.py": {
+    "exists": true,
+    "sha256": "29f48b648b427405e713db2fa906072e49f40c528e520e5dd4bf0a4cb9c42274",
+    "size": 2680
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/numpy_core.py": {
+    "exists": true,
+    "sha256": "d2e50f78f0792e586871f867613921d590a782a4bf3aad468226d3c9e5430966",
+    "size": 10350
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/numba_core.py": {
+    "exists": true,
+    "sha256": "8b8a9070897a66d9e2da19d60f7959e5c33991f58fb84b1ac57194435912356f",
+    "size": 12163
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/events.py": {
+    "exists": true,
+    "sha256": "54d97fc00e28b126aba943d5ae71bd85d14d05863b6cf8ce07940003c155171d",
+    "size": 2176
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp_backend.py": {
+    "exists": true,
+    "sha256": "002470260c719842955384c420b7b1db2bf77abf80352341479463d4e7319062",
+    "size": 4830
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bindings.cpp": {
+    "exists": true,
+    "sha256": "07a77f804738b8d6cfccefffc2d43b192a101704fcf734db551c895e923a5cee",
+    "size": 6077
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard.cpp": {
+    "exists": true,
+    "sha256": "30507e827494d3cc755b374de64c3f3e216388fd59209854cfa3146ffb0823f2",
+    "size": 9633
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard.hpp": {
+    "exists": true,
+    "sha256": "d266cb2edf2348dd48efeef496817859d3b30a6dd4407e50c4d7d19c540e84bc",
+    "size": 2308
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/CMakeLists.txt": {
+    "exists": true,
+    "sha256": "80af9f1a94bd8dbaeb2ccd6e9f1e5c3449b1ca093263a08ffe32d09a0ff858e6",
+    "size": 853
+  },
+  "v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard_cpp.cp312-win_amd64.pyd": {
+    "exists": true,
+    "sha256": "3c1b41647680ba004094be7dffd744210cd8be8baef9edc03c4a20435608cf89",
+    "size": 191488
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/backend_default.json": {
+    "exists": true,
+    "sha256": "c3a5b9af81f3f1623aedf4bcf6eb37b4d6659bebcf291efd93e378f321874251",
+    "size": 1248
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/baseline_manifest.json": {
+    "exists": true,
+    "sha256": "88f2f37f4b10af9fc71cfb7eab443a7b8e636c9286f67c3ec713bbe6cb65c939",
+    "size": 2926
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/boards.jsonl": {
+    "exists": true,
+    "sha256": "538807f3030b0bc924a4294db46b4bad274492297f13d80ae135d099a65811e7",
+    "size": 10055
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/boards.sha256": {
+    "exists": true,
+    "sha256": "c59aab9797ebc23a7ddc28b780855b2a2f78d30fe8d8b57a185d7b40b10dae50",
+    "size": 65
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/run_micro.py": {
+    "exists": true,
+    "sha256": "6ad2b79409d2eef620819eaa81e2f6abfe68d44e572b2c275e032176719dce9a",
+    "size": 6256
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/run_search.py": {
+    "exists": true,
+    "sha256": "ce8a5edc408895c4fd791c210b6fd04660a2b86ab093fb227a3ede5b1f29bba5",
+    "size": 5577
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/run_pilot.py": {
+    "exists": true,
+    "sha256": "ec041b0d493854c951e280d8ccc0a93840827bbd5d08ba87dbf7c1004d101213",
+    "size": 7230
+  },
+  "v6_pyqt_2048_accelerated/benchmarks/_bench_common.py": {
+    "exists": true,
+    "sha256": "b4cc1f5bb65ac0bd48fba7a060d6123b5cb2660f9abb1ddfe0de9069e190932b",
+    "size": 4940
+  },
+  "v5_pyqt_2048_solver/solver_2048.py": {
+    "exists": true,
+    "sha256": "ab8e23ce221d343e1ad93798e2cbd74fddbcf4937a78fdbc829616eb78abadc1",
+    "size": 46699
+  },
+  "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py": {
+    "exists": true,
+    "sha256": "63f13b427e6bed52b1bb93b1e76942f8df7f8175450d73bc5024c2a013c4995d",
+    "size": 82564
+  },
+  "v5_pyqt_2048_solver/rl_2048.py": {
+    "exists": true,
+    "sha256": "16c29226d6a744ae7c2ae8ab0b147fdd362d2d07b1abde1daaf95f8adbf22ed3",
+    "size": 29531
+  },
+  "tools/capture_gui.py": {
+    "exists": true,
+    "sha256": "203ec7641b89e43d4b37424c71573cdfe9ebb70701d07729b892a162729b0ade",
+    "size": 40263
+  },
+  "safe_store.py": {
+    "exists": true,
+    "sha256": "b9e2c3eb3335f5ce30e6c791c312c09c2024d61d1c5e1636742bbd2a8a44cccf",
+    "size": 9412
+  }
+}

@@ -1,0 +1,497 @@
+{
+  "boards_sha256": "538807f3030b0bc924a4294db46b4bad274492297f13d80ae135d099a65811e7",
+  "sample_boards": 12,
+  "sample_groups": [
+    "empty_5_9",
+    "empty_ge10",
+    "empty_le4",
+    "high_tiles",
+    "near_death",
+    "symmetric"
+  ],
+  "by_backend": {
+    "reference": {
+      "rollout": {
+        "backend": "reference",
+        "median_ms": 702.2405,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 11996,
+            "legal_moves": 11968,
+            "evaluate": 840,
+            "empty_cells": 0,
+            "is_game_over": 24126,
+            "sample_spawn": 12063
+          },
+          "ns": {
+            "move": 997358200,
+            "legal_moves": 4222399900,
+            "evaluate": 327354500,
+            "empty_cells": 0,
+            "is_game_over": 486853900,
+            "sample_spawn": 410021500
+          },
+          "total_boundary_ns": 6443988000,
+          "total_calls": 60993
+        },
+        "profile_top": [
+          "         3722898 function calls (3719538 primitive calls) in 7.392 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 58 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "   239472    2.160    0.000    3.104    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:139(slide_line)",
+          "    59868    1.613    0.000    4.825    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:159(move_grid)",
+          "  1966683    0.664    0.000    0.664    0.000 {built-in method builtins.len}",
+          "    37029    0.404    0.000    0.404    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:115(empty_cells)",
+          "   610837    0.370    0.000    0.370    0.000 {method 'append' of 'list' objects}",
+          "    60993    0.368    0.000    6.625    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "      800    0.321    0.000    7.342    0.009 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:129(_rollout_score)",
+          "    60993    0.168    0.000    0.277    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "    11968    0.160    0.000    4.107    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:182(legal_moves)",
+          "    60993    0.109    0.000    0.109    0.000 {built-in method builtins.getattr}",
+          "   122010    0.107    0.000    0.107    0.000 {built-in method time.perf_counter_ns}",
+          "    12063    0.101    0.000    0.330    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:198(sample_spawn)",
+          "   119048    0.088    0.000    0.088    0.000 {method 'reverse' of 'list' objects}",
+          "    24019    0.084    0.000    0.130    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:242(_randbelow_with_getrandbits)",
+          "    24019    0.069    0.000    0.238    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:341(choice)",
+          "      840    0.062    0.000    0.128    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:222(_monotonicity)",
+          "    24126    0.052    0.000    0.348    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:125(is_game_over)",
+          "11810/8450    0.052    0.000    0.056    0.000 {built-in method builtins.max}",
+          "",
+          ""
+        ]
+      },
+      "expectimax": {
+        "backend": "reference",
+        "median_ms": 109.6502,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 3016,
+            "legal_moves": 12,
+            "evaluate": 3376,
+            "empty_cells": 80,
+            "is_game_over": 0,
+            "sample_spawn": 0
+          },
+          "ns": {
+            "move": 246655900,
+            "legal_moves": 9021800,
+            "evaluate": 785952300,
+            "empty_cells": 1376500,
+            "is_game_over": 0,
+            "sample_spawn": 0
+          },
+          "total_boundary_ns": 1043006500,
+          "total_calls": 6484
+        },
+        "profile_top": [
+          "         609409 function calls (593293 primitive calls) in 1.184 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 50 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "     3376    0.194    0.000    0.347    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:222(_monotonicity)",
+          "   204379    0.113    0.000    0.154    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:218(_log2)",
+          "     3376    0.105    0.000    0.157    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:247(_smoothness)",
+          "     3064    0.102    0.000    0.232    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:159(move_grid)",
+          "43898/30394    0.091    0.000    0.102    0.000 {built-in method builtins.max}",
+          "    12256    0.084    0.000    0.121    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:139(slide_line)",
+          "     3376    0.049    0.000    0.763    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:318(evaluate)",
+          "   103932    0.041    0.000    0.041    0.000 {built-in method math.log2}",
+          "    95236    0.041    0.000    0.041    0.000 {built-in method builtins.len}",
+          "     3376    0.037    0.000    0.038    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:263(_merge_potential)",
+          "     6484    0.036    0.000    1.060    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "     3456    0.036    0.000    0.036    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:115(empty_cells)",
+          "     3376    0.029    0.000    0.123    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:278(_max_in_corner)",
+          "     3376    0.025    0.000    0.089    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:121(max_tile)",
+          "     3376    0.018    0.000    0.828    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:211(leaf)",
+          "     1448    0.018    0.000    1.123    0.001 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:223(max_node)",
+          " 2732/120    0.018    0.000    1.149    0.010 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:253(chance_node)",
+          "     6484    0.018    0.000    0.024    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "",
+          ""
+        ]
+      },
+      "mcts": {
+        "backend": "reference",
+        "median_ms": 357.451,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 8289,
+            "legal_moves": 6779,
+            "evaluate": 1503,
+            "empty_cells": 771,
+            "is_game_over": 6830,
+            "sample_spawn": 8032
+          },
+          "ns": {
+            "move": 595367000,
+            "legal_moves": 1953230100,
+            "evaluate": 411695400,
+            "empty_cells": 18958300,
+            "is_game_over": 91592500,
+            "sample_spawn": 233890300
+          },
+          "total_boundary_ns": 3304733600,
+          "total_calls": 32204
+        },
+        "profile_top": [
+          "         2312418 function calls (2303487 primitive calls) in 3.789 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 68 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "   141620    1.045    0.000    1.497    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:139(slide_line)",
+          "    35405    0.823    0.000    2.375    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:159(move_grid)",
+          "  1143938    0.314    0.000    0.314    0.000 {built-in method builtins.len}",
+          "   351241    0.177    0.000    0.177    0.000 {method 'append' of 'list' objects}",
+          "    32204    0.163    0.000    3.381    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "    17136    0.145    0.000    0.145    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:115(empty_cells)",
+          "      600    0.128    0.000    3.265    0.005 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:405(rollout)",
+          "     1503    0.082    0.000    0.173    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:222(_monotonicity)",
+          "   103315    0.073    0.000    0.101    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:218(_log2)",
+          "     6779    0.069    0.000    1.911    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:182(legal_moves)",
+          "    32204    0.061    0.000    0.087    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "23859/14928    0.060    0.000    0.093    0.000 {built-in method builtins.max}",
+          "     1503    0.054    0.000    0.100    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:247(_smoothness)",
+          "     8032    0.052    0.000    0.187    0.000 e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\solver_2048.py:198(sample_spawn)",
+          "      600    0.047    0.000    0.482    0.001 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:420(descend)",
+          "    70604    0.044    0.000    0.044    0.000 {method 'reverse' of 'list' objects}",
+          "    14799    0.041    0.000    0.062    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:242(_randbelow_with_getrandbits)",
+          "    14799    0.034    0.000    0.108    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:341(choice)",
+          "",
+          ""
+        ]
+      }
+    },
+    "numba": {
+      "rollout": {
+        "backend": "numba",
+        "median_ms": 512.3338,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 11996,
+            "legal_moves": 11968,
+            "evaluate": 840,
+            "empty_cells": 0,
+            "is_game_over": 24126,
+            "sample_spawn": 12063
+          },
+          "ns": {
+            "move": 648700000,
+            "legal_moves": 2687926900,
+            "evaluate": 126816100,
+            "empty_cells": 0,
+            "is_game_over": 779979900,
+            "sample_spawn": 699900600
+          },
+          "total_boundary_ns": 4943323500,
+          "total_calls": 60993
+        },
+        "profile_top": [
+          "         1876049 function calls (1875803 primitive calls) in 5.441 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 340 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "    59868    1.093    0.000    3.128    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:334(move)",
+          "    84891    0.465    0.000    0.465    0.000 {method 'reduce' of 'numpy.ufunc' objects}",
+          "    96897    0.457    0.000    0.457    0.000 {built-in method numpy.asarray}",
+          "    96057    0.355    0.000    0.430    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:111(_encode)",
+          "    12063    0.301    0.000    0.515    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:368(empty_cells)",
+          "    59868    0.278    0.000    0.314    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:73(_move_exps)",
+          "    24126    0.254    0.000    0.718    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:374(is_game_over)",
+          "    60993    0.228    0.000    5.053    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "    59868    0.202    0.000    0.556    0.000 E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numpy\\core\\fromnumeric.py:71(_wrapreduction)",
+          "      800    0.180    0.000    5.293    0.007 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:129(_rollout_score)",
+          "   155925    0.178    0.000    0.178    0.000 {method 'reshape' of 'numpy.ndarray' objects}",
+          "    59868    0.169    0.000    0.205    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:135(_decode)",
+          "   215793    0.146    0.000    0.146    0.000 E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numba\\core\\serialize.py:30(_numba_unpickle)",
+          "    11968    0.120    0.000    2.654    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:350(legal_moves)",
+          "    59868    0.119    0.000    0.676    0.000 E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numpy\\core\\fromnumeric.py:2322(any)",
+          "    60993    0.080    0.000    0.114    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "    12063    0.073    0.000    0.666    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:385(sample_spawn)",
+          "    59868    0.062    0.000    0.062    0.000 {method 'tolist' of 'numpy.ndarray' objects}",
+          "",
+          ""
+        ]
+      },
+      "expectimax": {
+        "backend": "numba",
+        "median_ms": 27.7684,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 3016,
+            "legal_moves": 12,
+            "evaluate": 3376,
+            "empty_cells": 80,
+            "is_game_over": 0,
+            "sample_spawn": 0
+          },
+          "ns": {
+            "move": 126045100,
+            "legal_moves": 2899900,
+            "evaluate": 91968700,
+            "empty_cells": 5194500,
+            "is_game_over": 0,
+            "sample_spawn": 0
+          },
+          "total_boundary_ns": 226108200,
+          "total_calls": 6484
+        },
+        "profile_top": [
+          "         175254 function calls (172642 primitive calls) in 0.276 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 56 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "     3064    0.043    0.000    0.123    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:334(move)",
+          "     3376    0.026    0.000    0.047    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numpy_core.py:202(_weight_array)",
+          "     6520    0.021    0.000    0.021    0.000 {built-in method numpy.asarray}",
+          "     3376    0.017    0.000    0.086    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:358(evaluate)",
+          "     6484    0.017    0.000    0.234    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "     3064    0.013    0.000    0.013    0.000 {method 'reduce' of 'numpy.ufunc' objects}",
+          "    47416    0.011    0.000    0.011    0.000 {method 'get' of 'dict' objects}",
+          "     3064    0.010    0.000    0.012    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:73(_move_exps)",
+          "     3144    0.010    0.000    0.012    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:111(_encode)",
+          "     3376    0.009    0.000    0.009    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:264(_evaluate_vals)",
+          "     3064    0.008    0.000    0.023    0.000 E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numpy\\core\\fromnumeric.py:71(_wrapreduction)",
+          "      754    0.008    0.000    0.142    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:92(_ordered_moves)",
+          "     1448    0.007    0.000    0.250    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:223(max_node)",
+          "     3064    0.007    0.000    0.008    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:135(_decode)",
+          "     3376    0.006    0.000    0.106    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:211(leaf)",
+          "     3376    0.006    0.000    0.006    0.000 {built-in method numpy.array}",
+          " 2732/120    0.006    0.000    0.261    0.002 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:253(chance_node)",
+          "     6208    0.006    0.000    0.006    0.000 {method 'reshape' of 'numpy.ndarray' objects}",
+          "",
+          ""
+        ]
+      },
+      "mcts": {
+        "backend": "numba",
+        "median_ms": 206.6953,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 8289,
+            "legal_moves": 6779,
+            "evaluate": 1503,
+            "empty_cells": 771,
+            "is_game_over": 6830,
+            "sample_spawn": 8032
+          },
+          "ns": {
+            "move": 307217500,
+            "legal_moves": 973786200,
+            "evaluate": 54808900,
+            "empty_cells": 26405800,
+            "is_game_over": 151936100,
+            "sample_spawn": 310316100
+          },
+          "total_boundary_ns": 1824470600,
+          "total_calls": 32204
+        },
+        "profile_top": [
+          "         1084531 function calls (1081612 primitive calls) in 2.057 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 74 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "    35405    0.430    0.000    1.197    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:334(move)",
+          "    52541    0.170    0.000    0.170    0.000 {built-in method numpy.asarray}",
+          "     8803    0.144    0.000    0.252    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:368(empty_cells)",
+          "    42693    0.144    0.000    0.144    0.000 {method 'reduce' of 'numpy.ufunc' objects}",
+          "    51038    0.127    0.000    0.152    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:111(_encode)",
+          "    35405    0.111    0.000    0.126    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:73(_move_exps)",
+          "    32204    0.086    0.000    1.866    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "    35405    0.083    0.000    0.211    0.000 E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numpy\\core\\fromnumeric.py:71(_wrapreduction)",
+          "    35405    0.068    0.000    0.082    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:135(_decode)",
+          "    86443    0.064    0.000    0.064    0.000 {method 'reshape' of 'numpy.ndarray' objects}",
+          "      600    0.061    0.000    1.840    0.003 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:405(rollout)",
+          "   121848    0.054    0.000    0.054    0.000 E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numba\\core\\serialize.py:30(_numba_unpickle)",
+          "    35405    0.049    0.000    0.260    0.000 E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numpy\\core\\fromnumeric.py:2322(any)",
+          "     6830    0.047    0.000    0.139    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:374(is_game_over)",
+          "     6779    0.047    0.000    0.961    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:350(legal_moves)",
+          "     8032    0.032    0.000    0.295    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numba_core.py:385(sample_spawn)",
+          "    32204    0.030    0.000    0.041    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "    35405    0.026    0.000    0.026    0.000 {method 'tolist' of 'numpy.ndarray' objects}",
+          "",
+          ""
+        ]
+      }
+    },
+    "cpp": {
+      "rollout": {
+        "backend": "cpp",
+        "median_ms": 93.0911,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 11996,
+            "legal_moves": 11968,
+            "evaluate": 840,
+            "empty_cells": 0,
+            "is_game_over": 24126,
+            "sample_spawn": 12063
+          },
+          "ns": {
+            "move": 227275100,
+            "legal_moves": 161198700,
+            "evaluate": 41223800,
+            "empty_cells": 0,
+            "is_game_over": 67927800,
+            "sample_spawn": 140621000
+          },
+          "total_boundary_ns": 638246400,
+          "total_calls": 60993
+        },
+        "profile_top": [
+          "         636744 function calls in 0.922 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 52 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "    24804    0.151    0.000    0.151    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:11(_flatten)",
+          "    60993    0.121    0.000    0.704    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "      800    0.098    0.000    0.897    0.001 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:129(_rollout_score)",
+          "    11996    0.080    0.000    0.080    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:15(_unflatten)",
+          "    11968    0.054    0.000    0.054    0.000 {built-in method solver_backends.bitboard_cpp.bitboard_cpp.legal_moves}",
+          "    60993    0.045    0.000    0.062    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "    12063    0.043    0.000    0.043    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:68(empty_cells)",
+          "    24126    0.038    0.000    0.038    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:71(is_game_over)",
+          "   122010    0.033    0.000    0.033    0.000 {built-in method time.perf_counter_ns}",
+          "    12063    0.032    0.000    0.121    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:86(sample_spawn)",
+          "    24019    0.030    0.000    0.046    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:242(_randbelow_with_getrandbits)",
+          "    11996    0.029    0.000    0.029    0.000 {built-in method solver_backends.bitboard_cpp.bitboard_cpp.move}",
+          "    24019    0.028    0.000    0.083    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:341(choice)",
+          "    11996    0.026    0.000    0.208    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:41(move)",
+          "    60993    0.017    0.000    0.017    0.000 {built-in method builtins.getattr}",
+          "    11968    0.016    0.000    0.144    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:50(legal_moves)",
+          "    48258    0.009    0.000    0.009    0.000 {built-in method builtins.len}",
+          "      840    0.009    0.000    0.019    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numpy_core.py:202(_weight_array)",
+          "",
+          ""
+        ]
+      },
+      "expectimax": {
+        "backend": "cpp",
+        "median_ms": 19.8379,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 3016,
+            "legal_moves": 12,
+            "evaluate": 3376,
+            "empty_cells": 80,
+            "is_game_over": 0,
+            "sample_spawn": 0
+          },
+          "ns": {
+            "move": 58067200,
+            "legal_moves": 454400,
+            "evaluate": 103484900,
+            "empty_cells": 503900,
+            "is_game_over": 0,
+            "sample_spawn": 0
+          },
+          "total_boundary_ns": 162510400,
+          "total_calls": 6484
+        },
+        "profile_top": [
+          "         140934 function calls (138322 primitive calls) in 0.209 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 45 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "     6404    0.040    0.000    0.040    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:11(_flatten)",
+          "     3376    0.026    0.000    0.047    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numpy_core.py:202(_weight_array)",
+          "     3016    0.021    0.000    0.021    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:15(_unflatten)",
+          "     6484    0.015    0.000    0.170    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "     3376    0.015    0.000    0.098    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:56(evaluate)",
+          "    47416    0.011    0.000    0.011    0.000 {method 'get' of 'dict' objects}",
+          "     3376    0.010    0.000    0.010    0.000 {built-in method solver_backends.bitboard_cpp.bitboard_cpp.evaluate}",
+          "     3016    0.008    0.000    0.008    0.000 {built-in method solver_backends.bitboard_cpp.bitboard_cpp.move}",
+          "     1448    0.007    0.000    0.194    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:223(max_node)",
+          "     3376    0.007    0.000    0.007    0.000 {built-in method numpy.array}",
+          "      754    0.006    0.000    0.072    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:92(_ordered_moves)",
+          "     3016    0.006    0.000    0.053    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:41(move)",
+          "     3376    0.006    0.000    0.117    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:211(leaf)",
+          " 2732/120    0.005    0.000    0.200    0.002 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:253(chance_node)",
+          "     6484    0.005    0.000    0.007    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "     6752    0.004    0.000    0.008    0.000 <frozen importlib._bootstrap>:645(parent)",
+          "    12992    0.004    0.000    0.004    0.000 {built-in method time.perf_counter_ns}",
+          "     6752    0.003    0.000    0.003    0.000 {method 'rpartition' of 'str' objects}",
+          "",
+          ""
+        ]
+      },
+      "mcts": {
+        "backend": "cpp",
+        "median_ms": 63.962,
+        "n_boards": 12,
+        "boundary": {
+          "calls": {
+            "move": 8289,
+            "legal_moves": 6779,
+            "evaluate": 1503,
+            "empty_cells": 771,
+            "is_game_over": 6830,
+            "sample_spawn": 8032
+          },
+          "ns": {
+            "move": 158990600,
+            "legal_moves": 88129800,
+            "evaluate": 61311500,
+            "empty_cells": 4450000,
+            "is_game_over": 19884000,
+            "sample_spawn": 96696800
+          },
+          "total_boundary_ns": 429462700,
+          "total_calls": 32204
+        },
+        "profile_top": [
+          "         413963 function calls (411044 primitive calls) in 0.622 seconds",
+          "",
+          "   Ordered by: internal time",
+          "   List reduced from 61 to 18 due to restriction <18>",
+          "",
+          "   ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+          "    16571    0.102    0.000    0.102    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:11(_flatten)",
+          "    32204    0.067    0.000    0.465    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:46(wrapper)",
+          "     8289    0.056    0.000    0.056    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:15(_unflatten)",
+          "      600    0.050    0.000    0.485    0.001 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:405(rollout)",
+          "     8803    0.033    0.000    0.033    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:68(empty_cells)",
+          "     6779    0.028    0.000    0.028    0.000 {built-in method solver_backends.bitboard_cpp.bitboard_cpp.legal_moves}",
+          "    32204    0.025    0.000    0.034    0.000 C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_1_work\\profile_search.py:42(__getattr__)",
+          "     8032    0.022    0.000    0.083    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:86(sample_spawn)",
+          "     8289    0.021    0.000    0.021    0.000 {built-in method solver_backends.bitboard_cpp.bitboard_cpp.move}",
+          "    14799    0.019    0.000    0.030    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:242(_randbelow_with_getrandbits)",
+          "     8289    0.018    0.000    0.146    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:41(move)",
+          "    14799    0.017    0.000    0.053    0.000 E:\\anaconda3\\envs\\2048\\Lib\\random.py:341(choice)",
+          "    64432    0.017    0.000    0.017    0.000 {built-in method time.perf_counter_ns}",
+          "     1503    0.017    0.000    0.029    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\numpy_core.py:202(_weight_array)",
+          "      600    0.015    0.000    0.126    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_v6.py:420(descend)",
+          "     6830    0.011    0.000    0.011    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:71(is_game_over)",
+          "     1503    0.010    0.000    0.059    0.000 e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\solver_backends\\bitboard_cpp_backend.py:56(evaluate)",
+          "    32204    0.010    0.000    0.010    0.000 {built-in method builtins.getattr}",
+          "",
+          ""
+        ]
+      }
+    }
+  }
+}
