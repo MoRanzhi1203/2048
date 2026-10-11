@@ -1,0 +1,58 @@
+{
+  "run_id": "v5_1_20261011_141048",
+  "phase": "H0",
+  "generated_at": "2026-10-11",
+  "git_head": "6dfea64",
+  "git_head_subject": "feat(v5.1): 算法正确性收口与工程验收（MCTS 回传 / Expectimax 根口径 / RL 门禁 / GUI 生命周期）",
+  "git_branch": "main",
+  "working_tree_dirty_before_change": [
+    "2048_V5_1_完整修复与轻量验收_Trae指令.md (untracked 指令文件)"
+  ],
+  "layout": "V5.1 使用左右双栏：水平 QSplitter（左=游戏页 game_holder，右=SolverMainWindow 工作台 solver_container）+ 右侧贴边半胶囊把手 SolverEdgeHandle；非历史底部面板。",
+  "protected_models_sha256_prefix16": {
+    "v5_pyqt_2048_solver/rl_model.npz": "ee4b370e67676bfb",
+    "v5_pyqt_2048_solver/rl_model.candidate.npz": "ee4b370e67676bfb",
+    "v5_pyqt_2048_solver/rl_model.npz.prev.npz": "724c4eea877421cf",
+    "experiments/baseline/rl_model_v1.npz": "724c4eea877421cf"
+  },
+  "models_schema": {
+    "rl_model.npz": {"keys": ["W1","b1","W2","b2","Wv","bv","_schema"], "schema": 2,
+                      "shapes": {"W1": [128,256], "b1": [128], "W2": [4,128], "b2": [4], "Wv": [1,128], "bv": [1]}, "dtype": "float32"},
+    "rl_model.npz.prev.npz": {"schema": null, "role": "legacy(V1, 无 _schema)"},
+    "experiments/baseline/rl_model_v1.npz": {"schema": null, "role": "legacy V1 基线副本"}
+  },
+  "source_sha256_pre_change": {
+    "v5_pyqt_2048_solver/solver_2048.py": "b444044acf7740295921cbe10f3243a0a2e56eadadfd80e8a294dbe32d14d6f4",
+    "v5_pyqt_2048_solver/rl_2048.py": "3f755f718e964ba820f47ce642c2c0aad91b792de701c09b5c5be62acc676892",
+    "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py": "4038b94a68d321398fada1d439b54e9eb221245521a39cc1992323c7de41c23b",
+    "v5_pyqt_2048_solver/test_solver.py": "7831dd5200375ff9d0ce232f8f27dc2a74f794a344c41c74351bea3aaa5960b0",
+    "experiments/benchmark_algorithms.py": "4e22ab407467ab346185954410e09dfbdd1c46ad074f1d8b6182df28c727751c",
+    "tests/test_rl_model_management.py": "dd6ac19309acca5b54b6a055468d6a9edeb3986e971eb547597edf61cd6945d2"
+  },
+  "source_sha256_post_change": {
+    "v5_pyqt_2048_solver/solver_2048.py": "ab8e23ce221d343e1ad93798e2cbd74fddbcf4937a78fdbc829616eb78abadc1",
+    "v5_pyqt_2048_solver/rl_2048.py": "16c29226d6a744ae7c2ae8ab0b147fdd362d2d07b1abde1daaf95f8adbf22ed3",
+    "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py": "0cdf074c931d29175f2c573b1d669b8e92a9d64506d8077c66a3fdfadac48ec8",
+    "v5_pyqt_2048_solver/test_solver.py": "fa7a09b1d5134abec853c71e02431fb31c08ea45607d1578f5c0640a95048d6f",
+    "experiments/benchmark_algorithms.py": "c9659d40f20933ea119e569d4064e8c926db78884555d89f4e8ee556d80de63c",
+    "tests/test_rl_model_management.py": "d7bd5ed83f0eadd45fc5acbd90f9a31befc046745e00526d3853a9505af5494e"
+  },
+  "pre_change_test_results": {
+    "v5_pyqt_2048_solver/test_solver.py": {"ran": 69, "result": "OK"},
+    "tests/test_mcts_chance.py": {"ran": 10, "result": "OK"},
+    "tests/test_expectimax_reference.py": {"ran": 10, "result": "OK"},
+    "tests/test_rl_gradients.py": {"ran": 8, "result": "OK"},
+    "tests/test_rl_model_management.py": {"ran": 3, "result": "OK"},
+    "tests/test_algorithm_benchmark_smoke.py": {"ran": 5, "result": "OK"},
+    "tests/test_cross_version.py": {"passed": 41, "total": 41},
+    "tests/test_popups.py": {"passed": 17, "total": 17},
+    "tests/test_rl_selftrain.py": {"passed": 11, "total": 11}
+  },
+  "issues_found_by_audit": [
+    "H3.2：_on_solver_result/_on_solver_failed 在判定 job_id 之前即清零 _solve_in_flight/进度条（过期结果会污染新任务状态）。",
+    "H2.5：--resume 帮助文本宣称“保留元数据与 RNG 进度”，但实现仅恢复权重+元数据（未恢复 RNG），且读取 --out 而非 .latest.npz 检查点。",
+    "H2.9：RL 推理每步都重新从磁盘读取 .npz，无模型缓存。",
+    "H4：benchmark_algorithms.py 缺少 --time-budget-ms 与 --seed 别名；无 FINISHED/TRUNCATED 标记。",
+    "H1-D：缺少输入不变性与随机数流隔离的确定性测试。"
+  ]
+}

@@ -1,0 +1,21 @@
+﻿### git status --short (after)
+ M experiments/v5_1/report.md
+ M v5_pyqt_2048_solver/screenshots/full_collapsed.png
+ M v5_pyqt_2048_solver/screenshots/full_game.png
+ M v5_pyqt_2048_solver/screenshots/full_solver.png
+ M v5_pyqt_2048_solver/screenshots/full_start.png
+ M v5_pyqt_2048_solver/test_solver.py
+?? "2048_V5_1_H7_\345\217\221\345\270\203\345\211\215\344\270\223\351\241\271\351\252\214\346\224\266\344\270\216\347\250\263\345\256\232\345\237\272\347\272\277\345\206\273\347\273\223_Trae\345\256\214\346\225\264\346\214\207\344\273\244.md"
+?? "2048_V5_1_\345\256\214\346\225\264\344\277\256\345\244\215\344\270\216\350\275\273\351\207\217\351\252\214\346\224\266_Trae\346\214\207\344\273\244.md"
+?? experiments/v5_1/release_checks/
+?? experiments/v5_1/runs/
+### HEAD
+3e6381a114462d3c5153d6cd3c10638dacee4cfc
+### diff --stat (vs HEAD)
+ experiments/v5_1/report.md                         |   2 +
+ v5_pyqt_2048_solver/screenshots/full_collapsed.png | Bin 26146 -> 25909 bytes
+ v5_pyqt_2048_solver/screenshots/full_game.png      | Bin 49489 -> 48842 bytes
+ v5_pyqt_2048_solver/screenshots/full_solver.png    | Bin 60186 -> 60120 bytes
+ v5_pyqt_2048_solver/screenshots/full_start.png     | Bin 36433 -> 36751 bytes
+ v5_pyqt_2048_solver/test_solver.py                 |  50 +++++++++++++++++++++
+ 6 files changed, 52 insertions(+)

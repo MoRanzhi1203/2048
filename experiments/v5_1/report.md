@@ -4,6 +4,8 @@
 > 运行环境：`E:\anaconda3\python.exe`（Python 3.12.3 / numpy 1.26.4 / PyQt5 5.15.2 / numba 0.60.0 / Windows）
 > 原始数据：`experiments/v5_1/results/*.json|*.csv`、`experiments/v5_1/logs/*`、`experiments/v5_1/baseline.json`
 > 原则：所有数值来自实际执行；未执行项一律标记 **UNVERIFIED**，不推测补造。
+>
+> ⚠️ **阅读提示（H7 追加）**：§1–§10 为**历史章节，保持原文**（其中“正式规模 ≥100 局/策略”的提法**已作废**，不再是发布门禁）。**现行结论与门禁以 §11（轻量验收收口）为准**；发布冻结证据见 `experiments/v5_1/release_checks/<run_id>/`。
 
 ---
 

@@ -1144,6 +1144,56 @@ class SolverGuiTest(unittest.TestCase):
         self.w._solver_running = False
         self.w._shutdown_worker()
 
+    def test_stop_restart_stress_10x_no_thread_leak(self):
+        """H7-2：连续停止/重启 10 次——无 QThread 告警、无线程泄漏、job_id 严格递增。
+
+        通过 qInstallMessageHandler 捕获 Qt 运行期消息，断言不出现
+        “Destroyed while thread is still running” 等线程失控告警。
+        """
+        from PyQt5.QtCore import qInstallMessageHandler
+        captured = []
+
+        def _handler(_mode, _ctx, msg):
+            captured.append(str(msg))
+
+        old = qInstallMessageHandler(_handler)
+        try:
+            self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+            self.w.solver_mode.setCurrentIndex(1)                 # 单步建议（避免自动走子干扰）
+            self._select_strategy("mcts")
+            ids = []
+            for _ in range(10):
+                self.w.on_solver_clicked()                        # 启动
+                self.assertTrue(wait_until(self.app, lambda: self.w._solver_running,
+                                           timeout_ms=3000), "第 %d 次未能启动" % (len(ids) + 1))
+                ids.append(self.w._job_id)
+                self.w.on_solver_clicked()                        # 立即停止
+                self.assertTrue(wait_until(
+                    self.app,
+                    lambda: not self.w._solver_running and not self.w._solve_in_flight,
+                    timeout_ms=4000), "第 %d 次停止未收敛" % len(ids))
+            self.assertEqual(len(ids), 10)
+            self.assertEqual(ids, sorted(set(ids)), "job_id 必须严格递增且不重复")
+            # 线程回收：主引用为空，退休列表内线程均已结束
+            self.assertIsNone(self.w._solver_thread)
+            self.assertIsNone(self.w._solver_worker)
+            for t, _wb in self.w._retired_threads:
+                self.assertFalse(t.isRunning(), "存在未结束的退休线程")
+            running = [t for t, _w in self.w._retired_threads if t.isRunning()]
+            bad = [m for m in captured
+                   if ("Destroyed while thread is still running" in m
+                       or "QThread: Destroyed" in m
+                       or "QObject::~QObject" in m)]
+            print("\n[H7-2] 启动次数=%d 取消次数=%d 活跃退休线程=%d 采集Qt消息=%d 危险告警=%s"
+                  % (len(ids), len(ids), len(running), len(captured), bad))
+            print("[H7-2] 采集到的 Qt 消息样例（用于确认无失控告警）：%s"
+                  % (" | ".join(captured[:6]) if captured else "无"))
+            self.assertEqual(bad, [], "出现 Qt 线程/对象失控告警：%s" % bad)
+        finally:
+            qInstallMessageHandler(old)
+            self.w._solver_running = False
+            self.w._shutdown_worker()
+
 
 
 def main():

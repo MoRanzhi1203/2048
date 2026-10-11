@@ -1,0 +1,13 @@
+{
+  "run_id": "v5_1_20261011_141048",
+  "generated_at": "2026-10-11 14:11:21",
+  "git_head": "6dfea64",
+  "python": "3.12.3 | packaged by conda-forge | (main, Apr 15 2024, 18:20:11) [MSC v.1938 64 bit (AMD64)]",
+  "python_exe": "E:\\anaconda3\\python.exe",
+  "platform": "Windows-10-10.0.19042-SP0",
+  "machine": "AMD64",
+  "numpy": "1.26.4",
+  "pyqt_qt": "5.15.2",
+  "pyqt": "5.15.10",
+  "numba": "0.60.0"
+}
