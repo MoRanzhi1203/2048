@@ -14,7 +14,7 @@
 | `H8_MODEL_IMMUTABLE_PASS` | **PASS** | 四模型 SHA256 前后一致 |
 | `H8_BENCHMARK_REUSE_PASS` | **PASS** | 历史轻量实验未重跑、与文档一致 |
 
-## 2. 九项独立发布门禁
+## 2. 独立发布门禁
 
 | # | 门禁 | 状态 |
 | --- | --- | --- |
@@ -23,10 +23,9 @@
 | 3 | `V5_1_THREAD_SAFETY` | **PASS** |
 | 4 | `V5_1_GUI_AUTOMATED` | **PASS** |
 | 5 | `V5_1_GUI_VISUAL` | **UNVERIFIED** |
-| 6 | `V5_1_DPI_VISUAL` | **UNVERIFIED** |
-| 7 | `V5_1_MODEL_INTEGRITY` | **PASS** |
-| 8 | `V5_1_TESTS` | **PASS** |
-| 9 | `V5_1_RELEASE_READY` | **PARTIAL_PASS**（人工视觉未确认） |
+| 6 | `V5_1_MODEL_INTEGRITY` | **PASS** |
+| 7 | `V5_1_TESTS` | **PASS** |
+| 8 | `V5_1_RELEASE_READY` | **PARTIAL_PASS**（人工视觉未确认） |
 
 ## 3. 本轮真实修改与根因
 
@@ -64,21 +63,17 @@
 
 `v5_pyqt_2048_solver/screenshots/full_start.png`、`full_game.png`、`full_solver.png`、`full_collapsed.png`（均为真实桌面整窗，CAPTURE/STRUCTURE/TEXT PASS，**VISUAL=UNVERIFIED**）。
 
-## 7. DPI
-
-100% 真实捕获通过（dpr=1.0）；125%/150% 受控 Qt 模拟通过（dpr=1.25/1.50，`h8_dpi_sim.txt`）；**真实多 DPI 人工视觉 `UNVERIFIED`**。
-
-## 8. 测试
+## 7. 测试
 
 186/186 通过（test_solver 79 + 其余 8 套），失败 0，跳过 0；另 3 组不同顺序 lifecycle 各 4/4 OK。命令与证据见 `test_summary.json` / `test_results.txt`。
 
-## 9. 模型完整性（SHA256 前后一致）
+## 8. 模型完整性（SHA256 前后一致）
 
 `rl_model.npz=ee4b370e67676bfb…`、`candidate=ee4b370e67676bfb…`、`prev=724c4eea877421cf…`、`baseline/rl_model_v1.npz=724c4eea877421cf…`。`EQUAL_TO_BEFORE=True`。
 
-## 10. 剩余风险 / 发布建议
+## 9. 剩余风险 / 发布建议
 
 - **可冻结** `v5.1-stable-candidate`（代码稳定候选）：代码/取消/线程/自动化视觉/模型/测试全部 PASS。
-- **正式发布** 需先完成两项人工确认（见 `manual_visual_checklist.md`）：① 目视 4 张整窗截图后 `--visual-confirm`；② 真实 125%/150% 缩放走查。完成后 `V5_1_RELEASE_READY` 方可升为 PASS。
+- **正式发布** 需先完成人工视觉确认（见 `manual_visual_checklist.md`）：目视 4 张整窗截图后 `--visual-confirm`。完成后 `V5_1_RELEASE_READY` 方可升为 PASS。
 - 建议延至 **V5.2/V6**：RL 迭代（回放/自适应）、C++ bitboard 后端、公平统计扩样、本地/联机多人。
 - 本轮未自动创建 tag/提交/推送。

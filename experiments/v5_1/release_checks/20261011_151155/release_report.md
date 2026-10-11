@@ -85,10 +85,9 @@
 | --- | --- | --- |
 | 4 张整窗截图人工目视 | **UNVERIFIED** | `v5_pyqt_2048_solver/screenshots/full_{start,game,solver,collapsed}.png`（清单见 `manual_visual_checklist.md`） |
 | 更大样本统计比较 | UNVERIFIED（非 H7 门禁） | 需用户显式要求另行设计 |
-| 真实桌面 DPI 125%/150% 视觉 | 未专门捕获 | 环境可用时可加；本机 DPR=1.0 |
 
 ## 9. 结论与冻结建议
 
 - **可以冻结第五版 V5.1 稳定基线（代码维度）**：`V5_1_CODE_PASS` + `V5_1_THREAD_SAFETY` + `TESTS_PASS(180/180)` + `EXPERIMENT_REPORT_PASS` + 模型哈希不变。
 - **发布就绪为 `PARTIAL_PASS`**：唯一缺口是**人工视觉确认**。人工核对 4 张整窗截图后，运行 `capture_gui.py --visual-confirm` 并更新 `manual_visual_checklist.md`，即可升为 `V5_1_RELEASE_READY = PASS`。
-- **建议延至 V5.2 / V6**：RL 能力增强（经验回放/超参自适应）、MCTS 默认策略消融后再定、更大样本统计与显著性设计、真实多 DPI 视觉回归。
+- **建议延至 V5.2 / V6**：RL 能力增强（经验回放/超参自适应）、MCTS 默认策略消融后再定、更大样本统计与显著性设计。

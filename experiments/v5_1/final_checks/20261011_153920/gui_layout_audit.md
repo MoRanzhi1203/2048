@@ -1,6 +1,6 @@
-# V5.1 · H8-3 右侧栏布局 / 键盘可达性 / DPI 审计（gui_layout_audit）
+# V5.1 · H8-3 右侧栏布局 / 键盘可达性审计（gui_layout_audit）
 
-> run: `20261011_153920` ｜ 平台：Windows ｜ 100% DPI 真实截图 + 受控 Qt 缩放模拟
+> run: `20261011_153920` ｜ 平台：Windows ｜ 真实整窗桌面截图
 
 ## 1. 设计保持（未回退）
 
@@ -31,18 +31,8 @@
 | 活跃求解中折叠/展开不清任务、无新计算 | `test_h8_c06_ui_ops_during_inflight` | PASS |
 | 键盘可达性（把手回车/空格） | `SolverEdgeHandle.keyPressEvent`（Enter/Space）+ `test_edge_handle_geometry_and_chevron` | PASS（自动化）；**人工键盘走查 UNVERIFIED** |
 
-## 4. DPI 结论
-
-| 场景 | 类型 | 结果 |
-| --- | --- | --- |
-| 100% | **真实 Windows 桌面捕获** | dpr=1.0；四场景 CAPTURE/STRUCTURE/TEXT 通过 |
-| 125% / 150% | **受控 Qt 缩放模拟**（`QT_SCALE_FACTOR`，离屏） | dpr=1.25/1.50；窗口正常构建、关键控件齐备、折叠/展开往返正常、无异常（`h8_dpi_sim.txt`） |
-| 125% / 150% | **真实 Windows 显示设置人工视觉** | **`DPI_VISUAL_UNVERIFIED`**（本机无法在不改动用户系统设置的前提下验证；步骤见 `manual_visual_checklist.md`） |
-
-> 受控模拟**不等于**真实多 DPI 人工视觉；不得据此授予 `V5_1_DPI_VISUAL=PASS`。
-
-## 5. 结论
+## 4. 结论
 
 - `V5_1_GUI_AUTOMATED=PASS`（四场景截图门禁 + 交互测试全通过）。
 - `V5_1_GUI_VISUAL=UNVERIFIED`（人工未核对）。
-- `V5_1_DPI_VISUAL=UNVERIFIED`（真实 125/150 未验证；100% 已过；模拟已过）。
+

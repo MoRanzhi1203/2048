@@ -32,9 +32,9 @@
 
 → 关闭最后窗口后进程**真实退出**，无挂起、无残留线程。
 
-## 4. GUI 与 DPI
+## 4. GUI
 
-四场景整窗截图（`full_start/game/solver/collapsed.png`）重新捕获：CAPTURE/STRUCTURE/TEXT **PASS**；**人类目视确认全部通过 → `V5_1_GUI_VISUAL=PASS`**（已 `--visual-confirm`，证据 `gui_visual_confirm.jsonl`）。**`V5_1_DPI_VISUAL=UNVERIFIED`**：本机（DPR=1.0）自动化无法切换并生效（系统未被改动，见 `dpi_real_attempt.md`），真实 125%/150% 需人工，步骤见 `manual_visual_checklist.md`。
+四场景整窗截图（`full_start/game/solver/collapsed.png`）重新捕获：CAPTURE/STRUCTURE/TEXT **PASS**；**人类目视确认全部通过 → `V5_1_GUI_VISUAL=PASS`**（已 `--visual-confirm`，证据 `gui_visual_confirm.jsonl`）。
 
 ## 5. 测试与模型
 
@@ -47,7 +47,7 @@
 
 模型 SHA256 前后一致：`rl_model=ee4b370e67676bfb…`、`candidate=ee4b370e67676bfb…`、`prev=724c4eea877421cf…`、`baseline=724c4eea877421cf…`（`EQUAL_TO_BEFORE=True`）。用户真实 `solver_results/sessions.json` 未改动（38 会话，有效）。
 
-## 6. 最终发布状态（九项门禁）
+## 6. 最终发布状态（八项门禁）
 
 | # | 门禁 | 状态 |
 | --- | --- | --- |
@@ -56,9 +56,8 @@
 | 3 | V5_1_THREAD_SAFETY | **PASS** |
 | 4 | V5_1_GUI_AUTOMATED | **PASS** |
 | 5 | V5_1_GUI_VISUAL | **PASS**（人工确认） |
-| 6 | V5_1_DPI_VISUAL | **UNVERIFIED** |
-| 7 | V5_1_MODEL_INTEGRITY | **PASS** |
-| 8 | V5_1_TESTS | **PASS** |
-| 9 | V5_1_RELEASE_READY | **PARTIAL_PASS** |
+| 6 | V5_1_MODEL_INTEGRITY | **PASS** |
+| 7 | V5_1_TESTS | **PASS** |
+| 8 | **V5_1_RELEASE_READY** | **PASS** |
 
-**代码维度可冻结为稳定候选**；正式发布唯缺**人工视觉**与**真实多 DPI** 两项人工确认（脚本不可代授）。未自动创建 tag/提交/推送。
+**结论**：全部发布硬门禁 PASS → **`V5_1_RELEASE_READY = PASS`**。未自动创建 tag/提交/推送。

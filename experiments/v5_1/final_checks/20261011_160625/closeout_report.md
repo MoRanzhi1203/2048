@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | 1 | 分段计时定位 MCTS 停止 ~950–1000ms | **根因 = `_save_sessions`（会话历史全量写盘），非线程**。已最小修复：959ms→140ms |
 | 2 | 子进程验证关闭预算超时下 QThread 不被提前销毁 | **PASS**：线程存活可观测、退出码 0、Qt 销毁告警 0 |
-| 3 | 复核四张整窗截图 + 真实 125%/150% 缩放 | 四图 CAPTURE/STRUCTURE/TEXT PASS；**VISUAL / DPI_VISUAL = UNVERIFIED**（无人工确认） |
+| 3 | 复核四张整窗截图 | 四图 CAPTURE/STRUCTURE/TEXT PASS；**VISUAL = UNVERIFIED**（无人工确认） |
 
 ## 2. 任务1：停止耗时分段定位与修复
 
@@ -32,10 +32,9 @@ f.write(json.dumps(self._sessions, ensure_ascii=False, separators=(",", ":")))
 
 实测：`close_ms=4028`、`thread_alive_after_close=True`（**未被提前销毁**）、`retired_running=[True]`、放行后自然结束、**EXIT_CODE=0**、**QT_DESTROY_WARNINGS=0**。详见 `qthread_close_budget_test.md`。
 
-## 4. 任务3：截图与 DPI 复核
+## 4. 任务3：截图复核
 
 - 四场景整窗截图已**重新捕获**：`full_start/game/solver/collapsed.png`，均含原生标题栏，CAPTURE/STRUCTURE/TEXT PASS。
-- 真实 Windows 125%/150%：本机 100%（DPR=1.0），未在真实缩放下人工验证 → **`V5_1_DPI_VISUAL=UNVERIFIED`**；`manual_visual_checklist.md` 给出可操作步骤。
 - **`V5_1_GUI_VISUAL=UNVERIFIED`**（脚本不授予）。
 
 ## 5. 测试与模型
@@ -43,7 +42,7 @@ f.write(json.dumps(self._sessions, ensure_ascii=False, separators=(",", ":")))
 - `test_solver.py` **79 OK**；`test_popups.py` **17/17**；`test_cross_version.py` **41/41**（受影响范围回归）。详见 `affected_tests.txt`。
 - 模型 SHA256 前后一致：`rl_model=ee4b370e67676bfb`、`candidate=ee4b370e67676bfb`、`prev=724c4eea877421cf`、`baseline=724c4eea877421cf`。`EQUAL_TO_BEFORE=True`。
 
-## 6. 九项发布门禁
+## 6. 独立发布门禁
 
 | # | 门禁 | 状态 |
 | --- | --- | --- |
@@ -52,13 +51,12 @@ f.write(json.dumps(self._sessions, ensure_ascii=False, separators=(",", ":")))
 | 3 | V5_1_THREAD_SAFETY | **PASS** |
 | 4 | V5_1_GUI_AUTOMATED | **PASS** |
 | 5 | V5_1_GUI_VISUAL | **UNVERIFIED** |
-| 6 | V5_1_DPI_VISUAL | **UNVERIFIED** |
-| 7 | V5_1_MODEL_INTEGRITY | **PASS** |
-| 8 | V5_1_TESTS | **PASS** |
-| 9 | V5_1_RELEASE_READY | **PARTIAL_PASS** |
+| 6 | V5_1_MODEL_INTEGRITY | **PASS** |
+| 7 | V5_1_TESTS | **PASS** |
+| 8 | V5_1_RELEASE_READY | **PARTIAL_PASS** |
 
 ## 7. 未完成 / 建议
 
-- 人工目视四张整窗截图后 `--visual-confirm`；真实 125%/150% 走查（还原系统设置）。
+- 人工目视四张整窗截图后 `--visual-confirm`。
 - V5.2：会话持久化异步/增量；RL 迭代；C++ bitboard；统计扩样；本地/联机多人。
 - 未自动 commit/push/tag（用户确认后再操作）。

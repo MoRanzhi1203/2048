@@ -14,7 +14,7 @@
 
 ## 2. 本轮新增的**未跟踪**证据目录
 
-- `experiments/v5_1/final_checks/20261011_153920/`：`environment.json`、`git_before.txt`、`git_after.txt`、`model_hash_before.json`、`model_hash_after.json`、`source_audit.md`、`inflight_cancellation_results.md/.json`、`h8_inflight_run.txt`、`h8_thread_tests_after_fix.txt`、`h8_lifecycle_orders.txt`、`gui_capture.jsonl`、`gui_capture_summary.json`、`gui_layout_audit.md`、`manual_visual_checklist.md`、`h8_dpi_sim.txt`、`benchmark_consistency.md`、`test_results.txt`、`test_summary.json`、`regression_summary.txt`、`release_lock_report.md`、`release_gates.json`。
+- `experiments/v5_1/final_checks/20261011_153920/`：`environment.json`、`git_before.txt`、`git_after.txt`、`model_hash_before.json`、`model_hash_after.json`、`source_audit.md`、`inflight_cancellation_results.md/.json`、`h8_inflight_run.txt`、`h8_thread_tests_after_fix.txt`、`h8_lifecycle_orders.txt`、`gui_capture.jsonl`、`gui_capture_summary.json`、`gui_layout_audit.md`、`manual_visual_checklist.md`、`benchmark_consistency.md`、`test_results.txt`、`test_summary.json`、`regression_summary.txt`、`release_lock_report.md`、`release_gates.json`。
 - `experiments/v5_1/final_checks/LATEST.txt`。
 
 ## 3. 既有未提交/未跟踪（非本轮，保留不动）

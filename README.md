@@ -22,20 +22,33 @@
 ├── v5_pyqt_2048_solver/              # 第 5 篇：算法求解版（复用第 4 篇界面，增量扩展）
 │   ├── v5_pyqt_2048_solver.py        #   主程序（继承第 4 版 MainWindow + 左右双栏求解工作台）
 │   ├── solver_2048.py                #   求解算法核心（启发式/贪心模拟/Expectimax/MCTS/强化学习，含剪枝）
-│   ├── rl_2048.py                    #   强化学习：numpy 策略/价值网络 + 自对弈策略梯度训练
-│   ├── rl_model.npz                  #   强化学习模型文件（训练产物）
-│   ├── test_solver.py                #   测试用例（算法核心 5 类策略 + 界面集成 + 双栏布局/折叠）
+│   ├── rl_2048.py                    #   强化学习：numpy 策略/价值网络 + 自对弈训练 / 独立门禁
+│   ├── rl_model.npz                  #   强化学习正式模型（candidate / .prev.npz 为候选与备份）
+│   ├── test_solver.py                #   测试用例（算法核心 5 类策略 + 界面集成 + 双栏/折叠/并发生命周期）
 │   ├── 功能说明.md                    #   第 5 版功能说明文档
 │   ├── screenshots/                  #   启动页 / 双栏游戏页 / 求解中 / 单步建议 / 折叠态 整窗截图
-│   ├── solver_results/               #   求解会话与导出文件（运行时生成）
+│   ├── solver_results/               #   求解会话与导出文件（运行时生成；sessions.json 原子保存 + .bak 回滚）
 │   └── game_history/                 #   对局存档（运行时生成）
+├── experiments/                      # 算法基准 / 消融 / 验收证据（开发侧，不参与程序运行）
+│   ├── benchmark_algorithms.py       #   五算法公平基准（同 seed、环境/求解器 RNG 分离、CSV/JSON）
+│   ├── ablation.py                   #   启发式 / rollout / MCTS / Expectimax 消融
+│   ├── baseline_record.py            #   基线记录（模型哈希 / 环境）
+│   ├── baseline/                     #   V1 基线模型副本 + baseline.json
+│   ├── results/                      #   早期实验原始结果（历史）
+│   └── v5_1/                         #   V5.1 汇总与冻结证据（report / known_issues / test_matrix / final_checks / release_checks / runs）
 ├── tools/capture_gui.py              # 统一 GUI 截图入口（见 docs/GUI_SCREENSHOT_STANDARD.md）
 ├── docs/GUI_SCREENSHOT_STANDARD.md   # GUI 截图与视觉验收规范（强制）
 ├── safe_store.py                     # 跨版本安全存档工具（原子写入/校验/备份/单实例锁，v2–v5 共用）
 ├── ui_theme.py                       # 跨版本主题化弹窗组件（暖棕配色，v4/v5 共用）
-├── tests/                            # 跨版本测试
-│   ├── test_cross_version.py         #   v2–v5 异常退出存档恢复测试（真实 taskkill /F）
-│   ├── test_popups.py                #   v4/v5 主题化弹窗回归测试
+├── tests/                            # 跨版本 / 跨模块测试（unittest）
+│   ├── test_cross_version.py         #   v2–v5 异常退出存档恢复（真实 taskkill /F）
+│   ├── test_popups.py                #   v4/v5 主题化弹窗回归
+│   ├── test_mcts_chance.py           #   MCTS 回传不变量 / 渐进加宽 / spawn 分布
+│   ├── test_expectimax_reference.py  #   Expectimax 与独立穷举参考对照
+│   ├── test_rl_gradients.py          #   RL 梯度有限差分 / 价值头符号
+│   ├── test_rl_model_management.py   #   schema/legacy、holdout 门禁、检查点/回滚、推理缓存
+│   ├── test_rl_selftrain.py          #   自对弈训练行为验证
+│   ├── test_algorithm_benchmark_smoke.py  # 五算法冒烟
 │   └── _driver.py                    #   测试驱动（子进程内构造各版本模型）
 ├── AGENTS.md / .trae/rules/          # 项目级 Agent 规则（含截图强制规范）
 ├── blog/                             # 系列博客
@@ -43,6 +56,7 @@
 │   ├── 2.如何实现带历史记录功能的控制台2048游戏.md
 │   ├── 3.使用 PyQt5 实现 2048 桌面版游戏（MVC 架构与撤销重做）.md
 │   ├── 4.使用 PyQt5 实现 2048 平滑动画与性能优化.md
+│   ├── 5.使用 PyQt5 实现 2048 算法求解版：五类搜索算法与左右双栏 AI 求解工作台.md
 │   └── 目录.md                       #   系列总纲与里程碑
 ├── ai_solver_2048.py                 # 求解器核心（Expectimax + 启发式评估，可自动对局）
 ├── run_ai_2048.py                    # 求解器交互脚本（演示模式 / 批量测试）
@@ -165,12 +179,28 @@ python tools/capture_gui.py --version v3 --scene game       # v3: start|game|rec
 ## 测试
 
 ```bash
-python tests/test_cross_version.py     # v2–v5 异常退出存档恢复（真实 taskkill /F 强杀后重载校验）
-python tests/test_popups.py            # v4/v5 主题化弹窗回归（外观/返回值/键盘/焦点/高 DPI）
-python v5_pyqt_2048_solver/test_solver.py   # 第 5 版求解器与界面测试
+python v5_pyqt_2048_solver/test_solver.py        # 第 5 版：算法核心 + 界面集成 + 并发生命周期
+python tests/test_mcts_chance.py                 # MCTS 回传不变量 / 渐进加宽 / spawn 分布
+python tests/test_expectimax_reference.py        # Expectimax 与独立穷举参考对照
+python tests/test_rl_gradients.py                # RL 梯度有限差分
+python tests/test_rl_model_management.py         # RL schema/legacy、holdout 门禁、检查点/回滚、推理缓存
+python tests/test_rl_selftrain.py                # RL 自对弈训练行为验证
+python tests/test_algorithm_benchmark_smoke.py   # 五算法冒烟
+python tests/test_cross_version.py               # v2–v5 异常退出存档恢复（真实 taskkill /F 强杀后重载校验）
+python tests/test_popups.py                      # v4/v5 主题化弹窗回归（外观/返回值/键盘/焦点/高 DPI）
 ```
 
 > 恢复测试全程使用隔离的临时存档目录（`2048_HISTORY_DIR`），不会触碰真实用户存档。
+
+## 实验与基准（开发侧）
+
+```bash
+python experiments/benchmark_algorithms.py --games 5 --max-moves 400 --time-budget-ms 30 --seed 1000 --out-dir experiments/v5_1/results
+python experiments/ablation.py --suite mcts --games 3 --max-moves 300 --out-dir experiments/v5_1/results
+python experiments/benchmark_algorithms.py --profile     # cProfile 热点分析
+```
+
+> 采用**轻量预算**（默认每策略 5 局；收口至多 10 局；每局 ≤400 步、搜索类 30ms/步），不强制“每策略 100 局”；截断对局标记 `TRUNCATED`，轻量结果**不作**显著性/最终排名结论。汇总与冻结证据见 `experiments/v5_1/`。
 
 ## 系列博客
 
@@ -178,6 +208,7 @@ python v5_pyqt_2048_solver/test_solver.py   # 第 5 版求解器与界面测试
 2. [如何实现带历史记录功能的控制台 2048 游戏](blog/2.如何实现带历史记录功能的控制台2048游戏.md)
 3. [使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销/重做](blog/3.使用%20PyQt5%20实现%202048%20桌面版游戏（MVC%20架构与撤销重做）.md)
 4. [使用 PyQt5 实现 2048：平滑动画与性能优化](blog/4.使用%20PyQt5%20实现%202048%20平滑动画与性能优化.md)
+5. [使用 PyQt5 实现 2048 算法求解版：五类搜索算法与左右双栏 AI 求解工作台](blog/5.使用%20PyQt5%20实现%202048%20算法求解版：五类搜索算法与左右双栏%20AI%20求解工作台.md)
 
 后续计划：本地 / 网络双人对战、用历史数据监督训练模型、扩大强化学习训练规模。
 
