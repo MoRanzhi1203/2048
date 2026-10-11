@@ -1,0 +1,21 @@
+﻿=== VERIFY ISOLATION 2026-10-11T18:29:45.9381583+08:00 ===
+
+--- A) conda run -n 2048 ---
+PYTHONNOUSERSITE= 1
+ENABLE_USER_SITE= False
+numpy= E:\anaconda3\envs\2048\Lib\site-packages\numpy\__init__.py
+
+
+--- B) conda activate/deactivate semantics ---
+hook loaded OK
+B1 before-activate PYTHONNOUSERSITE=0
+B1 during-activate PYTHONNOUSERSITE=1
+B1 during-activate CONDA_DEFAULT_ENV=2048
+B1 during-activate ENABLE_USER_SITE=False
+B1 after-deactivate PYTHONNOUSERSITE=0 (expect 0 restored)
+B1 after-deactivate marker=<cleared>
+B2 during-activate PYTHONNOUSERSITE=1
+B2 after-deactivate PYTHONNOUSERSITE=<UNSET> (expect UNSET)
+B2 after-deactivate marker=<cleared>
+
+=== DONE ===

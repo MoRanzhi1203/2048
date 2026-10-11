@@ -1,0 +1,49 @@
+{
+  "phase": "V6 fairness manifest (updated after V1-V4 implementation)",
+  "created_at": "2026-10-11T18:40:00+08:00",
+  "updated_at": "2026-10-11T19:30:00+08:00",
+  "status": "BACKENDS_IMPLEMENTED_AND_VERIFIED",
+  "board_set": {
+    "file": "v6_pyqt_2048_accelerated/benchmarks/boards.jsonl",
+    "sha256": "538807f3030b0bc924a4294db46b4bad274492297f13d80ae135d099a65811e7",
+    "sha_file": "v6_pyqt_2048_accelerated/benchmarks/boards.sha256",
+    "count": 48,
+    "groups": ["empty_ge10", "empty_5_9", "empty_le4", "near_death", "symmetric", "high_tiles"],
+    "per_group": 8,
+    "seed": 20482048,
+    "generator": "deterministic private RNG; never reads user saves or game_history",
+    "encoding": "cells = exponents 0..15 (0=empty); board = tile values 1<<exp (V5 kernel input)"
+  },
+  "backends": {
+    "reference": {
+      "available": true,
+      "source": "v5_pyqt_2048_solver/solver_2048.py (frozen, read-only)",
+      "kernels": ["move_all_dirs (move_grid x4)", "evaluate"]
+    },
+    "numpy": {"available": true, "parity": "PASS", "note": "net slower on 4x4; kept as equivalence/batch reference"},
+    "numba": {"available": true, "parity": "PASS", "note": "nopython @njit(cache=True); helpful mainly on evaluate-heavy paths"},
+    "cpp": {"available": true, "parity": "PASS", "note": "MSVC2022/pybind11 Release; rejects >=65536 explicitly"}
+  },
+  "default_backend": "cpp",
+  "default_backend_file": "v6_pyqt_2048_accelerated/benchmarks/backend_default.json",
+  "fixed_conditions": {
+    "boards": "identical fixed set, sha256 verified before each run",
+    "seed": "recorded per run (--seed)",
+    "algorithm_rules": "reuse frozen V5 solver_2048 definitions",
+    "search_budget": "either fixed workload (nodes/simulations/depth) OR fixed wall-clock; never mixed",
+    "timing_boundary": "init/JIT/import separated from measured loop; warm-up separated; gc disabled while measuring",
+    "numba_jit": "separate warm-up; cold compile cost reported separately",
+    "cpp_extension": "separate init; build/import cost reported separately",
+    "threads": "recorded and controlled via OMP/MKL/NUMBA/NUMEXPR_NUM_THREADS (currently unset -> library defaults)",
+    "output": "structured JSON + CSV into a timestamped run dir; never overwritten"
+  },
+  "modes": {
+    "smoke": {"games_per_config": 2, "max_moves": 200, "time_budget_ms": 20},
+    "pilot": {"games_per_config": 5, "max_moves": 400, "time_budget_ms": 30, "default": true},
+    "final-lite": {"games_per_config": 10, "max_moves": 400, "time_budget_ms": 30}
+  },
+  "reporting_rule": "Backend Microbenchmark and Solver End-to-End Benchmark are reported separately; never ranked together; equal wall-clock time is NOT equal compute work",
+  "report": "v6_pyqt_2048_accelerated/benchmarks/reports/summary.md",
+  "spec": "v6_pyqt_2048_accelerated/benchmarks/benchmark_spec.md",
+  "runners": ["run_micro.py", "run_search.py", "run_pilot.py", "smoke_gate.py"]
+}

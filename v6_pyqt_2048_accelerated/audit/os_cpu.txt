@@ -1,0 +1,7 @@
+﻿OS=Microsoft Windows 10 专业版
+OSVersion=10.0.19042
+OSArch=64 位
+CPU=11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz
+Cores=8
+LogicalProcessors=16
+EnvProcessorCount=16

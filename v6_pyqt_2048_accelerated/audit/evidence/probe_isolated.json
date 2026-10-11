@@ -1,0 +1,54 @@
+﻿{
+  "python_exe": "E:\\anaconda3\\envs\\2048\\python.exe",
+  "python_version": "3.12.3 | packaged by conda-forge | (main, Apr 15 2024, 18:20:11) [MSC v.1938 64 bit (AMD64)]",
+  "prefix": "E:\\anaconda3\\envs\\2048",
+  "base_prefix": "E:\\anaconda3\\envs\\2048",
+  "is_conda_env": false,
+  "enable_user_site": false,
+  "user_site": "C:\\Users\\MSIPC\\AppData\\Roaming\\Python\\Python312\\site-packages",
+  "env_vars": {
+    "PYTHONPATH": null,
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONHOME": null,
+    "VIRTUAL_ENV": null,
+    "CONDA_PREFIX": null,
+    "CONDA_DEFAULT_ENV": null
+  },
+  "sys_path": [
+    "C:\\Users\\MSIPC\\AppData\\Local\\Temp\\p0_2048",
+    "E:\\anaconda3\\envs\\2048\\python312.zip",
+    "E:\\anaconda3\\envs\\2048\\DLLs",
+    "E:\\anaconda3\\envs\\2048\\Lib",
+    "E:\\anaconda3\\envs\\2048",
+    "E:\\anaconda3\\envs\\2048\\Lib\\site-packages"
+  ],
+  "modules": {
+    "numpy": {
+      "version": "1.26.4",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numpy\\__init__.py"
+    },
+    "numba": {
+      "version": "0.60.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numba\\__init__.py"
+    },
+    "llvmlite": {
+      "version": "0.43.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\llvmlite\\__init__.py"
+    },
+    "PyQt5": {
+      "version": null,
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\PyQt5\\__init__.py"
+    },
+    "pybind11": {
+      "version": "3.1.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\pybind11\\__init__.py"
+    },
+    "scipy": {
+      "error": "ModuleNotFoundError(\"No module named 'scipy'\")"
+    }
+  },
+  "qt": {
+    "PyQt5": "5.15.10",
+    "Qt": "5.15.2"
+  }
+}

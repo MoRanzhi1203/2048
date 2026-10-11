@@ -1,0 +1,46 @@
+{
+  "git_head": "2f6ca9bda02615fb9710d87a2647d8dfbc9f3ee1",
+  "git_branch": "main",
+  "git_status_short": " M tools/capture_gui.py\n?? \"2048_V6_\\345\\237\\272\\344\\272\\216V5_1\\347\\250\\263\\345\\256\\232\\347\\211\\210_\\351\\253\\230\\346\\200\\247\\350\\203\\275\\345\\220\\216\\347\\253\\257\\344\\270\\216\\345\\205\\254\\345\\271\\263\\345\\237\\272\\345\\207\\206_Trae\\346\\233\\264\\346\\226\\260\\345\\256\\214\\346\\225\\264\\346\\214\\207\\344\\273\\244.md\"\n?? v6_pyqt_2048_accelerated/\n",
+  "git_log": "2f6ca9b docs(v5): 对齐 V5 现状并精简文档（移除 DPI 门禁与指令文档）\nb7ec5b6 chore(v5.1): 人工视觉确认（VISUAL_PASS）+ 真实多 DPI 尝试记录（保持 UNVERIFIED）\n2bee7cc fix(v5.1): 最终收口——sessions.json 原子保存与故障回滚 + 真实进程退出验证\n",
+  "git_diff_stat": " tools/capture_gui.py | 9 +++++++++\n 1 file changed, 9 insertions(+)\n",
+  "source_sha256": {
+    "v5_pyqt_2048_solver/rl_2048.py": "16c29226d6a744ae7c2ae8ab0b147fdd362d2d07b1abde1daaf95f8adbf22ed3",
+    "v5_pyqt_2048_solver/solver_2048.py": "ab8e23ce221d343e1ad93798e2cbd74fddbcf4937a78fdbc829616eb78abadc1",
+    "v5_pyqt_2048_solver/test_solver.py": "644fcf71cfae287e984f89a246a7de0c7128eca09b99976a9521a69ef0206fd8",
+    "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py": "63f13b427e6bed52b1bb93b1e76942f8df7f8175450d73bc5024c2a013c4995d",
+    "v4_pyqt_2048_animated/v4_pyqt_2048_animated.py": "dbf239172153a83ac58c8f25896b7c8961e5dc29c49584ba9629d6063f5933f5",
+    "v3_pyqt_2048/v3_pyqt_2048_with_history.py": "218ef6e8d0324ecc291b0d992dc6aa4c29520bcb514017f502f6fef2b683fc3d",
+    "v2_console_2048_with_history/v2_console_2048_with_history.py": "5cabf6bf29bff5217a749811121d38486b40381eb8160327762c52340c63a1be",
+    "v1_console_2048/v1_console_2048.py": "39f7e8d1b6ac592894f8a11e8b6865522717ae9a7a4db91d02ad122aa5e25180",
+    "tools/capture_gui.py": "203ec7641b89e43d4b37424c71573cdfe9ebb70701d07729b892a162729b0ade",
+    "tests/_driver.py": "5b135c836f8830533b8dd6f0d8d464e463ceebb3f367845c72e9bfd0760d7ede",
+    "tests/test_algorithm_benchmark_smoke.py": "169da61ae2c03368d353bd8c005434e60d4d387f933a828532572764a144a817",
+    "tests/test_cross_version.py": "3717da7e8875fdedd4cb3f61e4527066ad49a5f22e18992d47a5b7daaf8da6c7",
+    "tests/test_expectimax_reference.py": "13b11ce5035f9949a46212e356ced033c409dae64225ad94c63b46e189b30af8",
+    "tests/test_mcts_chance.py": "25852b007836431d6f9931112292aa97ae065b4d7e3ca95e3aa1b97b1b87e162",
+    "tests/test_popups.py": "7f20f967401ea52f752d71800e78d767de2fd81124b4295cf5b416b86a3e7fe0",
+    "tests/test_rl_gradients.py": "a709d2fb2bec3cf6f26570d94944fc21c86b0e69b31acb2b868134b4e83815a9",
+    "tests/test_rl_model_management.py": "d7bd5ed83f0eadd45fc5acbd90f9a31befc046745e00526d3853a9505af5494e",
+    "tests/test_rl_selftrain.py": "d3bef0b0248b7ebe581969c366da398a9e51025d01abc60cdf51d272b0cb4bfd"
+  },
+  "models": {
+    "v5_pyqt_2048_solver/rl_model.npz": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40",
+    "v5_pyqt_2048_solver/rl_model.candidate.npz": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40",
+    "v5_pyqt_2048_solver/rl_model.npz.prev.npz": "724c4eea877421cf728fdaa56b7e8c710d98accf6c8a13ea69d9c0aa5ee9f4f9",
+    "experiments/baseline/rl_model_v1.npz": "724c4eea877421cf728fdaa56b7e8c710d98accf6c8a13ea69d9c0aa5ee9f4f9"
+  },
+  "env": {
+    "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+    "python_version": "3.12.3",
+    "platform": "Windows-10-10.0.19042-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 141 Stepping 1, GenuineIntel",
+    "cpu_count": 16,
+    "time": "2026-10-11T19:16:51",
+    "PYTHONNOUSERSITE": "1",
+    "numpy": "1.26.4",
+    "numba": "0.60.0",
+    "pybind11": "3.1.0"
+  }
+}

@@ -1,0 +1,255 @@
+{
+  "kind": "search_same_workload",
+  "run_id": "20261011_191723",
+  "boards_count": 48,
+  "boards_sha256_match": true,
+  "fixed_workload": {
+    "heuristic": {},
+    "rollout": {
+      "rollouts": 20,
+      "rollout_depth": 16,
+      "seed": 2048
+    },
+    "expectimax_noprune_d3": {
+      "depth": 3,
+      "prune": false,
+      "time_limit": 30.0,
+      "seed": 2048
+    },
+    "mcts_sims60": {
+      "simulations": 60,
+      "rollout_depth": 12,
+      "time_limit": 30.0,
+      "seed": 2048
+    }
+  },
+  "backend_availability": {
+    "reference": {
+      "available": true,
+      "reason": "v5_pyqt_2048_solver/solver_2048.py (frozen reference)",
+      "kind": "python"
+    },
+    "numpy": {
+      "available": true,
+      "reason": "numpy 1.26.4",
+      "kind": "numpy"
+    },
+    "numba": {
+      "available": true,
+      "reason": "numba 0.60.0 (llvmlite 0.60.0)",
+      "kind": "numba"
+    },
+    "cpp": {
+      "available": true,
+      "reason": "bitboard_cpp C++20/pybind11",
+      "kind": "cpp"
+    }
+  },
+  "note": "固定工作量（非固定墙钟）：prune=False / 固定 rollouts / 固定 simulations",
+  "env": {
+    "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+    "python_version": "3.12.3",
+    "platform": "Windows-10-10.0.19042-SP0",
+    "cpu_count": 16,
+    "thread_env": {
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "NUMBA_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    }
+  },
+  "results": [
+    {
+      "algorithm": "heuristic",
+      "backend": "reference",
+      "median_ms_per_solve": 0.0,
+      "mean_ms_per_solve": 0.1895,
+      "median_nodes": 4.0,
+      "nodes_per_ms": null,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": null
+    },
+    {
+      "algorithm": "heuristic",
+      "backend": "numpy",
+      "median_ms_per_solve": 2.1265,
+      "mean_ms_per_solve": 1.9989,
+      "median_nodes": 4.0,
+      "nodes_per_ms": 1.88,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 0.0
+    },
+    {
+      "algorithm": "heuristic",
+      "backend": "numba",
+      "median_ms_per_solve": 0.0,
+      "mean_ms_per_solve": 0.5001,
+      "median_nodes": 4.0,
+      "nodes_per_ms": null,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": null
+    },
+    {
+      "algorithm": "heuristic",
+      "backend": "cpp",
+      "median_ms_per_solve": 0.0,
+      "mean_ms_per_solve": 0.099,
+      "median_nodes": 4.0,
+      "nodes_per_ms": null,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": null
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "reference",
+      "median_ms_per_solve": 107.679,
+      "mean_ms_per_solve": 92.8961,
+      "median_nodes": 80.0,
+      "nodes_per_ms": 0.74,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 1.0
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "numpy",
+      "median_ms_per_solve": 1140.539,
+      "mean_ms_per_solve": 964.9717,
+      "median_nodes": 80.0,
+      "nodes_per_ms": 0.07,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 0.094
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "numba",
+      "median_ms_per_solve": 220.8045,
+      "mean_ms_per_solve": 185.8112,
+      "median_nodes": 80.0,
+      "nodes_per_ms": 0.36,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 0.488
+    },
+    {
+      "algorithm": "rollout",
+      "backend": "cpp",
+      "median_ms_per_solve": 34.8005,
+      "mean_ms_per_solve": 30.7239,
+      "median_nodes": 80.0,
+      "nodes_per_ms": 2.3,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 3.094
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "reference",
+      "median_ms_per_solve": 16.137,
+      "mean_ms_per_solve": 14.0782,
+      "median_nodes": 66.0,
+      "nodes_per_ms": 4.09,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 1.0
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "numpy",
+      "median_ms_per_solve": 77.656,
+      "mean_ms_per_solve": 78.4046,
+      "median_nodes": 66.0,
+      "nodes_per_ms": 0.85,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 0.208
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "numba",
+      "median_ms_per_solve": 11.28,
+      "mean_ms_per_solve": 9.8926,
+      "median_nodes": 66.0,
+      "nodes_per_ms": 5.85,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 1.431
+    },
+    {
+      "algorithm": "expectimax_noprune_d3",
+      "backend": "cpp",
+      "median_ms_per_solve": 6.042,
+      "mean_ms_per_solve": 6.4438,
+      "median_nodes": 66.0,
+      "nodes_per_ms": 10.92,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 2.671
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "reference",
+      "median_ms_per_solve": 37.341,
+      "mean_ms_per_solve": 36.6609,
+      "median_nodes": 67.5,
+      "nodes_per_ms": 1.81,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 1.0
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "numpy",
+      "median_ms_per_solve": 655.9225,
+      "mean_ms_per_solve": 602.7367,
+      "median_nodes": 67.5,
+      "nodes_per_ms": 0.1,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 0.057
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "numba",
+      "median_ms_per_solve": 121.243,
+      "mean_ms_per_solve": 113.7724,
+      "median_nodes": 67.5,
+      "nodes_per_ms": 0.56,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 0.308
+    },
+    {
+      "algorithm": "mcts_sims60",
+      "backend": "cpp",
+      "median_ms_per_solve": 20.3235,
+      "mean_ms_per_solve": 18.4407,
+      "median_nodes": 67.5,
+      "nodes_per_ms": 3.32,
+      "action_agreement_vs_ref": 1.0,
+      "mean_eval_dev_vs_ref": 0.0,
+      "n_boards": 48,
+      "speedup_vs_ref": 1.837
+    }
+  ]
+}

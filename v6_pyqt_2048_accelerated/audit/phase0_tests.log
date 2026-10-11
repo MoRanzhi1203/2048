@@ -1,0 +1,21 @@
+﻿=== PHASE0 COMPAT TESTS (Phase 0-E) ===
+generated_from_raw_logs=2026-10-11T18:39:40.4214292+08:00
+interpreter=E:\anaconda3\envs\2048\python.exe
+env: PYTHONNOUSERSITE=1 QT_QPA_PLATFORM=offscreen
+
+test_solver.py                     unittest_ran=80   script_ratio=         verdict=OK
+test_expectimax_reference.py       unittest_ran=10   script_ratio=         verdict=OK
+test_mcts_chance.py                unittest_ran=10   script_ratio=         verdict=OK
+test_rl_gradients.py               unittest_ran=8    script_ratio=         verdict=OK
+test_rl_model_management.py        unittest_ran=5    script_ratio=         verdict=OK
+test_rl_selftrain.py               unittest_ran=-    script_ratio=11/11    verdict=SCRIPT
+test_algorithm_benchmark_smoke.py  unittest_ran=5    script_ratio=         verdict=OK
+test_popups.py                     unittest_ran=-    script_ratio=17/17    verdict=SCRIPT
+test_cross_version.py              unittest_ran=-    script_ratio=41/41    verdict=SCRIPT
+
+unittest_ran_total      = 118
+script_checks_total     = 69
+grand_total             = 187
+historical_reference    = 187 (V5.1 uploaded snapshot; NOT a hardcoded target)
+
+raw_logs_dir=C:\Users\MSIPC\AppData\Local\Temp\p0_2048\tests

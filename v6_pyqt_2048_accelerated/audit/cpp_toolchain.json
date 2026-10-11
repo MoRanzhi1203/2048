@@ -1,0 +1,71 @@
+{
+  "phase": "V6 Phase 0-D C++ toolchain probe",
+  "generated_at": "2026-10-11T18:34:00+08:00",
+  "status": "READY",
+  "machine": {
+    "os": "Windows 10 Pro 10.0.19042 (x64)",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz",
+    "cores": 8,
+    "logical_processors": 16
+  },
+  "msvc": {
+    "found": true,
+    "product": "Visual Studio Build Tools 2022 17.10.5",
+    "installation_path": "D:\\Microsoft Visual Studio\\2022\\BuildTools",
+    "cl_exe": "D:\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.40.33807\\bin\\Hostx64\\x64\\cl.exe",
+    "toolset_version": "14.40.33807",
+    "vcvars64": "D:\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat",
+    "host_target": "x64/x64",
+    "in_system_path": false,
+    "note": "not on PATH; must call vcvars64.bat (Developer Command Prompt) before building"
+  },
+  "windows_sdk": {
+    "found": true,
+    "version": "10.0.22621.0",
+    "x64_um_lib_sample": "C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.22621.0\\um\\x64\\kernel32.lib"
+  },
+  "cmake": {
+    "found": true,
+    "path": "D:\\CMake\\bin\\cmake.exe",
+    "version": "3.28.1"
+  },
+  "ninja": {
+    "found": true,
+    "path": "D:\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja\\ninja.exe"
+  },
+  "pybind11": {
+    "version": "3.1.0",
+    "include": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\pybind11\\include",
+    "cmake_dir": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\pybind11\\share\\cmake\\pybind11"
+  },
+  "python_dev": {
+    "python_h": "E:\\anaconda3\\envs\\2048\\Include\\Python.h",
+    "import_lib": "E:\\anaconda3\\envs\\2048\\libs\\python312.lib",
+    "import_lib_stable_abi": "E:\\anaconda3\\envs\\2048\\libs\\python3.lib",
+    "arch": "64bit"
+  },
+  "arch_consistency": "OK: MSVC HostX64/x64 == Python 64bit == pybind11 headers",
+  "existing_build_scripts_in_repo": [],
+  "minimal_extension": {
+    "module": "p0_testmod",
+    "source_dir": "C:\\Users\\MSIPC\\AppData\\Local\\Temp\\p0_2048\\cpptest",
+    "built_pyd": "p0_testmod.cp312-win_amd64.pyd",
+    "build_cmd": "call vcvars64.bat && set PYTHONNOUSERSITE=1 && python setup.py build_ext --inplace",
+    "build_exit_code": 0,
+    "import_ok": true,
+    "test_result": "PASS (16/16)",
+    "checks": [
+      "module load/import from dedicated python",
+      "int argument passing (add(2,3)==5)",
+      "u64 arg/return no truncation (2**64-1, 2**63)",
+      "64-bit left shift up to bit 63",
+      "64-bit board encode/decode roundtrip (16 nibbles)",
+      "2048 row merge semantics in C++ (0x1111->0x22, 0x0211->0x22, 0x2221->0x231)",
+      "tuple of two u64 return values"
+    ],
+    "known_issue": "First run had ONE wrong expectation in the test harness (move_row_left(0x2221) expected 0x31); corrected to 0x231 by 2048 rule. C++ source unchanged; no assertion was weakened.",
+    "compiler_warnings": "C4819 (codepage 936) from pybind11 headers only; benign"
+  },
+  "artifacts_location": "all C++ sources, build outputs (.pyd/.obj/.lib) stay under the system temp dir; the game/repo directories are not touched",
+  "evidence_log": "C:\\Users\\MSIPC\\AppData\\Local\\Temp\\p0_2048\\cpp_build_test.log"
+}

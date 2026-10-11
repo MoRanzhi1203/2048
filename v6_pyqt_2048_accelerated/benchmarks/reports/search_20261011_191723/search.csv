@@ -1,0 +1,17 @@
+algorithm,backend,median_ms,speedup,median_nodes,action_agreement
+heuristic,reference,0.0,,4.0,1.0
+heuristic,numpy,2.1265,0.0,4.0,1.0
+heuristic,numba,0.0,,4.0,1.0
+heuristic,cpp,0.0,,4.0,1.0
+rollout,reference,107.679,1.0,80.0,1.0
+rollout,numpy,1140.539,0.094,80.0,1.0
+rollout,numba,220.8045,0.488,80.0,1.0
+rollout,cpp,34.8005,3.094,80.0,1.0
+expectimax_noprune_d3,reference,16.137,1.0,66.0,1.0
+expectimax_noprune_d3,numpy,77.656,0.208,66.0,1.0
+expectimax_noprune_d3,numba,11.28,1.431,66.0,1.0
+expectimax_noprune_d3,cpp,6.042,2.671,66.0,1.0
+mcts_sims60,reference,37.341,1.0,67.5,1.0
+mcts_sims60,numpy,655.9225,0.057,67.5,1.0
+mcts_sims60,numba,121.243,0.308,67.5,1.0
+mcts_sims60,cpp,20.3235,1.837,67.5,1.0

@@ -1,0 +1,9 @@
+﻿run_dir= E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\benchmarks\reports\phase0_smoke_20261011_183959
+boards= 48 sha256_match= True
+backend reference  available=True (v5_pyqt_2048_solver/solver_2048.py)
+backend numpy      available=False (package present but V6 numpy kernel not implemented yet)
+backend numba      available=False (package present but V6 numba kernel not implemented yet)
+backend cpp        available=False (V6 bitboard extension not built yet (Phase 0-D only verified the toolchain))
+kernel move_all_dirs  median=2268.7 us/iter  47.265 us/board
+kernel evaluate       median=1992.2 us/iter  41.503 us/board
+RESULT=OK

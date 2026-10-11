@@ -1,0 +1,89 @@
+﻿{
+  "generated_at": "2026-10-11T18:30:55.993841+08:00",
+  "phase": "V6 Phase 0-C environment freeze",
+  "python": {
+    "exe": "E:\\anaconda3\\envs\\2048\\python.exe",
+    "version": "3.12.3 | packaged by conda-forge | (main, Apr 15 2024, 18:20:11) [MSC v.1938 64 bit (AMD64)]",
+    "version_short": "3.12.3",
+    "prefix": "E:\\anaconda3\\envs\\2048",
+    "base_prefix": "E:\\anaconda3\\envs\\2048",
+    "implementation": "CPython",
+    "compiler": "MSC v.1938 64 bit (AMD64)",
+    "architecture": [
+      "64bit",
+      "WindowsPE"
+    ],
+    "bits": 64
+  },
+  "isolation": {
+    "enable_user_site": false,
+    "user_site": "C:\\Users\\MSIPC\\AppData\\Roaming\\Python\\Python312\\site-packages",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONPATH": null,
+    "PYTHONHOME": null
+  },
+  "sys_path": [
+    "C:\\Users\\MSIPC\\AppData\\Local\\Temp\\p0_2048",
+    "E:\\anaconda3\\envs\\2048\\python312.zip",
+    "E:\\anaconda3\\envs\\2048\\DLLs",
+    "E:\\anaconda3\\envs\\2048\\Lib",
+    "E:\\anaconda3\\envs\\2048",
+    "E:\\anaconda3\\envs\\2048\\Lib\\site-packages",
+    "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\setuptools\\_vendor"
+  ],
+  "modules": {
+    "numpy": {
+      "version": "1.26.4",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numpy\\__init__.py"
+    },
+    "numba": {
+      "version": "0.60.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\numba\\__init__.py"
+    },
+    "llvmlite": {
+      "version": "0.43.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\llvmlite\\__init__.py"
+    },
+    "PyQt5": {
+      "version": null,
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\PyQt5\\__init__.py"
+    },
+    "pybind11": {
+      "version": "3.1.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\pybind11\\__init__.py"
+    },
+    "setuptools": {
+      "version": "84.0.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\setuptools\\__init__.py"
+    },
+    "pip": {
+      "version": "26.2.1",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\pip\\__init__.py"
+    },
+    "wheel": {
+      "version": "0.48.0",
+      "file": "E:\\anaconda3\\envs\\2048\\Lib\\site-packages\\wheel\\__init__.py"
+    }
+  },
+  "platform": {
+    "system": "Windows",
+    "release": "10",
+    "version": "10.0.19042",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 141 Stepping 1, GenuineIntel",
+    "platform": "Windows-10-10.0.19042-SP0"
+  },
+  "cpu": {
+    "os_cpu_count": 16,
+    "thread_env": {
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "NUMBA_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    }
+  },
+  "qt": {
+    "PyQt5": "5.15.10",
+    "Qt": "5.15.2"
+  }
+}

@@ -1,0 +1,531 @@
+{
+  "kind": "micro",
+  "run_id": "20261011_190432",
+  "boards_count": 48,
+  "boards_sha256_expected": "538807f3030b0bc924a4294db46b4bad274492297f13d80ae135d099a65811e7",
+  "boards_sha256_actual": "538807f3030b0bc924a4294db46b4bad274492297f13d80ae135d099a65811e7",
+  "boards_sha256_match": true,
+  "warmup": 3,
+  "repeat": 40,
+  "seed": 20482048,
+  "cold_init_ms": {
+    "reference": 2.621,
+    "numpy": 5.479,
+    "numba": 38.005,
+    "cpp": 11.803
+  },
+  "backend_availability": {
+    "reference": {
+      "available": true,
+      "reason": "v5_pyqt_2048_solver/solver_2048.py (frozen reference)",
+      "kind": "python"
+    },
+    "numpy": {
+      "available": true,
+      "reason": "numpy 1.26.4",
+      "kind": "numpy"
+    },
+    "numba": {
+      "available": true,
+      "reason": "numba 0.60.0 (llvmlite 0.60.0)",
+      "kind": "numba"
+    },
+    "cpp": {
+      "available": true,
+      "reason": "bitboard_cpp C++20/pybind11",
+      "kind": "cpp"
+    }
+  },
+  "timing_boundary": "warm-up 与测量分离；gc 在测量期间关闭；冷启动单列 cold_init_ms",
+  "note": "reference/numpy/numba/cpp 共用同一驱动与棋盘集；rollout 使用公共事件流",
+  "env": {
+    "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+    "python_version": "3.12.3",
+    "platform": "Windows-10-10.0.19042-SP0",
+    "cpu_count": 16,
+    "thread_env": {
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "NUMBA_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    }
+  },
+  "results": [
+    {
+      "backend": "reference",
+      "kernel": "move_all_dirs",
+      "units_per_iteration": 192,
+      "median_ns_per_iteration": 4415100.0,
+      "median_ns_per_unit": 22995.3125,
+      "stats": {
+        "n": 40,
+        "mean_ns": 4720772.5,
+        "median_ns": 4415100.0,
+        "std_ns": 1005198.9330444746,
+        "min_ns": 3374300,
+        "max_ns": 7277800,
+        "p95_ns": 6825000
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "reference",
+      "kernel": "legal_moves",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 5073850.0,
+      "median_ns_per_unit": 105705.20833333333,
+      "stats": {
+        "n": 40,
+        "mean_ns": 5559605.0,
+        "median_ns": 5073850.0,
+        "std_ns": 1983372.289807186,
+        "min_ns": 3534300,
+        "max_ns": 13923700,
+        "p95_ns": 8056400
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "reference",
+      "kernel": "evaluate",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 4713950.0,
+      "median_ns_per_unit": 98207.29166666667,
+      "stats": {
+        "n": 40,
+        "mean_ns": 6863755.0,
+        "median_ns": 4713950.0,
+        "std_ns": 8928292.928380823,
+        "min_ns": 3196100,
+        "max_ns": 46977700,
+        "p95_ns": 8419700
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "reference",
+      "kernel": "batch_move_left",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 961050.0,
+      "median_ns_per_unit": 20021.875,
+      "stats": {
+        "n": 40,
+        "mean_ns": 1171650.0,
+        "median_ns": 961050.0,
+        "std_ns": 690984.0526379752,
+        "min_ns": 603700,
+        "max_ns": 4038200,
+        "p95_ns": 2525800
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "reference",
+      "kernel": "rollout_py_d10",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 82645300.0,
+      "median_ns_per_unit": 1721777.0833333333,
+      "stats": {
+        "n": 40,
+        "mean_ns": 85806445.0,
+        "median_ns": 82645300.0,
+        "std_ns": 16075806.203048574,
+        "min_ns": 63985700,
+        "max_ns": 146051700,
+        "p95_ns": 103914300
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "reference",
+      "kernel": "rollout_py_d20",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 231930600.0,
+      "median_ns_per_unit": 4831887.5,
+      "stats": {
+        "n": 40,
+        "mean_ns": 241556247.5,
+        "median_ns": 231930600.0,
+        "std_ns": 81076008.27108161,
+        "min_ns": 126581600,
+        "max_ns": 430833800,
+        "p95_ns": 383853400
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "reference",
+      "kernel": "rollout_py_d40",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 332413850.0,
+      "median_ns_per_unit": 6925288.541666667,
+      "stats": {
+        "n": 40,
+        "mean_ns": 330981915.0,
+        "median_ns": 332413850.0,
+        "std_ns": 49956447.88332408,
+        "min_ns": 234164400,
+        "max_ns": 460821800,
+        "p95_ns": 401964400
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numpy",
+      "kernel": "move_all_dirs",
+      "units_per_iteration": 192,
+      "median_ns_per_iteration": 125198150.0,
+      "median_ns_per_unit": 652073.6979166666,
+      "stats": {
+        "n": 40,
+        "mean_ns": 148691262.5,
+        "median_ns": 125198150.0,
+        "std_ns": 75677493.07310823,
+        "min_ns": 75194900,
+        "max_ns": 411443700,
+        "p95_ns": 307405900
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numpy",
+      "kernel": "legal_moves",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 128340350.0,
+      "median_ns_per_unit": 2673757.2916666665,
+      "stats": {
+        "n": 40,
+        "mean_ns": 134294462.5,
+        "median_ns": 128340350.0,
+        "std_ns": 38669864.411429524,
+        "min_ns": 80608300,
+        "max_ns": 222158500,
+        "p95_ns": 201471200
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numpy",
+      "kernel": "evaluate",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 41313650.0,
+      "median_ns_per_unit": 860701.0416666666,
+      "stats": {
+        "n": 40,
+        "mean_ns": 43108532.5,
+        "median_ns": 41313650.0,
+        "std_ns": 12578663.217198152,
+        "min_ns": 22207100,
+        "max_ns": 75297300,
+        "p95_ns": 64635000
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numpy",
+      "kernel": "batch_move_left",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 19625150.0,
+      "median_ns_per_unit": 408857.2916666667,
+      "stats": {
+        "n": 40,
+        "mean_ns": 21131540.0,
+        "median_ns": 19625150.0,
+        "std_ns": 5922336.120687511,
+        "min_ns": 12193300,
+        "max_ns": 39234000,
+        "p95_ns": 30475700
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numpy",
+      "kernel": "rollout_py_d10",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 1391056350.0,
+      "median_ns_per_unit": 28980340.625,
+      "stats": {
+        "n": 40,
+        "mean_ns": 1389099047.5,
+        "median_ns": 1391056350.0,
+        "std_ns": 183662469.31037378,
+        "min_ns": 1018491100,
+        "max_ns": 1807954000,
+        "p95_ns": 1689657600
+      },
+      "overflow_skips": 43
+    },
+    {
+      "backend": "numpy",
+      "kernel": "rollout_py_d20",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 1750189200.0,
+      "median_ns_per_unit": 36462275.0,
+      "stats": {
+        "n": 40,
+        "mean_ns": 1899366067.5,
+        "median_ns": 1750189200.0,
+        "std_ns": 1023203010.3395859,
+        "min_ns": 572661100,
+        "max_ns": 4341271600,
+        "p95_ns": 3231067300
+      },
+      "overflow_skips": 86
+    },
+    {
+      "backend": "numpy",
+      "kernel": "rollout_py_d40",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 4175963900.0,
+      "median_ns_per_unit": 86999247.91666667,
+      "stats": {
+        "n": 40,
+        "mean_ns": 3414872765.0,
+        "median_ns": 4175963900.0,
+        "std_ns": 1700793094.7212672,
+        "min_ns": 984106800,
+        "max_ns": 5997421000,
+        "p95_ns": 5504170200
+      },
+      "overflow_skips": 129
+    },
+    {
+      "backend": "numba",
+      "kernel": "move_all_dirs",
+      "units_per_iteration": 192,
+      "median_ns_per_iteration": 4234550.0,
+      "median_ns_per_unit": 22054.947916666668,
+      "stats": {
+        "n": 40,
+        "mean_ns": 4667045.0,
+        "median_ns": 4234550.0,
+        "std_ns": 1347291.7521735965,
+        "min_ns": 3136600,
+        "max_ns": 8147600,
+        "p95_ns": 7271900
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numba",
+      "kernel": "legal_moves",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 3373900.0,
+      "median_ns_per_unit": 70289.58333333333,
+      "stats": {
+        "n": 40,
+        "mean_ns": 3568785.0,
+        "median_ns": 3373900.0,
+        "std_ns": 657636.7696342716,
+        "min_ns": 2806600,
+        "max_ns": 5149000,
+        "p95_ns": 4944500
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numba",
+      "kernel": "evaluate",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 614400.0,
+      "median_ns_per_unit": 12800.0,
+      "stats": {
+        "n": 40,
+        "mean_ns": 573137.5,
+        "median_ns": 614400.0,
+        "std_ns": 113071.26002548127,
+        "min_ns": 356000,
+        "max_ns": 718900,
+        "p95_ns": 716800
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numba",
+      "kernel": "batch_move_left",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 788850.0,
+      "median_ns_per_unit": 16434.375,
+      "stats": {
+        "n": 40,
+        "mean_ns": 878422.5,
+        "median_ns": 788850.0,
+        "std_ns": 224384.99781346793,
+        "min_ns": 691600,
+        "max_ns": 1508600,
+        "p95_ns": 1351400
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "numba",
+      "kernel": "rollout_py_d10",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 75561300.0,
+      "median_ns_per_unit": 1574193.75,
+      "stats": {
+        "n": 40,
+        "mean_ns": 88031087.5,
+        "median_ns": 75561300.0,
+        "std_ns": 31796563.916594725,
+        "min_ns": 49254000,
+        "max_ns": 193678600,
+        "p95_ns": 142828800
+      },
+      "overflow_skips": 43
+    },
+    {
+      "backend": "numba",
+      "kernel": "rollout_py_d20",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 142400150.0,
+      "median_ns_per_unit": 2966669.7916666665,
+      "stats": {
+        "n": 40,
+        "mean_ns": 151391547.5,
+        "median_ns": 142400150.0,
+        "std_ns": 70661348.0950441,
+        "min_ns": 77715800,
+        "max_ns": 483372200,
+        "p95_ns": 248671600
+      },
+      "overflow_skips": 86
+    },
+    {
+      "backend": "numba",
+      "kernel": "rollout_py_d40",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 287414350.0,
+      "median_ns_per_unit": 5987798.958333333,
+      "stats": {
+        "n": 40,
+        "mean_ns": 299615547.5,
+        "median_ns": 287414350.0,
+        "std_ns": 103806859.44935428,
+        "min_ns": 165303800,
+        "max_ns": 723027000,
+        "p95_ns": 448349400
+      },
+      "overflow_skips": 129
+    },
+    {
+      "backend": "cpp",
+      "kernel": "move_all_dirs",
+      "units_per_iteration": 192,
+      "median_ns_per_iteration": 2546000.0,
+      "median_ns_per_unit": 13260.416666666666,
+      "stats": {
+        "n": 40,
+        "mean_ns": 2556232.5,
+        "median_ns": 2546000.0,
+        "std_ns": 539435.5357165025,
+        "min_ns": 1735700,
+        "max_ns": 3704200,
+        "p95_ns": 3307700
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "cpp",
+      "kernel": "legal_moves",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 297750.0,
+      "median_ns_per_unit": 6203.125,
+      "stats": {
+        "n": 40,
+        "mean_ns": 346180.0,
+        "median_ns": 297750.0,
+        "std_ns": 91746.97052219218,
+        "min_ns": 243400,
+        "max_ns": 632700,
+        "p95_ns": 492500
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "cpp",
+      "kernel": "evaluate",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 653000.0,
+      "median_ns_per_unit": 13604.166666666666,
+      "stats": {
+        "n": 40,
+        "mean_ns": 731520.0,
+        "median_ns": 653000.0,
+        "std_ns": 215860.8871472551,
+        "min_ns": 492100,
+        "max_ns": 1287800,
+        "p95_ns": 1091100
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "cpp",
+      "kernel": "batch_move_left",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 590500.0,
+      "median_ns_per_unit": 12302.083333333334,
+      "stats": {
+        "n": 40,
+        "mean_ns": 617375.0,
+        "median_ns": 590500.0,
+        "std_ns": 225884.36394536032,
+        "min_ns": 354200,
+        "max_ns": 1304900,
+        "p95_ns": 990800
+      },
+      "overflow_skips": 0
+    },
+    {
+      "backend": "cpp",
+      "kernel": "rollout_py_d10",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 11881450.0,
+      "median_ns_per_unit": 247530.20833333334,
+      "stats": {
+        "n": 40,
+        "mean_ns": 12739522.5,
+        "median_ns": 11881450.0,
+        "std_ns": 2549008.7901464268,
+        "min_ns": 8566900,
+        "max_ns": 18333400,
+        "p95_ns": 16898400
+      },
+      "overflow_skips": 43
+    },
+    {
+      "backend": "cpp",
+      "kernel": "rollout_py_d20",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 17379350.0,
+      "median_ns_per_unit": 362069.7916666667,
+      "stats": {
+        "n": 40,
+        "mean_ns": 18356772.5,
+        "median_ns": 17379350.0,
+        "std_ns": 5071450.615306606,
+        "min_ns": 10638500,
+        "max_ns": 31063800,
+        "p95_ns": 27483800
+      },
+      "overflow_skips": 86
+    },
+    {
+      "backend": "cpp",
+      "kernel": "rollout_py_d40",
+      "units_per_iteration": 48,
+      "median_ns_per_iteration": 23680350.0,
+      "median_ns_per_unit": 493340.625,
+      "stats": {
+        "n": 40,
+        "mean_ns": 24934780.0,
+        "median_ns": 23680350.0,
+        "std_ns": 4198825.348427819,
+        "min_ns": 19583600,
+        "max_ns": 36620400,
+        "p95_ns": 32936700
+      },
+      "overflow_skips": 129
+    }
+  ]
+}

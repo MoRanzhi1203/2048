@@ -1,0 +1,11 @@
+﻿python.exe : ................................
+At line:15 char:3705
++ ... ated\tests; & E:\anaconda3\envs\2048\python.exe -m unittest test_row_ ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (................................:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+----------------------------------------------------------------------
+Ran 32 tests in 15.672s
+
+OK

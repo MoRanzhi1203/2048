@@ -711,6 +711,15 @@ V5_SCENES_ALL.update({"gameover": v5_scene_gameover, "export": v5_scene_export,
 
 # 统一入口覆盖的版本：新增 GUI 版本时在此登记（模块目录 / 模块名 / 可用场景 / 出图目录）
 VERSIONS = {
+    "v6": {
+        "label": "第 6 版 · 高性能计算后端",
+        "dir": "v6_pyqt_2048_accelerated",
+        "module": "v6_pyqt_2048_accelerated",
+        "entry": "v6_pyqt_2048_accelerated.py",
+        "scenes": V5_SCENES_ALL,
+        "texts": v5_required_text_widgets,
+        "shots": os.path.join(PROJ, "v6_pyqt_2048_accelerated", "screenshots"),
+    },
     "v5": {
         "label": "第 5 版 · 算法求解版",
         "dir": "v5_pyqt_2048_solver",

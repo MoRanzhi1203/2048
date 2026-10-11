@@ -1,0 +1,25 @@
+﻿=== CL VERSION ===
+=== BUILD ===
+running build_ext
+BUILD_EXIT=0
+=== PYD ===
+p0_testmod.cp312-win_amd64.pyd
+=== RUNTEST ===
+[PASS] compiled_arch == x64  got='x64'
+[PASS] add(2,3) == 5  got=5
+[PASS] roundtrip_u64(2**64-1)  got=18446744073709551615
+[PASS] roundtrip_u64(2**63)
+[PASS] roundtrip_u64 large not truncated
+[PASS] shl_wrap(1,63) == 2**63  got=9223372036854775808
+[PASS] shl_wrap high bits preserved
+[PASS] encode/decode roundtrip  got=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0]
+[PASS] encoded board is 64-bit safe  got='0xfedcba987654321'
+[PASS] move_row_left 0x1111 -> 0x0022  got='0x22'
+[PASS] move_row_left 0x0211 -> 0x0022  ([2,2,4,0]->[4,4,0,0])  got='0x22'
+[PASS] move_row_left 0x2221 -> 0x0231  ([2,4,4,4]->[2,8,4,0])  got='0x231'
+[PASS] move_row_left 0x1234 -> 0x1234  (no merge)  got='0x1234'
+[PASS] move_row_left 0x0001 -> 0x0001
+[PASS] move_row_left 0x0000 -> 0x0000
+[PASS] tuple of u64 roundtrip  got=(18446744073709551615, 9223372036854775808)
+RESULT=PASS
+TEST_EXIT=0
