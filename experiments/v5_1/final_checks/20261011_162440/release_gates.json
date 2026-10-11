@@ -1,0 +1,35 @@
+{
+  "run_id": "20261011_162440",
+  "head": "d810c09",
+  "scope": "V5.1 最后一次最小范围发布收口（sessions 原子保存/回滚、真实进程退出、截图与 DPI 复核、回归与模型哈希）",
+  "fixes": [
+    {"file": "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py", "methods": ["_save_sessions", "_load_sessions"],
+     "root_cause": "直接覆盖写主文件，写入中断会产生半截 JSON，_load_sessions 返回 [] 导致全部历史丢失",
+     "change": "tmp+fsync → 旧文件转存 .bak → os.replace 同盘原子替换；加载主文件损坏时回退 .bak",
+     "effect": "写入故障不破坏原文件；主文件损坏可回滚；保持紧凑 JSON 与全部历史数据"}
+  ],
+  "gates": {
+    "V5_1_CODE_PASS": {"status": "PASS", "reason": "可复现缺陷已最小修复；算法/RL/核心/V2-V4 未改；回归通过"},
+    "V5_1_INFLIGHT_CANCEL": {"status": "PASS", "reason": "H8-1 C01–C06 随 test_solver 全量通过"},
+    "V5_1_THREAD_SAFETY": {"status": "PASS", "reason": "关窗/求解中关窗进程干净退出（退出码 0，0 线程告警）；10x 在途取消无线程泄漏"},
+    "V5_1_GUI_AUTOMATED": {"status": "PASS", "reason": "四场景截图 CAPTURE/STRUCTURE/TEXT 通过"},
+    "V5_1_GUI_VISUAL": {"status": "UNVERIFIED", "reason": "无人工目视确认"},
+    "V5_1_DPI_VISUAL": {"status": "UNVERIFIED", "reason": "100% 真实通过；125%/150% 未在真实系统缩放下人工验证"},
+    "V5_1_MODEL_INTEGRITY": {"status": "PASS", "reason": "四模型 SHA256 前后一致（EQUAL_TO_BEFORE=True）"},
+    "V5_1_TESTS": {"status": "PASS", "reason": "test_solver 80 OK；popups 17/17；cross_version 41/41；rl_model_management 5 OK"},
+    "V5_1_RELEASE_READY": {"status": "PARTIAL_PASS", "reason": "代码/线程/取消/自动化视觉/模型/测试 PASS；缺人工视觉与真实多 DPI（不可由脚本授予）"}
+  },
+  "evidence": {
+    "atomic_save": ["atomic_save_rollback.md"],
+    "process_exit": ["process_exit_test.md"],
+    "gui": ["gui_capture.jsonl", "manual_visual_checklist.md"],
+    "tests": ["affected_tests.txt", "test_results.txt"],
+    "model": ["model_hash_before.json", "model_hash_after.json"],
+    "git": ["git_before.txt", "git_after.txt", "environment.json"]
+  },
+  "remaining": [
+    "人工目视 4 张整窗截图后 --visual-confirm",
+    "真实 Windows 125%/150% 缩放人工视觉走查（改后还原）",
+    "（V5.2 建议）会话持久化异步/增量；RL 迭代；C++ bitboard；统计扩样；本地/联机多人"
+  ]
+}

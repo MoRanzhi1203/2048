@@ -1656,27 +1656,47 @@ class SolverMainWindow(v4.MainWindow):
 
     # ---------------- 结果：导出 / 查看 / 对比 ----------------
     def _load_sessions(self):
-        if not os.path.exists(SESSIONS_FILE):
-            return []
-        try:
-            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, list) else []
-        except (json.JSONDecodeError, IOError):
-            return []
+        """读取会话历史；主文件缺失/损坏时回退到 `.bak`（原子保存的上一份完整版本），避免历史丢失。"""
+        for path in (SESSIONS_FILE, SESSIONS_FILE + ".bak"):
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    return data
+            except (json.JSONDecodeError, IOError, OSError):
+                continue
+        return []
 
     def _save_sessions(self):
+        """原子保存会话历史（tmp → 旧版转存 .bak → 同盘原子替换），失败时保留原文件/回滚点。
+
+        - 先写临时文件并 `fsync`，再 `os.replace` 同盘原子替换：任何时刻磁盘上都有一份完整可读文件，
+          写入中断不会产生半截 JSON（旧实现直接覆盖主文件，中断即历史全丢）。
+        - 覆盖前把旧主文件 `os.replace` 为 `.bak`（同盘重命名，无数据拷贝开销）：主文件损坏时可回滚。
+        - 任一步失败都静默保留现有文件；临时文件被清理。
+        - 输出仍为**紧凑标准 JSON**（与上一轮一致），`_load_sessions` 兼容，未改变存储规模/架构。
+        """
+        tmp = SESSIONS_FILE + ".tmp"
+        bak = SESSIONS_FILE + ".bak"
         try:
             os.makedirs(RESULT_DIR, exist_ok=True)
-            with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
-                # H8 收口：改为「紧凑序列化 + 单次大写入」。
-                # 原因：json.dump(..., indent=2) 对大历史会话是流式小写入，实测在 ~3MB / 11463 步时
-                # 单次可达 537–960ms，直接拖慢 GUI 停止路径（与线程无关）。紧凑单写约 94ms（≈5–10×）。
-                # 输出仍是标准 JSON，_load_sessions 完全兼容。
-                f.write(json.dumps(self._sessions, ensure_ascii=False,
-                                   separators=(",", ":")))
-        except IOError:
-            pass
+            payload = json.dumps(self._sessions, ensure_ascii=False, separators=(",", ":"))
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            if os.path.exists(SESSIONS_FILE):
+                os.replace(SESSIONS_FILE, bak)       # 旧版转存为回滚点
+            os.replace(tmp, SESSIONS_FILE)           # 同盘原子替换
+        except (IOError, OSError):
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+
 
     def _current_session_for_export(self):
         if self._session is not None:

@@ -1439,6 +1439,42 @@ class SolverGuiTest(unittest.TestCase):
             self._restore_blocking_solver()
             self.w._shutdown_worker()
 
+    # ================= 最终收口：sessions.json 原子保存 + 故障回滚 =================
+    def test_sessions_atomic_save_and_rollback(self):
+        """原子保存：紧凑单行 JSON；覆盖前转存 .bak；写入故障不破坏原文件；主文件损坏可由 .bak 回滚。"""
+        import json as _json
+        from unittest import mock
+        w = self.w
+        sf = self.v5.SESSIONS_FILE
+        # 1) 首次保存：紧凑单行、无 .tmp 残留
+        w._sessions = [{"id": "s1", "steps": [{"step": 1}]}]
+        w._save_sessions()
+        raw = open(sf, encoding="utf-8").read()
+        self.assertNotIn("\n", raw, "应保持紧凑（单行）JSON")
+        self.assertEqual(_json.loads(raw)[0]["id"], "s1")
+        self.assertFalse(os.path.exists(sf + ".tmp"))
+        # 2) 再次保存：旧版转存为 .bak（回滚点）
+        w._sessions = [{"id": "s1"}, {"id": "s2"}]
+        w._save_sessions()
+        self.assertTrue(os.path.exists(sf + ".bak"), "覆盖前应生成 .bak 回滚点")
+        self.assertEqual([s["id"] for s in w._load_sessions()], ["s1", "s2"])
+        # 3) 故障A：主文件“写入中断”损坏 → 由 .bak 回滚读取（不返回空、不丢历史）
+        with open(sf, "w", encoding="utf-8") as f:
+            f.write('{"半截"')
+        self.assertEqual([s["id"] for s in w._load_sessions()], ["s1"], "应由 .bak 回滚")
+        # 恢复主文件
+        w._sessions = [{"id": "s1"}, {"id": "s2"}]
+        w._save_sessions()
+        before = open(sf, encoding="utf-8").read()
+        # 4) 故障B：保存时原子替换抛错 → 原主文件保持不变、无 .tmp 残留
+        with mock.patch("os.replace", side_effect=OSError("inject-failure")):
+            w._sessions = [{"id": "s1"}, {"id": "s2"}, {"id": "s3"}]
+            w._save_sessions()
+        self.assertEqual(open(sf, encoding="utf-8").read(), before, "故障时不得破坏原文件")
+        self.assertFalse(os.path.exists(sf + ".tmp"), "故障后应清理临时文件")
+        self.assertEqual([s["id"] for s in w._load_sessions()], ["s1", "s2"])
+        print("\n[H9] sessions atomic save + rollback: PASS (compact=True, bak_rollback=True, fault_safe=True)")
+
 
 
 def main():

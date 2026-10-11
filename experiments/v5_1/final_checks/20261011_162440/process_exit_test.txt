@@ -1,0 +1,7 @@
+﻿MODE=idle EXIT_CODE=0 WALL=1.15s
+  STDOUT: APP_BEGIN mode=idle quitOnLastWindowClosed=True | APP_EXITED exec_code=0 elapsed=0.43s solver_thread_alive=False retired=0
+  QT_DESTROY_WARNINGS=0
+MODE=solving EXIT_CODE=0 WALL=1.41s
+  STDOUT: APP_BEGIN mode=solving quitOnLastWindowClosed=True | APP_EXITED exec_code=0 elapsed=0.85s solver_thread_alive=False retired=0
+  QT_DESTROY_WARNINGS=0
+DRIVER_DONE
