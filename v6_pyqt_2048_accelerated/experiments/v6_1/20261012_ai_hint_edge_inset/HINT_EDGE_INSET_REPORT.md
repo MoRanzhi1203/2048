@@ -192,6 +192,16 @@ V6 `discover -v` **41 PASS / EXIT=0**。
 **测试**：V5 新增 `test_strategy_switch_while_running`（含「在途计算期间再次切换」路径）；
 `python -m unittest test_solver` **95 PASS / EXIT=0**；V6 `discover -v` **41 PASS / EXIT=0**。
 
+**V6 同步补齐（同日追加）**：
+- `v6_pyqt_2048_accelerated/tests/test_gui_integration.py` 新增 3 条回归：`test_auto_mode_shows_hint`、
+  `test_strategy_switch_while_running`（含会话 `strategy_changes` 与 `session_rows` 链路）、
+  `test_ui_config_guard_not_defeated_by_backend`；该类的 `setUpClass/tearDownClass` 增加
+  `V6_RESULT_DIR/V6_EXPORT_DIR/V6_SESSIONS_FILE` 临时目录重定向（用例会真实启停求解，避免污染仓库 `solver_results/`）。
+- 守卫修正（V5，通用）：`_hot_update_solver_config` 改为与「界面产出配置快照」`self._ui_solver_config`
+  比较（`_init_solver`/`_start_solver` 中同步维护），不再因 V6 向 `_solver_config` 注入 `backend` 而失去早退。
+- 复跑：V5 **95 PASS / EXIT=0**；V6 **44 PASS / EXIT=0**（41 + 3）。
+
+
 > 说明：未改动的既有约束——「模式（自动连走/单步建议）」仍在「开始求解」时读取；本次仅按需求放开「算法模型」的运行时切换。
 
 

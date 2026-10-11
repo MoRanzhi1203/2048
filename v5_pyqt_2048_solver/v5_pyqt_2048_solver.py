@@ -1180,6 +1180,9 @@ class SolverMainWindow(v4.MainWindow):
         self._hint_overlay = None         # 建议方向高亮层（覆盖在 board_view 之上）
         self._arrow_router = None         # 方向键单一分发入口（应用内事件过滤器）
         self._solver_config = {"strategy": "expectimax", "depth": 4, "time_limit": 0.3}
+        # 界面直接产出的求解配置快照：仅由 (算法, 强度) 决定，不含子类运行时追加项
+        # （如 V6 注入的 backend），供“求解中切换算法”判断配置是否真的变了。
+        self._ui_solver_config = dict(self._solver_config)
         self._session = None
         self._pending_result = None
         self._sessions = self._load_sessions()
@@ -1813,8 +1816,10 @@ class SolverMainWindow(v4.MainWindow):
         strategy = self.solver_strategy.currentData()
         preset = self.solver_depth.currentData()
         new_cfg = solver.build_config(strategy, preset)
-        if new_cfg == self._solver_config:
+        # 与“界面产出的配置快照”比较：子类向 _solver_config 追加的运行时项（如 V6 的 backend）不参与判定
+        if new_cfg == getattr(self, "_ui_solver_config", None):
             return
+        self._ui_solver_config = dict(new_cfg)
         self._solver_config = new_cfg
         self._job_id += 1                     # 旧任务身份作废：在途的旧算法结果将被丢弃
         if self._solve_in_flight and self._solver_cancel is not None:
@@ -1925,6 +1930,7 @@ class SolverMainWindow(v4.MainWindow):
         strategy = self.solver_strategy.currentData()
         preset = self.solver_depth.currentData()
         self._solver_config = solver.build_config(strategy, preset)
+        self._ui_solver_config = dict(self._solver_config)
         self._solver_mode = self.solver_mode.currentData()
 
         self._session = new_session(strategy, solver.PRESET_LABELS.get(preset, preset),
