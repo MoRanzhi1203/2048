@@ -271,6 +271,16 @@ class ChevronToolButton(QToolButton):
 
 
 # =====================================================================
+# 求解线程回收预算（H8-2）
+# 交互“停止”只做**短等待**，避免阻塞 GUI 主线程（其余线程转入 retired，异步回收）；
+# 窗口关闭时对**当前 + 全部 retired** 线程做**有界**等待，保证不遗留运行中的 QThread。
+# 真实求解预算受 MAX_TIME_LIMIT(2.0s) 约束，故关闭等待 3.5s 足以覆盖正常情况。
+# =====================================================================
+SOLVER_STOP_WAIT_MS = 500
+SOLVER_CLOSE_WAIT_MS = 3500
+
+
+# =====================================================================
 # 折叠态右侧贴边半胶囊把手（EdgeHandle）
 # 自绘：单侧圆角（左侧两角圆角、右侧直边）+ 细线左向 Chevron；
 # 作为 overlay 挂主窗口，不参与布局；QSS 无法可靠表达“单侧圆角”，故用 paintEvent。
@@ -824,12 +834,12 @@ class SolverMainWindow(v4.MainWindow):
         self.solveRequested.connect(self._solver_worker.solve)
         self._solver_thread.start()
 
-    def _shutdown_worker(self, wait_ms=3000):
+    def _shutdown_worker(self, wait_ms=SOLVER_STOP_WAIT_MS):
         """协作式停止并回收求解线程（幂等）。
 
-        H3 修复：先置取消令牌 → 断开请求 → quit()+wait()。
-        若线程未在预算内退出，**不丢弃引用**，转入退休列表，待 finished 信号到达后回收，
-        避免“worker 仍在运行却把引用置空”导致线程失控或对象被提前销毁。
+        H3/H8 修复：先置取消令牌 → 断开请求 → quit()+wait(短预算)。
+        短预算避免交互“停止”阻塞 GUI 主线程；未在预算内退出的线程转入退休列表，
+        待 finished 信号到达后回收；关闭窗口时另用 `_wait_retired` 做有界等待。
         绝不使用 QThread.terminate()。
         """
         thread = self._solver_thread
@@ -862,6 +872,25 @@ class SolverMainWindow(v4.MainWindow):
 
     def _collect_retired(self, thread):
         self._retired_threads = [(t, w) for (t, w) in self._retired_threads if t is not thread]
+
+    def _wait_retired(self, timeout_ms=SOLVER_CLOSE_WAIT_MS):
+        """对全部退休线程做**有界**等待（仅供关闭路径调用）。
+
+        返回 True 表示全部已退出并清理；False 表示仍有线程在运行（引用保留，延后回收，
+        绝不丢弃、绝不 terminate）。注意：交互“停止”路径不使用本方法，以免阻塞 GUI。
+        """
+        end = time.time() + max(0, timeout_ms) / 1000.0
+        for thread, _worker in list(self._retired_threads):
+            remaining = max(0, int((end - time.time()) * 1000.0))
+            if remaining <= 0:
+                break
+            try:
+                thread.wait(remaining)
+            except RuntimeError:
+                pass
+        # 已结束的从退休列表移除；仍在运行的保留引用
+        self._retired_threads = [(t, w) for (t, w) in self._retired_threads if t.isRunning()]
+        return not self._retired_threads
 
     # ---------------- 右侧 Solver 工作台（V5.1） ----------------
     def _build_solver_panel(self):
@@ -1715,7 +1744,11 @@ class SolverMainWindow(v4.MainWindow):
         except Exception:                                            # noqa: BLE001
             pass
         super().closeEvent(event)
-        self._shutdown_worker()
+        # H8-2：关闭路径对“当前线程 + 全部退休线程”做有界等待，避免遗留运行中的 QThread；
+        # 超时未结束的线程仍保留引用（延后回收），绝不 terminate、绝不丢弃。
+        if self._solver_thread is not None:
+            self._shutdown_worker(wait_ms=SOLVER_CLOSE_WAIT_MS)
+        self._wait_retired(SOLVER_CLOSE_WAIT_MS)
 
 
 # 与其它版本保持一致的主窗口符号（统一截图入口 tools/capture_gui.py 依赖它）

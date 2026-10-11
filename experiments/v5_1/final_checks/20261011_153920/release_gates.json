@@ -1,0 +1,28 @@
+{
+  "run_id": "20261011_153920",
+  "head": "ddbf0e5",
+  "gates": {
+    "V5_1_CODE_PASS": {"status": "PASS", "reason": "算法/RL 正确性测试、GUI 自动化逻辑、回归、实验记录与证据齐备"},
+    "V5_1_INFLIGHT_CANCEL": {"status": "PASS", "reason": "C01–C06 六场景均进入计算并验证；停止/迟到 solved/failed/关闭/10×取消/UI 操作全部通过"},
+    "V5_1_THREAD_SAFETY": {"status": "PASS", "reason": "无 QThread 销毁告警、无线程泄漏、无 terminate；关闭路径有界等待当前+retired 线程；3 组不同顺序均 OK"},
+    "V5_1_GUI_AUTOMATED": {"status": "PASS", "reason": "start/game/solver/collapsed 四场景 CAPTURE/STRUCTURE/TEXT 通过；折叠/展开/把手/splitter/窗口尺寸测试通过"},
+    "V5_1_GUI_VISUAL": {"status": "UNVERIFIED", "reason": "无人工目视确认；脚本不得授予 VISUAL_PASS"},
+    "V5_1_DPI_VISUAL": {"status": "UNVERIFIED", "reason": "100% 真实通过；125%/150% 仅受控 Qt 模拟通过，真实 Windows 多 DPI 人工视觉未验证"},
+    "V5_1_MODEL_INTEGRITY": {"status": "PASS", "reason": "rl_model/candidate/prev/baseline 四项 SHA256 前后完全一致（EQUAL_TO_BEFORE=True）"},
+    "V5_1_TESTS": {"status": "PASS", "reason": "186/186 通过（unittest 117 + 自定义 69），失败 0，跳过 0"},
+    "V5_1_RELEASE_READY": {"status": "PARTIAL_PASS", "reason": "代码/取消/线程/自动化视觉/模型/测试均 PASS；缺人工视觉(V5_1_GUI_VISUAL)与真实多 DPI 人工确认 → 维持 PARTIAL_PASS"}
+  },
+  "h8_sub_gates": {
+    "H8_BASELINE_PASS": "PASS",
+    "INFLIGHT_CANCEL_SAFETY_PASS": "PASS",
+    "GUI_THREAD_LIFECYCLE_PASS": "PASS",
+    "H8_TESTS_PASS": "PASS",
+    "H8_MODEL_IMMUTABLE_PASS": "PASS",
+    "H8_BENCHMARK_REUSE_PASS": "PASS"
+  },
+  "manual_pending": [
+    "人工目视 v5_pyqt_2048_solver/screenshots/full_{start,game,solver,collapsed}.png 后 --visual-confirm",
+    "真实 Windows 125%/150% 显示缩放下的人工视觉走查"
+  ],
+  "freeze_recommendation": "可冻结 v5.1-stable-candidate（代码稳定候选）；正式发布需人工视觉确认后可升 V5_1_RELEASE_READY=PASS"
+}

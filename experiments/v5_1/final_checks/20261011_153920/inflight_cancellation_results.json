@@ -1,0 +1,36 @@
+{
+  "run_id": "20261011_153920",
+  "subject": "V5.1 H8-1 在途取消确定性验证",
+  "fixture": "started-event(entered) + release-event 同步屏障 + watchdog(15s)；monkeypatch solver.solve，tearDown 保证恢复",
+  "budget": {"stop_wait_ms": 500, "close_wait_ms": 3500},
+  "cancel_levels": {
+    "CANCEL_REQUESTED": "GUI 置 threading.Event（主线程，即时）",
+    "RESULT_DISCARDED": "worker 返回时检测到 token → 不 emit solved/failed（结果不落地）",
+    "COMPUTATION_EXITED": "solver.solve 因有界预算返回（MCTS/Expectimax/Rollout 内部无取消轮询；最坏≈time_limit，MAX_TIME_LIMIT=2.0s）",
+    "THREAD_CLEANED": "quit()+有界 wait；超时转 retired，finished 后回收（无 terminate）"
+  },
+  "scenarios": [
+    {"id": "C01", "timing": "进入计算后停止→放行旧计算", "entered_compute": true,
+     "stop_block_ms_before_fix": 3011, "stop_block_ms_after_fix": 507,
+     "board_unchanged": true, "result_landed": false, "ghost_task": false, "exception": null},
+    {"id": "C02", "timing": "旧任务进入计算→停止→启动新任务→旧 solved 迟到",
+     "entered_compute": true, "late_solved_discarded": true,
+     "inflight_flag_kept": true, "progress_bar_untouched": true, "board_sig_respected": true, "exception": null},
+    {"id": "C03", "timing": "C02 的旧 failed 迟到",
+     "entered_compute": true, "late_failed_discarded": true,
+     "inflight_flag_kept": true, "status_unchanged": true, "exception": null},
+    {"id": "C04", "timing": "进入计算→关闭窗口→放行旧任务",
+     "entered_compute": true, "thread_finished": true, "reference_retained_until_finish": true,
+     "qthread_destroyed_warnings": 0, "exception": null},
+    {"id": "C05", "timing": "连续 10 次在途取消（每次确认进入计算）",
+     "entered_compute": true, "job_ids": [1,2,3,4,5,6,7,8,9,10], "job_id_monotonic_unique": true,
+     "solver_calls": 10, "live_threads_after": 0, "exception": null},
+    {"id": "C06", "timing": "在途求解期间折叠/展开×3 + 拖动 splitter + 缩放 + 切模式",
+     "entered_compute": true, "resubmit_on_ui_ops": false, "job_id_stable": true,
+     "auto_move_duplicates": 0, "edge_handle_available": true, "exception": null}
+  ],
+  "real_solver_stop_latency_ms": {"expectimax_strong": [363, 460], "mcts_strong": [946, 1016]},
+  "totals": {"scenarios_total": 6, "scenarios_passed": 6, "failed": 0},
+  "not_measured": ["GUI 主线程响应性毫秒级采样（仅记录 stop_block 时长）", "取消请求→计算退出的逐事件时间戳（夹具为人工阻塞，不代表真实循环）"],
+  "evidence": ["experiments/v5_1/final_checks/20261011_153920/h8_inflight_run.txt", "experiments/v5_1/final_checks/20261011_153920/h8_thread_tests_after_fix.txt"]
+}

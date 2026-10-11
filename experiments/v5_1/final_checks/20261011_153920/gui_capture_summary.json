@@ -1,0 +1,13 @@
+{
+  "run_id": "20261011_153920",
+  "version": "v5",
+  "tool": "tools/capture_gui.py (真实 Windows 桌面 screen-bitblt + DWM 外框)",
+  "scenes": [
+    {"scene": "start", "path": "v5_pyqt_2048_solver/screenshots/full_start.png", "size": [502, 711], "dpr": 1.0, "has_titlebar": true, "CAPTURE_PASS": true, "STRUCTURE_PASS": true, "TEXT_PASS": true, "VISUAL_PASS": "UNVERIFIED"},
+    {"scene": "game", "path": "v5_pyqt_2048_solver/screenshots/full_game.png", "size": [908, 759], "dpr": 1.0, "has_titlebar": true, "CAPTURE_PASS": true, "STRUCTURE_PASS": true, "TEXT_PASS": true, "VISUAL_PASS": "UNVERIFIED"},
+    {"scene": "solver", "path": "v5_pyqt_2048_solver/screenshots/full_solver.png", "size": [908, 759], "dpr": 1.0, "has_titlebar": true, "CAPTURE_PASS": true, "STRUCTURE_PASS": true, "TEXT_PASS": true, "VISUAL_PASS": "UNVERIFIED"},
+    {"scene": "collapsed", "path": "v5_pyqt_2048_solver/screenshots/full_collapsed.png", "size": [502, 759], "dpr": 1.0, "has_titlebar": true, "CAPTURE_PASS": true, "STRUCTURE_PASS": true, "TEXT_PASS": true, "VISUAL_PASS": "UNVERIFIED"}
+  ],
+  "raw": "experiments/v5_1/final_checks/20261011_153920/gui_capture.jsonl",
+  "note": "四场景 CAPTURE/STRUCTURE/TEXT 通过；VISUAL 需人工核对，脚本不授予。"
+}

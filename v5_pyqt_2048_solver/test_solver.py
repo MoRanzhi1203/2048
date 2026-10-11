@@ -15,6 +15,7 @@
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -275,13 +276,63 @@ class SolverGuiTest(unittest.TestCase):
         self.w.start_new_game()
         self.w.show()
         pump(self.app, 120)
+        self._blocking_ctrl = None                # H8-1 可阻塞 solver 夹具状态
 
     def tearDown(self):
+        self._restore_blocking_solver()            # 任何失败都保证释放阻塞并恢复 solver.solve
         try:
             self.w.close()
         except Exception:                                        # noqa: BLE001
             pass
         pump(self.app, 60)
+
+    # ================= H8-1：在途取消确定性夹具（started/release 屏障） =================
+    def _install_blocking_solver(self, hold=15.0):
+        """把 solver.solve 替换为**可控阻塞**版本（仅本用例有效，tearDown 保证恢复）。
+
+        - 进入计算后立即 set('entered') 供测试线程确认“worker 已真实进入计算阶段”；
+        - 测试通过 set('release') 放行，用于制造迟到的 solved/failed；
+        - 内置 watchdog（hold 秒）避免任何断言失败把测试锁死。
+        """
+        import solver_2048 as _s
+        ctrl = {'entered': threading.Event(), 'release': threading.Event(),
+                'returned': threading.Event(), 'entered_at': None, 'returned_at': None,
+                'calls': 0, 'raise_exc': None, 'orig': _s.solve}
+
+        def _blocking(grid, strategy='expectimax', **options):
+            ctrl['calls'] += 1
+            ctrl['entered_at'] = time.perf_counter()
+            ctrl['entered'].set()
+            if not ctrl['release'].wait(hold):
+                raise TimeoutError('blocking solver watchdog (test fixture)')
+            ctrl['returned_at'] = time.perf_counter()
+            ctrl['returned'].set()
+            if ctrl['raise_exc'] is not None:
+                raise ctrl['raise_exc']
+            return {'strategy': strategy, 'best_direction': 'left', 'best_name': '向左',
+                    'evaluations': {'up': None, 'down': None, 'left': 1.0, 'right': None},
+                    'depth_reached': 1, 'nodes': 1, 'elapsed_ms': 0.0,
+                    'timed_out': False, 'error': None}
+
+        _s.solve = _blocking
+        self._blocking_ctrl = ctrl
+        return ctrl
+
+    def _restore_blocking_solver(self):
+        import solver_2048 as _s
+        ctrl = getattr(self, '_blocking_ctrl', None)
+        if ctrl is not None:
+            ctrl['release'].set()
+            _s.solve = ctrl['orig']
+            self._blocking_ctrl = None
+
+    def _wait_threads_quiet(self, timeout_ms=6000):
+        return wait_until(
+            self.app,
+            lambda: self.w._solver_thread is None and not self.w._solver_running
+            and not self.w._solve_in_flight
+            and not any(t.isRunning() for t, _w in self.w._retired_threads),
+            timeout_ms)
 
     def _set_grid(self, grid):
         self.w.model.grid = [row[:] for row in grid]
@@ -1192,6 +1243,200 @@ class SolverGuiTest(unittest.TestCase):
         finally:
             qInstallMessageHandler(old)
             self.w._solver_running = False
+            self.w._shutdown_worker()
+
+    # ================= H8-1：C01–C06 在途取消确定性场景（started/release 屏障） =================
+    def test_h8_c01_stop_while_in_compute(self):
+        """C01：worker 确认进入计算 → 停止 → 放行旧计算：棋盘不变、结果不落地、无幽灵任务。"""
+        ctrl = self._install_blocking_solver()
+        try:
+            grid = [[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]]
+            self._set_grid(grid)
+            self.w.solver_mode.setCurrentIndex(1)
+            self._select_strategy("mcts")
+            before = [row[:] for row in self.w.model.grid]
+            self.w.on_solver_clicked()
+            self.assertTrue(wait_until(self.app, lambda: ctrl['entered'].is_set(), 4000),
+                            "worker 未进入计算阶段")
+            t_cancel = time.perf_counter()
+            self.w.on_solver_clicked()                    # 在途停止
+            stop_block_ms = (time.perf_counter() - t_cancel) * 1000.0
+            ctrl['release'].set()                         # 放行旧计算
+            self.assertTrue(self._wait_threads_quiet(8000), "线程未在预算内回收")
+            self.assertEqual(self.w.model.grid, before, "取消后棋盘被改变（不应发生）")
+            self.assertFalse(self.w._solver_running)
+            self.assertFalse(self.w._solve_in_flight)
+            print("\n[C01] entered=True stop_block=%.0fms solver_calls=%d" % (stop_block_ms, ctrl['calls']))
+        finally:
+            self._restore_blocking_solver()
+            self.w._shutdown_worker()
+
+    def test_h8_c02_late_solved_from_old_task(self):
+        """C02：旧任务进入计算 → 停止 → 启动新任务 → 旧 solved 迟到投递：不得污染新任务。"""
+        ctrl = self._install_blocking_solver()
+        try:
+            self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+            self.w.solver_mode.setCurrentIndex(1)
+            self._select_strategy("mcts")
+            self.w.on_solver_clicked()
+            self.assertTrue(wait_until(self.app, lambda: ctrl['entered'].is_set(), 4000))
+            job1 = self.w._job_id
+            worker1 = self.w._solver_worker
+            emitted = threading.Event()
+            worker1.solved.connect(lambda j, r: emitted.set(), Qt.DirectConnection)  # worker 线程内确认 emit
+            ctrl['release'].set()                          # 放行 task1 计算
+            self.assertTrue(ctrl['returned'].wait(3.0), "_solve 未返回")
+            self.assertTrue(emitted.wait(3.0), "worker 未 emit solved")
+            # 此间未 processEvents，queued solved(job1) 尚未投递到主线程
+            ctrl['release'].clear()                        # 让 task2 继续阻塞在计算中
+            ctrl['entered'].clear()
+            self.w.on_solver_clicked()                     # 停止 task1
+            self.w.on_solver_clicked()                     # 启动 task2
+            job2 = self.w._job_id
+            self.assertNotEqual(job1, job2)
+            self.assertTrue(self.w._solve_in_flight, "task2 未在途")
+            before_log = self.w.solver_log.count()
+            self.assertTrue(wait_until(self.app, lambda: self.w.solver_log.count() > before_log, 3000),
+                            "迟到的旧 solved 未被识别/忽略")
+            self.assertTrue(self.w._solve_in_flight, "旧 solved 清零了新任务 _solve_in_flight")
+            print("\n[C02] job1=%d job2=%d late_solved_discarded=True inflight_kept=True" % (job1, job2))
+            ctrl['release'].set()                          # 放行 task2
+            self._wait_threads_quiet(8000)
+        finally:
+            self._restore_blocking_solver()
+            self.w._shutdown_worker()
+
+    def test_h8_c03_late_failed_from_old_task(self):
+        """C03：C02 的旧 failed 迟到：新任务运行态不变，不弹旧任务错误。"""
+        ctrl = self._install_blocking_solver()
+        ctrl['raise_exc'] = RuntimeError("old-task-boom")
+        try:
+            self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+            self.w.solver_mode.setCurrentIndex(1)
+            self._select_strategy("mcts")
+            self.w.on_solver_clicked()
+            self.assertTrue(wait_until(self.app, lambda: ctrl['entered'].is_set(), 4000))
+            job1 = self.w._job_id
+            worker1 = self.w._solver_worker
+            failed_emit = threading.Event()
+            worker1.failed.connect(lambda j, m: failed_emit.set(), Qt.DirectConnection)
+            ctrl['release'].set()
+            self.assertTrue(ctrl['returned'].wait(3.0))
+            self.assertTrue(failed_emit.wait(3.0), "worker 未 emit failed")
+            ctrl['release'].clear()                        # 让 task2 继续阻塞在计算中
+            ctrl['entered'].clear()
+            self.w.on_solver_clicked()                     # 停止 task1
+            self.w.on_solver_clicked()                     # 启动 task2
+            self.assertTrue(self.w._solve_in_flight)
+            pump(self.app, 250)                            # 投递迟到的旧 failed
+            self.assertTrue(self.w._solve_in_flight, "旧 failed 改动了新任务在途状态")
+            print("\n[C03] job1=%d late_failed_discarded=True inflight_kept=True" % job1)
+            ctrl['release'].set()
+            self._wait_threads_quiet(8000)
+        finally:
+            self._restore_blocking_solver()
+            self.w._shutdown_worker()
+
+    def test_h8_c04_close_window_while_in_compute(self):
+        """C04：已进入计算时关闭窗口 → 放行旧任务：无 QThread 销毁告警、引用持续到完成。"""
+        from PyQt5.QtCore import qInstallMessageHandler
+        msgs = []
+        old = qInstallMessageHandler(lambda m, c, s: msgs.append(str(s)))
+        ctrl = self._install_blocking_solver()
+        try:
+            self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+            self.w.solver_mode.setCurrentIndex(1)
+            self._select_strategy("mcts")
+            self.w.on_solver_clicked()
+            self.assertTrue(wait_until(self.app, lambda: ctrl['entered'].is_set(), 4000))
+            thread = self.w._solver_thread                    # 关闭前捕获引用
+            self.w.close()
+            pump(self.app, 200)
+            ctrl['release'].set()                             # 放行旧任务
+            self.assertTrue(wait_until(self.app, lambda: thread is not None and not thread.isRunning(), 8000),
+                            "关闭后线程未结束")
+            bad = [m for m in msgs if ("Destroyed while thread is still running" in m
+                                       or "QThread: Destroyed" in m)]
+            self.assertEqual(bad, [], "关闭窗口时出现线程销毁告警：%s" % bad)
+            print("\n[C04] thread_finished=True qt_bad_warnings=0")
+        finally:
+            self._restore_blocking_solver()
+            try:
+                self.w._shutdown_worker()
+            except Exception:                                 # noqa: BLE001
+                pass
+            qInstallMessageHandler(old)
+
+    def test_h8_c05_ten_inflight_cancels(self):
+        """C05：连续 10 次在途取消（每次确认已进入计算）：job_id 单调唯一、线程可追踪、最终归零。"""
+        ctrl = self._install_blocking_solver()
+        try:
+            grid = [[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]]
+            ids = []
+            for i in range(10):
+                ctrl['entered'].clear()
+                ctrl['release'].clear()
+                self._set_grid(grid)
+                self.w.solver_mode.setCurrentIndex(1)
+                self._select_strategy("mcts")
+                self.w.on_solver_clicked()
+                self.assertTrue(wait_until(self.app, lambda: ctrl['entered'].is_set(), 4000),
+                                "第 %d 次未进入计算" % (i + 1))
+                ids.append(self.w._job_id)
+                self.w.on_solver_clicked()                # 在途取消
+                ctrl['release'].set()
+                self.assertTrue(wait_until(
+                    self.app,
+                    lambda: self.w._solver_thread is None
+                    and not any(t.isRunning() for t, _w in self.w._retired_threads), 8000),
+                    "第 %d 次线程未回收" % (i + 1))
+            self.assertEqual(len(ids), 10)
+            self.assertEqual(ids, sorted(set(ids)), "job_id 必须单调且唯一")
+            live = [t for t, _w in self.w._retired_threads if t.isRunning()]
+            self.assertEqual(live, [], "存在未回收线程")
+            print("\n[C05] inflight_cancels=%d job_ids=%s live_threads=%d solver_calls=%d"
+                  % (len(ids), ids, len(live), ctrl['calls']))
+        finally:
+            self._restore_blocking_solver()
+            self.w._shutdown_worker()
+
+    def test_h8_c06_ui_ops_during_inflight(self):
+        """C06：在途求解期间折叠/展开、拖动 splitter、缩放窗口、切模式：不重复提交、展开入口可用。"""
+        ctrl = self._install_blocking_solver()
+        try:
+            self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
+            self.w.solver_mode.setCurrentIndex(1)
+            self._select_strategy("mcts")
+            self.w.on_solver_clicked()
+            self.assertTrue(wait_until(self.app, lambda: ctrl['entered'].is_set(), 4000))
+            job = self.w._job_id
+            calls0 = ctrl['calls']
+            # 折叠/展开 ×3
+            for _ in range(3):
+                self.w._toggle_solver(); pump(self.app, 60)
+                self.w._toggle_solver(); pump(self.app, 60)
+            # splitter 拖动 + 窗口缩放 + 模式切换
+            self.w.splitter.setSizes([420, 480]); pump(self.app, 40)
+            self.w.resize(1000, 780); pump(self.app, 60)
+            self.w.resize(760, 620); pump(self.app, 60)
+            self.w.solver_mode.setCurrentIndex(0)          # auto
+            self.w.solver_mode.setCurrentIndex(1)          # single
+            pump(self.app, 120)
+            # 不重复提交任务
+            self.assertEqual(ctrl['calls'], calls0, "UI 操作触发了新的求解提交")
+            self.assertEqual(self.w._job_id, job, "UI 操作改变了 job_id")
+            self.assertTrue(self.w._solver_running, "在途任务被 UI 操作打断")
+            # 折叠后再展开：入口可用
+            self.w._set_solver_collapsed(True); pump(self.app, 120)
+            self.assertTrue(self.w._solver_collapsed)
+            self.assertIsNotNone(getattr(self.w, "solver_edge_handle", None))
+            self.w._set_solver_collapsed(False); pump(self.app, 120)
+            self.assertFalse(self.w._solver_collapsed)
+            print("\n[C06] no_resubmit=True job_stable=%d edge_handle_ok=True" % job)
+            ctrl['release'].set()
+            self._wait_threads_quiet(8000)
+        finally:
+            self._restore_blocking_solver()
             self.w._shutdown_worker()
 
 

@@ -1,0 +1,35 @@
+﻿E:\anaconda3\python.exe : test_h8_c01_stop_while_in_compute (__main__.SolverGuiTest.test_h8_c01_stop_while_in_compute)
+At line:15 char:3609
++ ... pgrep\bin'; E:\anaconda3\python.exe v5_pyqt_2048_solver\test_solver.p ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (test_h8_c01_sto...ile_in_compute):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C01：worker 确认进入计算 → 停止 → 放行旧计算：棋盘不变、结果不落地、无幽灵任务。 ... ok
+test_h8_c02_late_solved_from_old_task (__main__.SolverGuiTest.test_h8_c02_late_solved_from_old_task)
+C02：旧任务进入计算 → 停止 → 启动新任务 → 旧 solved 迟到投递：不得污染新任务。 ... ok
+test_h8_c03_late_failed_from_old_task (__main__.SolverGuiTest.test_h8_c03_late_failed_from_old_task)
+C03：C02 的旧 failed 迟到：新任务运行态不变，不弹旧任务错误。 ... ok
+test_h8_c04_close_window_while_in_compute (__main__.SolverGuiTest.test_h8_c04_close_window_while_in_compute)
+C04：已进入计算时关闭窗口 → 放行旧任务：无 QThread 销毁告警、引用持续到完成。 ... ok
+test_h8_c05_ten_inflight_cancels (__main__.SolverGuiTest.test_h8_c05_ten_inflight_cancels)
+C05：连续 10 次在途取消（每次确认已进入计算）：job_id 单调唯一、线程可追踪、最终归零。 ... ok
+test_h8_c06_ui_ops_during_inflight (__main__.SolverGuiTest.test_h8_c06_ui_ops_during_inflight)
+C06：在途求解期间折叠/展开、拖动 splitter、缩放窗口、切模式：不重复提交、展开入口可用。 ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 39.782s
+
+OK
+
+[C01] entered=True stop_block=3011ms solver_calls=1
+
+[C02] job1=1 job2=2 late_solved_discarded=True inflight_kept=True
+
+[C03] job1=1 late_failed_discarded=True inflight_kept=True
+
+[C04] thread_finished=True qt_bad_warnings=0
+
+[C05] inflight_cancels=10 job_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10] live_threads=0 solver_calls=10
+
+[C06] no_resubmit=True job_stable=1 edge_handle_ok=True
