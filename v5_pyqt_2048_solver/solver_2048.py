@@ -869,6 +869,28 @@ def _ordered_dirs(grid, weights):
 # =====================================================================
 # 策略五：强化学习（策略/价值网络，模型由 rl_2048.py 训练）
 # =====================================================================
+def _rl_file_identity(path):
+    """文件身份：规范化绝对路径 + (size, mtime_ns)；用于构建可失效缓存。"""
+    st = os.stat(path)
+    return (os.path.normcase(os.path.abspath(path)), int(st.st_size), int(st.st_mtime_ns))
+
+
+# RL 推理模型缓存（H2.9）：避免每步都从磁盘重新读取 .npz。
+# 键为文件身份；当模型被原子替换（mtime_ns 改变）时自动失效并重载，保证不陈旧。
+_RL_MODEL_CACHE = {'key': None, 'net': None}
+
+
+def _load_rl_model_cached(path, loader):
+    """返回缓存模型；文件身份变化时调用 loader(path) 重新加载并替换缓存。"""
+    ident = _rl_file_identity(path)
+    if _RL_MODEL_CACHE['key'] == ident and _RL_MODEL_CACHE['net'] is not None:
+        return _RL_MODEL_CACHE['net']
+    net = loader(path)
+    _RL_MODEL_CACHE['key'] = ident
+    _RL_MODEL_CACHE['net'] = net
+    return net
+
+
 def _rl_decision(grid, model_path=None, weights=None):
     path = model_path or RL_MODEL_PATH
     start = time.time()
@@ -878,10 +900,11 @@ def _rl_decision(grid, model_path=None, weights=None):
                              % os.path.basename(path))
     try:
         import rl_2048                                   # 延迟导入（仅 RL 需要 numpy）
-        net = rl_2048.load_model(path)
+        net = _load_rl_model_cached(path, rl_2048.load_model)
     except Exception as exc:                             # noqa: BLE001
         return _result('rl', None, {}, 0, 0, start,
                        error='加载强化学习模型失败：%s' % exc)
+
 
     probs = rl_2048.policy_probs(net, grid)              # {direction: probability}
     moves = legal_moves(grid)

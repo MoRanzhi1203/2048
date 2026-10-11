@@ -17,15 +17,19 @@
 | H3-THREAD | `_shutdown_worker` 在未退出时 `quit()+wait(1500)` 后直接置空引用 | 线程仍运行但引用丢失，存在失控风险 | 协作式取消（threading.Event）+ 退休列表保留引用，待 finished 回收；不用 terminate | `test_solver_gui_lifecycle` |
 | H3-TEST | `test_solver.py` 用索引 1 当 Expectimax、2 当 MCTS | 用例名不副实 | 改为 `currentData` 查找 + 新增身份用例 | `test_strategy_identity_maps_to_config` |
 | H5-ASSERT | `test_rl_selftrain` 3a/3d 依赖过期源码字符串 | 断言随重构漂移 | 改为真实行为断言 | 11/11 PASS |
+| H2-RESUME | `--resume` 帮助文本宣称“保留元数据与 RNG 进度”，实际仅恢复权重+元数据（未恢复 RNG）；且读取 `--out` 而非 `.latest.npz` 检查点 | 语义误导，可能被误当“精确断点续训”；续训起点非 latest | 改为**warm start** 明确措辞（不恢复 RNG/优化器状态），优先读取 `.latest.npz` 检查点；新增确定性测试固化该语义 | `test_rl_warm_start_resume_is_not_exact` |
+| H2-CACHE | RL 推理每次 solve 都 `load_model` 重新读 `.npz`（profiling 中约占 RL 单步耗时 74%） | RL 单步延迟被磁盘 I/O 主导 | 规范化路径 + 文件身份 `(size, mtime_ns)` 的可失效模型缓存；模型原子替换后自动失效重载 | `test_rl_inference_cache`（cold≈2.75ms → warm≈0.10ms，仅缓存命中断言，不作全链路加速比结论） |
+| H3-STALE | `_on_solver_result`/`_on_solver_failed` 在判定 `job_id` **之前**即清零 `_solve_in_flight` 与进度条 | 过期结果会污染新任务的在途状态（幽灵态） | 先做 job_id / 运行态 / 棋盘快照校验，全部通过后才收尾状态 | `test_stale_result_does_not_clear_inflight_flag` |
+| H4-CLI | 基准脚本缺 `--time-budget-ms` 与 `--seed` 别名；逐局无 FINISHED/TRUNCATED 标记 | 无法表达轻量化固定时间预算；截断局与自然终局混淆 | 增补参数别名与统一时间预算覆盖；逐局记录 `status`，汇总区分 finished/truncated | 轻量基准 JSON/CSV |
+| H1-INVAR | 缺“输入不变性”“随机数流隔离”确定性测试 | H1-D 覆盖缺口 | 新增两条确定性测试（五策略不修改入参网格；求解不消费全局 `random` 流） | `test_solver_does_not_mutate_input_grid`、`test_solver_rng_stream_isolated` |
 
 ## B. 遗留 / 未完成（如实标注）
 
-1. **正式规模性能实验未完成（UNVERIFIED）**：本会话仅完成 profiling 与部分 smoke 基准；每策略 ≥100 局、完整对局 horizon 的正式基准未跑完。脚本已就绪（`experiments/benchmark_algorithms.py --out-dir experiments/v5_1/results`），不得以推测补造。
-2. **RL 推理每次 solve 重新加载模型（磁盘 IO 瓶颈）**：profiling 显示 rl 策略单步耗时约 **74% 来自 `load_model` → `numpy.load` 磁盘读**（0.039s 中约 0.029s）。未在本次修改（属行为/性能改动，需单独评估缓存策略与一致性），仅记录。
-3. **RL 能力边界**：仍为无经验回放、无超参自适应的 on-policy 实现；长期训练不保证单调提升（见 `test_rl_selftrain` 3b 实测波动）。
-4. **MCTS 默认仍为固定宽度**：渐进加宽为可选开关（默认关闭）以保持既有默认行为；是否切换默认需更多消融证据。
-5. **期待性（expectimax）采样 + TT 组合为近似**：采样节点缓存会复用某次子样的估计，属近似（已在文档 5.4 标注）；`prune=False` 为严格精确路径。
-6. **截图人工视觉门禁**：自动化不授予 VISUAL_PASS；若未人工核对，状态为 UNVERIFIED。
+1. **更大样本统计（UNVERIFIED，非本版门禁）**：本版 H4 已按**轻量预算**完成（Pilot 5 局/策略、收口 10 局/策略，每局 ≤400 步、搜索类 30ms/步）。不再要求“每策略 100 局”。若用户后续显式要求论文级统计比较，才另行设计更大样本；届时不得复用本轻量结果做显著性结论。
+2. **RL 能力边界**：仍为无经验回放、无超参自适应的 on-policy 实现；长期训练不保证单调提升（见 `test_rl_selftrain` 3b 实测波动）。
+3. **MCTS 默认仍为固定宽度**：渐进加宽为可选开关（默认关闭）以保持既有默认行为；是否切换默认需更多消融证据。
+4. **Expectimax 采样 + TT 组合为近似**：采样节点缓存会复用某次子样的估计，属近似（已在文档 5.4 标注）；`prune=False` 为严格精确路径。
+5. **截图人工视觉门禁**：自动化不授予 VISUAL_PASS；若未人工核对，状态为 UNVERIFIED。
 
 ## C. 明确不做（避免越界）
 

@@ -540,7 +540,8 @@ def main():
     ap.add_argument('--out', default=os.path.join(_HERE, 'rl_model.npz'))
     ap.add_argument('--init', default=None, help='从指定模型初始化权重（新一轮训练）')
     ap.add_argument('--resume', action='store_true',
-                    help='从 --out 的 latest 检查点续训（保留元数据与 RNG 进度）')
+                    help='从 --out 的 latest 检查点续训（warm start：恢复权重与训练元数据；'
+                         '不恢复 RNG/优化器状态，故非精确断点续训）')
     ap.add_argument('--eval-every', type=int, default=0, help='每 N 局在固定验证集评估一次（0=关闭）')
     ap.add_argument('--eval-games', type=int, default=30)
     ap.add_argument('--eval-seed', type=int, default=DEFAULT_VALID_SEED,
@@ -567,15 +568,20 @@ def main():
         raise SystemExit('错误：训练(--seed) / 验证(--eval-seed) / 门禁(--holdout-seed) '
                          '必须使用互不相同的随机数家族种子：%s' % sorted(families))
 
-    # 初始化权重：--resume 优先（从 --out 续训），否则 --init，否则全新初始化
+    # 初始化权重：--resume 优先（从 --out 的 latest 检查点续训），否则 --init，否则全新初始化
+    # 注意（H2）：--resume 属于 **warm start** —— 只恢复权重与元数据；不恢复 Python/NumPy RNG、
+    # 优化器（本项目为无状态 SGD）与数据顺序，因此**不是**精确断点续训，不承诺逐局一致复现。
     resume_meta = {}
     if args.resume:
-        if not os.path.exists(args.out):
-            raise SystemExit('错误：--resume 需要已存在的 --out 模型：%s' % args.out)
-        init_net_ = load_model(args.out, allow_legacy=True)
-        resume_meta = load_meta(args.out)
-        print('断点续训：基于 %s（历史元数据 games=%s best_eval=%s）'
-              % (os.path.basename(args.out), resume_meta.get('games'),
+        latest_ckpt = os.path.splitext(args.out)[0] + '.latest.npz'
+        resume_src = latest_ckpt if os.path.exists(latest_ckpt) else args.out
+        if not os.path.exists(resume_src):
+            raise SystemExit('错误：--resume 需要已存在的 latest 检查点或 --out 模型：%s' % resume_src)
+        init_net_ = load_model(resume_src, allow_legacy=True)
+        resume_meta = load_meta(resume_src)
+        print('温启动续训（warm start）：基于 %s（历史元数据 games=%s best_eval=%s）；'
+              '仅恢复权重与元数据，不恢复 RNG/优化器状态，故非精确断点续训。'
+              % (os.path.basename(resume_src), resume_meta.get('games'),
                  resume_meta.get('best_eval')))
     elif args.init:
         init_net_ = load_model(args.init, allow_legacy=True)

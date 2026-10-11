@@ -45,21 +45,31 @@ MAX_MOVES = 2000
 # ---------------------------------------------------------------------
 # 预算配置
 # ---------------------------------------------------------------------
-def budget_kwargs(strategy, budget, speed="normal"):
-    """返回该策略在本实验下的求解参数。"""
+def budget_kwargs(strategy, budget, speed="normal", time_budget_ms=None):
+    """返回该策略在本实验下的求解参数。
+
+    time_budget_ms 非空时，统一覆盖搜索类（expectimax/mcts）的每步时间预算；
+    固定时间实验（覆盖后）与固定模拟次数实验不得混用存档。
+    """
     if budget == "default":
-        return S.build_config(strategy, speed)
-    if budget == "equal_time":
+        kwargs = S.build_config(strategy, speed)
+    elif budget == "equal_time":
         # 等单步时间预算：搜索类统一 50ms；rollout 用固定次数+深度（时间量级可比）；
         # heuristic / rl 无搜索预算（常数时间），如实标注。
         if strategy == "expectimax":
-            return {"depth": 4, "time_limit": 0.05}
-        if strategy == "mcts":
-            return {"simulations": 100000, "time_limit": 0.05, "rollout_depth": 8}
-        if strategy == "rollout":
-            return {"rollouts": 8, "rollout_depth": 8}
-        return {}
-    raise ValueError("未知预算：%s" % budget)
+            kwargs = {"depth": 4, "time_limit": 0.05}
+        elif strategy == "mcts":
+            kwargs = {"simulations": 100000, "time_limit": 0.05, "rollout_depth": 8}
+        elif strategy == "rollout":
+            kwargs = {"rollouts": 8, "rollout_depth": 8}
+        else:
+            kwargs = {}
+    else:
+        raise ValueError("未知预算：%s" % budget)
+    if time_budget_ms is not None and strategy in ("expectimax", "mcts"):
+        kwargs = dict(kwargs)
+        kwargs["time_limit"] = max(0.001, float(time_budget_ms) / 1000.0)
+    return kwargs
 
 
 # ---------------------------------------------------------------------
@@ -95,9 +105,11 @@ def paired_diff_ci(a_by_seed, b_by_seed, n=2000, alpha=0.05, seed=7):
 # ---------------------------------------------------------------------
 # 单局对战
 # ---------------------------------------------------------------------
-def play_game(strategy, seed, budget, speed="normal", max_moves=MAX_MOVES):
+def play_game(strategy, seed, budget, speed="normal", max_moves=MAX_MOVES,
+              time_budget_ms=None):
     """跑一局；环境随机数与求解器随机数分离。返回该局的指标 dict。"""
-    return play_game_with(strategy, seed, budget_kwargs(strategy, budget, speed),
+    return play_game_with(strategy, seed,
+                          budget_kwargs(strategy, budget, speed, time_budget_ms),
                           max_moves=max_moves,
                           preset=speed if budget == "default" else "equal_time",
                           budget=budget)
@@ -167,10 +179,12 @@ def play_game_with(strategy, seed, solve_kwargs, max_moves=MAX_MOVES,
         return round(times_sorted[idx], 3)
 
     tile = S.max_tile(grid)
+    finished = bool(S.is_game_over(grid))
     return {
         "strategy": strategy, "preset": preset,
         "budget": budget, "seed": seed, "score": score, "max_tile": tile,
-        "moves": moves,
+        "moves": moves, "max_moves": max_moves,
+        "status": "FINISHED" if finished else "TRUNCATED",
         "hit_512": int(tile >= 512), "hit_1024": int(tile >= 1024),
         "hit_2048": int(tile >= 2048), "hit_4096": int(tile >= 4096),
         "total_decision_ms": round(sum(times), 2),
@@ -199,6 +213,8 @@ def summarize(rows):
         sims = [r["sims_avg"] for r in rs if r.get("sims_avg") is not None]
         out[strat] = {
             "games": n,
+            "finished": sum(1 for r in rs if r.get("status") == "FINISHED"),
+            "truncated": sum(1 for r in rs if r.get("status") == "TRUNCATED"),
             "avg": round(sum(scores) / n, 2),
             "median": statistics.median(scores),
             "p10": p10, "p90": p90,
@@ -229,12 +245,14 @@ def summarize(rows):
 
 
 def run_benchmark(strategies, games, budget, speed="normal", seeds=None,
-                  seed_base=1000, progress=True, max_moves=MAX_MOVES):
+                  seed_base=1000, progress=True, max_moves=MAX_MOVES,
+                  time_budget_ms=None):
     seeds = seeds or [seed_base + i for i in range(games)]
     rows = []
     for strat in strategies:
         for sd in seeds:
-            row = play_game(strat, sd, budget, speed, max_moves=max_moves)
+            row = play_game(strat, sd, budget, speed, max_moves=max_moves,
+                            time_budget_ms=time_budget_ms)
             rows.append(row)
             if progress:
                 print("  [%s] seed=%d score=%d tile=%d moves=%d avg=%.2fms"
@@ -297,11 +315,15 @@ def main():
     ap.add_argument("--speed", choices=["fast", "normal", "strong"], default="normal")
     ap.add_argument("--strategies", default=",".join(DEFAULT_STRATEGIES))
     ap.add_argument("--tag", default="")
-    ap.add_argument("--seed-base", type=int, default=1000, help="环境种子家族的基值")
+    ap.add_argument("--seed-base", "--seed", dest="seed_base", type=int, default=1000,
+                    help="环境种子家族的基值（--seed 为等价别名）")
     ap.add_argument("--out-dir", default=RESULTS_DIR,
                     help="结果目录（默认 experiments/results；V5.1 用 experiments/v5_1/results）")
     ap.add_argument("--profile", action="store_true", help="仅做 cProfile 热点分析，不跑对局")
     ap.add_argument("--max-moves", type=int, default=MAX_MOVES)
+    ap.add_argument("--time-budget-ms", type=float, default=None,
+                    help="统一覆盖搜索类（expectimax/mcts）每步时间预算（毫秒）；"
+                         "非空即视为固定时间实验，不得与固定模拟次数实验混用")
     args = ap.parse_args()
 
     strategies = [s for s in args.strategies.split(",") if s]
@@ -310,15 +332,18 @@ def main():
         profile_strategies(strategies)
         return
 
-    print("基准开始：策略=%s 局数/策略=%d 预算=%s 强度=%s seed_base=%d"
-          % (strategies, args.games, args.budget, args.speed, args.seed_base))
+    print("基准开始：策略=%s 局数/策略=%d 预算=%s 强度=%s seed_base=%d time_budget_ms=%s max_moves=%d"
+          % (strategies, args.games, args.budget, args.speed, args.seed_base,
+             args.time_budget_ms, args.max_moves))
     t0 = time.time()
     rows = run_benchmark(strategies, args.games, args.budget, args.speed,
-                         seed_base=args.seed_base, max_moves=args.max_moves)
+                         seed_base=args.seed_base, max_moves=args.max_moves,
+                         time_budget_ms=args.time_budget_ms)
     summary = summarize(rows)
     meta = env_meta()
     meta.update({"budget": args.budget, "speed": args.speed, "games_per_strategy": args.games,
                  "seed_base": args.seed_base, "max_moves": args.max_moves,
+                 "time_budget_ms": args.time_budget_ms,
                  "elapsed_s": round(time.time() - t0, 1)})
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -334,16 +359,16 @@ def main():
             f.write(",".join(str(r[c]) for c in cols) + "\n")
 
     print("\n=== 汇总（%s, %d 局/策略） ===" % (args.budget, args.games))
-    print("  %-11s %8s %8s %7s %8s %9s %7s %8s %7s %7s %7s %6s"
+    print("  %-11s %8s %8s %7s %8s %9s %7s %8s %7s %7s %7s %6s %7s"
           % ("strategy", "avg", "median", "p10/p90", "std", "ci95", "tile",
-             "avgMs", "p95Ms", "p99Ms", "simsAvg", "err"))
+             "avgMs", "p95Ms", "p99Ms", "simsAvg", "err", "Fin/Tr"))
     for strat, st in summary.items():
-        print("  %-11s %8.1f %8.1f %3d/%-3d %7.1f %10s %7d %7.3f %7.3f %7.3f %7s %6d"
+        print("  %-11s %8.1f %8.1f %3d/%-3d %7.1f %10s %7d %7.3f %7.3f %7.3f %7s %6d %3d/%-3d"
               % (strat, st["avg"], st["median"], st["p10"], st["p90"], st["std"],
                  str(st["ci95_avg"]), st["max_tile"], st["move_avg_ms"],
                  st["move_p95_ms"], st["move_p99_ms"],
                  ("-" if st["sims_avg"] is None else "%.0f" % st["sims_avg"]),
-                 st["exceptions"]))
+                 st["exceptions"], st.get("finished", 0), st.get("truncated", 0)))
 
     # 配对差值（以第一个策略为基准）
     if len(strategies) > 1:

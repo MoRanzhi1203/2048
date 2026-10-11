@@ -1426,10 +1426,8 @@ class SolverMainWindow(v4.MainWindow):
 
     # ---------------- 接收求解结果 ----------------
     def _on_solver_result(self, job_id, result):
-        self._solve_in_flight = False
-        self.solver_progress.setRange(0, 100)
-        self.solver_progress.setValue(0)
-        # H3 三重校验：任务在运行、结果属于当前任务、棋盘快照未被改动，否则丢弃过期结果
+        # H3：**先**校验任务在运行、结果属于当前任务、棋盘快照未变，再进行任何状态改写。
+        # 过期结果不得在被判定之前清零新任务的 _solve_in_flight / 进度条（否则幽灵状态）。
         if not self._solver_running:
             return
         if job_id != self._job_id:
@@ -1439,6 +1437,11 @@ class SolverMainWindow(v4.MainWindow):
                 self._board_signature(self.model.grid) != self._board_sig:
             self._log_step("已忽略过期求解结果（棋盘在求解期间已变化）。")
             return
+
+        # 校验通过：本结果确属当前任务，收尾在途标志与进度条
+        self._solve_in_flight = False
+        self.solver_progress.setRange(0, 100)
+        self.solver_progress.setValue(0)
 
         if result.get("error"):
             self._log_step("求解异常：%s" % result["error"])
@@ -1472,11 +1475,12 @@ class SolverMainWindow(v4.MainWindow):
         self._ai_apply(direction)
 
     def _on_solver_failed(self, job_id, message):
+        # H3：先校验身份，过期/已停止的结果不得改写当前状态
+        if not self._solver_running or job_id != self._job_id:
+            return
         self._solve_in_flight = False
         self.solver_progress.setRange(0, 100)
         self.solver_progress.setValue(0)
-        if not self._solver_running or job_id != self._job_id:
-            return
         self._log_step("求解线程异常：%s" % message)
         self._set_status("求解线程异常：%s" % message,
                          "已停止求解，界面与原有功能保持正常。", error=True)

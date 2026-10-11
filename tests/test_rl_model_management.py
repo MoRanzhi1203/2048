@@ -19,6 +19,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 
 import numpy as np
@@ -29,6 +30,7 @@ if V5 not in sys.path:
     sys.path.insert(0, V5)
 
 import rl_2048 as rl                                              # noqa: E402
+import solver_2048 as S                                           # noqa: E402
 
 OFFICIAL = os.path.join(V5, "rl_model.npz")
 LEGACY = os.path.join(ROOT, "experiments", "baseline", "rl_model_v1.npz")
@@ -171,6 +173,69 @@ class RLModelManagementTest(unittest.TestCase):
         meta = rl.load_meta(prefix + ".best.npz")
         self.assertEqual(meta.get("train_seed"), 2)
         self.assertIn("lr", meta)
+
+    # ---------------- H2.9 RL 推理模型缓存（正确性 + 文件替换失效） ----------------
+    def test_rl_inference_cache(self):
+        net = rl.init_net(np.random.RandomState(5))
+        p = os.path.join(self.tmp, "cached_model.npz")
+        rl.save_model(net, p, meta={"gen": 0})
+        S._RL_MODEL_CACHE["key"] = None                    # 清空缓存，隔离测试
+        S._RL_MODEL_CACHE["net"] = None
+        calls = {"n": 0}
+
+        def loader(path):
+            calls["n"] += 1
+            return rl.load_model(path)
+
+        a = S._load_rl_model_cached(p, loader)
+        b = S._load_rl_model_cached(p, loader)
+        self.assertIs(a, b, "同文件第二次应命中缓存（同一对象）")
+        self.assertEqual(calls["n"], 1, "同文件不应重复读盘")
+        np.testing.assert_array_equal(a["W1"], net["W1"].astype(np.float32))
+
+        # 文件被原子替换（身份变化）→ 缓存必须失效并重载，不得返回陈旧模型
+        time.sleep(0.02)
+        net2 = {k: (v + 1.0).astype(np.float32) for k, v in net.items()}
+        rl.save_model(net2, p, meta={"gen": 123456})       # 变更内容/大小，确保身份改变
+        c = S._load_rl_model_cached(p, loader)
+        self.assertEqual(calls["n"], 2, "文件替换后应重新加载")
+        self.assertFalse(np.array_equal(c["W1"], a["W1"]), "缓存返回了陈旧模型")
+
+        # cold / warm 延迟（仅测量并打印；不作为加速比结论，避免把 I/O 占比当收益）
+        S._RL_MODEL_CACHE["key"] = None
+        S._RL_MODEL_CACHE["net"] = None
+        t0 = time.perf_counter()
+        S._load_rl_model_cached(p, loader)
+        cold_ms = (time.perf_counter() - t0) * 1000.0
+        t0 = time.perf_counter()
+        for _ in range(20):
+            S._load_rl_model_cached(p, loader)
+        warm_ms = (time.perf_counter() - t0) * 1000.0 / 20.0
+        print("\n[RL cache] cold=%.3fms warm=%.4fms (warm=命中缓存, 无磁盘读)" % (cold_ms, warm_ms))
+
+    # ---------------- H2.5 --resume 语义：warm start（非精确断点续训） ----------------
+    def test_rl_warm_start_resume_is_not_exact(self):
+        """核实 --resume 只恢复权重/元数据（warm start），不恢复 RNG → 非精确续训。
+
+        调用方（CLI）在 --resume 时读取 latest 检查点并交给 train(init=...)，train 内部
+        以固定 seed 新建 RNG（不恢复历史 RNG 状态）。因此“连续 N 局”与“K 局后恢复 N-K 局”
+        不保证逐位一致——本测试用确定性训练固化这一语义，防止被误宣称成精确断点续训。
+        """
+        net = rl.init_net(np.random.RandomState(11))
+        # 连续 4 局
+        cont, _ = rl.train(games=4, init=net, progress=False, seed=42)
+        # 先训 2 局，再以“新 RNG（同 seed）”从该权重续训 2 局（模拟 warm start）
+        mid, _ = rl.train(games=2, init=net, progress=False, seed=42)
+        resumed, _ = rl.train(games=2, init={k: v.copy() for k, v in mid.items()},
+                              progress=False, seed=42)
+        # warm start 可复现（同输入→同输出）
+        resumed2, _ = rl.train(games=2, init={k: v.copy() for k, v in mid.items()},
+                               progress=False, seed=42)
+        for k in cont:
+            np.testing.assert_array_equal(resumed[k], resumed2[k])
+        # 但非精确续训：与连续训练结果不同（RNG 未恢复）
+        self.assertFalse(np.array_equal(cont["W1"], resumed["W1"]),
+                         "warm start 结果与连续训练逐位相同，语义存疑")
 
 
 if __name__ == "__main__":

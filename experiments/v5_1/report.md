@@ -303,3 +303,139 @@ python tools/capture_gui.py --version v5 --scene start|game|solver
 - H0–H3、H5：**PASS**（全部有真实执行证据；模型保护、旧 API/界面可用、v2–v4 未改）。
 - H4：**探索性 PASS**（profiling + 两套预算 smoke + 四组消融，均来自真实执行）；**正式规模 UNVERIFIED**。
 - GUI 视觉门禁：**UNVERIFIED**（需人工核对，自动化不授予）。
+
+---
+
+## 11. 轻量验收收口（run `v5_1_20261011_141048`，基线 Git HEAD `6dfea64`）
+
+> 上级指令：`2048_V5_1_完整修复与轻量验收_Trae指令.md`。本节为 H0→H6 的**补充收口**：审计并修复新发现的真实问题，按**轻量预算**（Pilot 5 / 收口 10 局每策略，**不再要求 100 局**）完成实验与验收。上文 §1–§10 为上一轮历史，保持原文。
+
+### 11.1 本轮真实修改文件与根因
+
+| 文件 | 根因 | 关键差异 |
+| --- | --- | --- |
+| `v5_pyqt_2048_solver/v5_pyqt_2048_solver.py` | H3.2：`_on_solver_result/_on_solver_failed` 先清零 `_solve_in_flight` 再校验 job_id | 改为**先校验（运行态/job_id/棋盘快照）后收尾**，过期结果不再污染新任务状态 |
+| `v5_pyqt_2048_solver/solver_2048.py` | H2.9：RL 推理每步 `load_model` 重读 `.npz` | 新增 `_rl_file_identity` + `_load_rl_model_cached`（键=规范化路径+`(size,mtime_ns)`，原子替换自动失效） |
+| `v5_pyqt_2048_solver/rl_2048.py` | H2.5：`--resume` 宣称“保留 RNG 进度”，实为仅恢复权重 | 改为明确的 **warm start** 文案；优先读取 `.latest.npz` 检查点 |
+| `experiments/benchmark_algorithms.py` | H4：缺 `--time-budget-ms`/`--seed`，无终局标记 | 增补参数与预算覆盖；逐局 `status=FINISHED/TRUNCATED` 与 `max_moves`；汇总区分 |
+| `v5_pyqt_2048_solver/test_solver.py` | H1-D/H3 覆盖缺口 | 新增输入不变性、随机流隔离、过期结果不清零在途标志（69→72） |
+| `tests/test_rl_model_management.py` | H2.9/H2.5 覆盖缺口 | 新增推理缓存（正确性+替换失效+cold/warm）、warm-start 非精确续训（3→5） |
+
+**模型保护**：`rl_model.npz=ee4b370e67676bfb`、`rl_model.candidate.npz=ee4b370e67676bfb`、`rl_model.npz.prev.npz=724c4eea877421cf`、`experiments/baseline/rl_model_v1.npz=724c4eea877421cf` —— **前后一致，未重训、未替换**。
+
+### 11.2 H0–H6 状态表
+
+| Phase | 主题 | 判定 | 依据 |
+| --- | --- | --- | --- |
+| H0 | 审计与基线冻结 | **PASS** | `runs/v5_1_20261011_141048/{baseline.json,environment.json,baseline_tests.txt}` |
+| H1 | 五算法核心正确性 | **PASS** | 确定性测试 + 下方 11.3/11.4 实测 |
+| H2 | RL 管线与独立验收 | **PASS** | schema/legacy/holdout/checkpoint/cache/resume 测试全过；模型哈希不变 |
+| H3 | GUI 并发/生命周期/右栏 | **PASS** | 72 条（含生命周期/过期结果/竞态）；整窗截图 CAPTURE/STRUCTURE/TEXT 通过 |
+| H4 | 轻量实验预算 | **PASS** | Pilot 5 局 + 收口 10 局，逐局存档（见 11.7） |
+| H5 | 测试修正与文档一致性 | **PASS** | 全测试通过；README/功能说明/report/test_matrix/known_issues 已同步 |
+| H6 | 专项收口 | **PASS** | 见 11.8 |
+| — | GUI 截图视觉 | **UNVERIFIED** | 需人工核对图像，自动化不授予 |
+
+### 11.3 MCTS 根回传不变量（真实数字）
+
+盘面 `[[2,4,8,16],[32,64,128,256],[512,1024,0,0],[0,0,0,0]]`，`rollout_depth=4`，`seed=7`。width∈{1,2,4,8,16,32} × sims∈{100,500,1000} 全部满足：
+
+`root_visits == completed_simulations == backpropagated_simulations == sum(root_move_visits)`
+
+代表性抽样：
+
+| width | sims | completed | backprop | root_visits | Σroot_move_visits | width_limit_rollouts |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1000 | 1000 | 1000 | 1000 | 1000 | 984 |
+| 4 | 1000 | 1000 | 1000 | 1000 | 1000 | 693 |
+| 8 | 1000 | 1000 | 1000 | 1000 | 1000 | 126 |
+| 32 | 1000 | 1000 | 1000 | 1000 | 1000 | 0 |
+
+> 渐进加宽下 spawn 分布不变：n=14279，p(2)=0.8987、p(4)=0.1013（`test_mcts_progressive_widening_keeps_spawn_distribution`）。
+
+### 11.4 Expectimax 独立精确参考（最大误差）
+
+探针含根处合并（gain>0）：`[[2,2,4,4],[8,8,16,16],[0,0,0,0],[0,0,0,2]]`，depth∈{1,2,3} × score_weight∈{0,0.5,1,2} 对照独立穷举参考：
+
+**最大绝对误差 = 8.527e-14**（≈0；远优于 1e-9 容差）。TT 在启用/未启用概率截断两种情形均透明（`test_tt_is_transparent_without_cutoff`、`test_tt_transparent_with_cutoff`）。
+
+### 11.5 RL 验证结果（H2）
+
+- schema/legacy：shape/dtype/NaN-Inf 校验生效；缺 `_schema` 严格拒绝、`load_legacy_model` 接受。
+- 检查点：原子写无 `.tmp` 残留；best/latest 落盘；版本化备份 + 回滚；元数据持久化。
+- holdout 门禁：三随机数家族互异；同模型自比 `mean_diff=0`、`improved=False`；更差模型判为不改进。
+- **推理缓存（H2.9）**：cold≈**2.752ms** → warm≈**0.0997ms**（仅证明消除重复磁盘读，不作全链路加速比）。
+- **resume 语义（H2.5）**：`test_rl_warm_start_resume_is_not_exact` 固化“warm start（可复现）但与连续训练不逐位一致 → 非精确断点续训”。
+- **正式模型 SHA256 前后对照**：`ee4b370e67676bfb`（未变）。
+
+### 11.6 GUI 并发/退出/折叠/截图（H3/H5）
+
+- 自动化：`test_solver.py` **72 条全过**；含 `test_solver_gui_lifecycle`（job_id 自增/协作取消/线程回收/快速重启/运行中关窗）与新增 `test_stale_result_does_not_clear_inflight_flag`。
+- 截图（**真实 Windows 桌面捕获**，`screen-bitblt` + DWM 外框）：
+
+| 场景 | 文件 | CAPTURE | STRUCTURE | TEXT | VISUAL |
+| --- | --- | --- | --- | --- | --- |
+| start | `v5_pyqt_2048_solver/screenshots/full_start.png` | PASS | PASS | PASS | **UNVERIFIED** |
+| game | `v5_pyqt_2048_solver/screenshots/full_game.png` | PASS | PASS | PASS | **UNVERIFIED** |
+| solver | `v5_pyqt_2048_solver/screenshots/full_solver.png` | PASS | PASS | PASS | **UNVERIFIED** |
+
+> 三者均含原生标题栏/图标/控制按钮与完整文字（`has_titlebar=true, text_rendered=true`）。**VISUAL_PASS 需人工核对，自动化不授予**。
+
+### 11.7 轻量实验实测（H4）
+
+统一参数：`equal_time` 预算 + `--time-budget-ms 30`、`--max-moves 400`、`--seed 1000`（配对环境种子）。**截断（TRUNCATED）得分不等于最终对局得分。**
+
+**Pilot（5 局/策略，耗时 145.0s）** — `results/benchmark_equal_time_5g_pilot30ms_20261011_143855.{json,csv}`
+
+| strategy | avg | median | p10/p90 | ci95(avg) | max tile | avgMs | p95Ms | simsAvg | 异常 | Fin/Tr |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| rollout | 6183.2 | 6188 | 6148/6204 | (6162.4, 6204.0) | 512 | 13.454 | 22.760 | — | 0 | 0/5 |
+| mcts | 6168.0 | 6184 | 6084/6188 | (6124.0, 6202.4) | 512 | 30.566 | 31.702 | 55 | 0 | 0/5 |
+| expectimax | 6132.8 | 6196 | 5896/6196 | (6016.0, 6204.0) | 512 | 27.600 | 31.165 | — | 0 | 0/5 |
+| heuristic | 6002.4 | 5960 | 5828/6048 | (5898.4, 6115.2) | 512 | 0.212 | 0.345 | — | 0 | 0/5 |
+| rl | 1688.0 | 1052 | 756/1636 | (908.0, 2883.2) | 256 | 0.835 | 1.521 | — | 0 | 5/0 |
+
+**收口（10 局/策略，耗时 327.1s）** — `results/benchmark_equal_time_10g_final10gms_20261011_144459.{json,csv}`
+
+| strategy | avg | median | p10/p90 | std | ci95(avg) | max tile | avgMs | p95Ms | p99Ms | simsAvg | 异常 | Fin/Tr |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| rollout | 6168.0 | 6162 | 6140/6204 | 23.9 | (6154.0, 6182.8) | 512 | 21.687 | 78.643 | 116.740 | — | 0 | 0/10 |
+| expectimax | 6062.8 | 6150 | 5764/6212 | 165.2 | (5956.0, 6157.6) | 512 | 29.380 | 32.232 | 36.551 | — | 0 | 0/10 |
+| mcts | 5825.2 | 6148 | 3236/6188 | 869.1 | (5232.4, 6154.8) | 512 | 30.897 | 33.713 | 55.682 | 36 | 0 | 1/9 |
+| heuristic | 5784.4 | 6072 | 3228/6200 | 860.1 | (5192.4, 6120.8) | 512 | 0.273 | 0.530 | 0.655 | — | 0 | 1/9 |
+| rl | 1496.4 | 1242 | 756/1800 | 899.5 | (1052.4, 2102.0) | 256 | 0.751 | 1.112 | 1.495 | — | 0 | 10/0 |
+
+配对差值（相对 heuristic，同 seed）：rollout +383.6 [34.8, 980.0]；expectimax +278.4 [−113.6, 923.6]；mcts +40.8 [−843.6, 893.6]；rl −4288.0 [−4918.0, −3443.2]。
+
+> **解释限制**：400 步上限使搜索类多数对局被 **TRUNCATED**（非自然终局），其得分不能与 RL 的**自然终局**直接比较；RL 在分布外 seed 家族上明显偏弱（最大瓦片 256）。10 局样本仅报 CI，**不作显著性/最终排名结论**。消融实验（heuristic/rollout/mcts/expectimax，非 RL 路径）沿用上一轮结果，本收口未复跑；本轮唯一源码变更（RL 推理缓存）不影响这些非 RL 策略。
+
+### 11.8 H6 专项复核
+
+- 并发：过期结果到达时 `_solve_in_flight`/进度条保持不变（新增测试固化）；停止/关窗/重启压力用例通过。
+- 生命周期：线程 finished 通知 + 退休列表回收；关窗后 `_solver_running` 归位、无线程泄漏。
+- RL：best/latest 独立落盘；warm start 不恢复 RNG（已固化）；正式模型哈希未变。
+- 算法：Expectimax 有合并棋盘与独立参考一致（≤8.5e-14）；MCTS 回传全覆盖平权与 spawn 概率不变量成立。
+- 预算：默认 5 局、收口 10 局/策略；**无任何遗留的“每策略 100 局”运行门禁**。
+
+### 11.9 未验证项与需人工操作
+
+| 项 | 状态 | 说明 |
+| --- | --- | --- |
+| GUI 截图 VISUAL_PASS | **UNVERIFIED** | 需人工核对 `full_start/game/solver.png`，确认后 `--visual-confirm` |
+| 更大样本统计比较 | **UNVERIFIED（非门禁）** | 轻量预算不升级为 100 局；如用户显式要求再另行设计 |
+
+### 11.10 本轮最终门禁
+
+| 门禁 | 结果 |
+| --- | --- |
+| `CORE_CORRECTNESS_PASS` | **PASS** |
+| `RL_PIPELINE_PASS` | **PASS** |
+| `GUI_RUNTIME_PASS` | **PASS** |
+| `BENCHMARK_LIGHT_PASS` | **PASS** |
+| `TESTS_PASS` | **PASS**（unittest 110 + 自定义 69 = 179，全部通过、0 失败、0 跳过） |
+| `DOCS_PASS` | **PASS** |
+| `NO_BLOCKING_FAILURES` | **PASS** |
+| `VISUAL_VERIFIED` | **UNVERIFIED**（需人工；不影响上述代码门禁） |
+
+**本轮结论：`V5_1_FINAL_PASS`**（代码与工程门禁全部通过；唯一 UNVERIFIED 为需人工授予的截图视觉确认，按规范不计入代码门禁）。
+

@@ -113,6 +113,31 @@ class SolverCoreTest(unittest.TestCase):
         self.assertIsNotNone(result['error'])
         self.assertIsNone(result['best_direction'])
 
+    def test_solver_does_not_mutate_input_grid(self):
+        """H1-D 输入不变性：五策略都不得就地修改调用方传入的棋盘。"""
+        grid = [[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]]
+        snapshot = [row[:] for row in grid]
+        for strategy in solver.STRATEGY_ORDER:
+            cfg = solver.build_config(strategy, 'fast')
+            cfg['time_limit'] = 0.05
+            solver.solve(grid, **cfg)
+            self.assertEqual(grid, snapshot, "策略 %s 修改了输入棋盘" % strategy)
+
+    def test_solver_rng_stream_isolated(self):
+        """H1-D 随机数流隔离：求解不得消费全局 random 流；同种子可复现。"""
+        import random
+        grid = [[2, 4, 8, 16], [0, 32, 64, 128], [0, 0, 0, 0], [0, 0, 0, 2]]
+        before = random.getstate()
+        for strategy in solver.STRATEGY_ORDER:
+            cfg = solver.build_config(strategy, 'fast')
+            cfg['time_limit'] = 0.05
+            solver.solve(grid, **cfg)
+        self.assertEqual(random.getstate(), before, "求解消费了全局随机数流")
+        # 同局面的 MCTS/rollout 在相同 seed 下结果确定（内部 RNG 由 seed 驱动）
+        a = solver.solve(grid, strategy='mcts', simulations=100, time_limit=0.3, seed=11)
+        b = solver.solve(grid, strategy='mcts', simulations=100, time_limit=0.3, seed=11)
+        self.assertEqual(a['best_direction'], b['best_direction'])
+
     # ---- 五类策略统一检查（启发式 / rollout / Expectimax / MCTS / RL）----
     def test_all_strategies_return_legal_move(self):
         grid = [[2, 4, 8, 16], [32, 64, 128, 256], [0, 512, 1024, 0], [0, 0, 2, 4]]
@@ -1090,6 +1115,34 @@ class SolverGuiTest(unittest.TestCase):
         self.w.close()
         pump(self.app, 200)
         self.assertFalse(self.w._solver_running)
+
+    def test_stale_result_does_not_clear_inflight_flag(self):
+        """H3：过期（job_id 不匹配）结果/失败不得在被判定前清零新任务的 _solve_in_flight。"""
+        grid = [[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]]
+        self._set_grid(grid)
+        self.w._solver_running = True
+        self.w._solver_mode = "single"
+        self.w._job_id = 5
+        self.w._board_sig = self.w._board_signature(grid)
+        self.w.solver_progress.setRange(0, 0)              # 模拟“忙态”进度条
+        self.w._solve_in_flight = True                     # 新任务在途
+
+        # 旧 job_id 的结果到达 → 丢弃，且不得清零在途标志 / 改回进度条
+        self.w._on_solver_result(3, {"best_direction": "left", "best_name": "向左",
+                                     "evaluations": {"left": 1.0}, "elapsed_ms": 1.0})
+        self.assertTrue(self.w._solve_in_flight, "过期结果清零了新任务的在途标志")
+        self.assertEqual(self.w.solver_progress.maximum(), 0, "过期结果改动了进度条")
+
+        # 旧 job_id 的失败到达 → 同样不得清零
+        self.w._on_solver_failed(3, "旧任务异常")
+        self.assertTrue(self.w._solve_in_flight, "过期失败清零了新任务的在途标志")
+
+        # 当前 job_id 的结果才允许收尾
+        self.w._on_solver_result(5, {"best_direction": "left", "best_name": "向左",
+                                     "evaluations": {"left": 1.0}, "elapsed_ms": 1.0})
+        self.assertFalse(self.w._solve_in_flight)
+        self.w._solver_running = False
+        self.w._shutdown_worker()
 
 
 
