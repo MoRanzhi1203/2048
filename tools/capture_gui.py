@@ -513,27 +513,52 @@ def v5_scene_solver(w, app, settle_ms):
     return "solver"
 
 
-def v5_scene_suggest(w, app, settle_ms):
-    """求解面板“单步建议”结果状态"""
+_SUGGEST_DIR_CN = {"up": "向上", "down": "向下", "left": "向左", "right": "向右"}
+
+
+def _v5_scene_suggest_dir(w, app, settle_ms, direction):
+    """求解面板“单步建议（常驻跟随）”状态：按方向在**棋盘原生边框内**高亮建议。"""
     w.stack.setCurrentIndex(1)
     _v5_demo_board(w)
     w.solver_strategy.setCurrentIndex(1)
     w.solver_depth.setCurrentIndex(1)
     w.solver_mode.setCurrentIndex(1)         # 单步建议（常驻跟随）
     w.solver_log.clear()
+    cn = _SUGGEST_DIR_CN.get(direction, direction)
     for line in (
         "开始求解：策略=Expectimax，深度=4，模式=单步建议",
-        "建议：向左（评估 1523.4，搜索深度 4，用时 39.5ms）",
+        "建议：%s（评估 1523.4，搜索深度 4，用时 39.5ms）" % cn,
     ):
         w._log_step(line)
-    w._set_status("建议方向：<b>向左</b>（评估 1523.4）",
+    w._set_status("建议方向：<b>%s</b>（评估 1523.4）" % cn,
                   "跟随预测：请按方向键走子，走子后会自动重算下一步。")
     if hasattr(w, "_show_hint"):
-        w._show_hint("left")                 # 棋盘高亮建议方向（跟随预测）
+        w._show_hint(direction)              # 棋盘边框内嵌式局部高亮建议方向
     w.solver_progress.setRange(0, 100)
     w.solver_progress.setValue(0)
     pump(app, max(settle_ms, 260))
-    return "suggest"
+    return "suggest_%s" % direction
+
+
+def v5_scene_suggest(w, app, settle_ms):
+    """默认建议方向（向左）——与历史场景名保持兼容。"""
+    return _v5_scene_suggest_dir(w, app, settle_ms, "left")
+
+
+def v5_scene_suggest_up(w, app, settle_ms):
+    return _v5_scene_suggest_dir(w, app, settle_ms, "up")
+
+
+def v5_scene_suggest_down(w, app, settle_ms):
+    return _v5_scene_suggest_dir(w, app, settle_ms, "down")
+
+
+def v5_scene_suggest_left(w, app, settle_ms):
+    return _v5_scene_suggest_dir(w, app, settle_ms, "left")
+
+
+def v5_scene_suggest_right(w, app, settle_ms):
+    return _v5_scene_suggest_dir(w, app, settle_ms, "right")
 
 
 def v5_scene_collapsed(w, app, settle_ms):
@@ -548,6 +573,8 @@ def v5_scene_collapsed(w, app, settle_ms):
 
 V5_SCENES = {"start": v5_scene_start, "game": v5_scene_game,
              "solver": v5_scene_solver, "suggest": v5_scene_suggest,
+             "suggest_up": v5_scene_suggest_up, "suggest_down": v5_scene_suggest_down,
+             "suggest_left": v5_scene_suggest_left, "suggest_right": v5_scene_suggest_right,
              "collapsed": v5_scene_collapsed}
 
 

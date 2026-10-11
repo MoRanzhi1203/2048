@@ -909,6 +909,92 @@ class SolverGuiTest(unittest.TestCase):
         m2 = len(self.w.model.undo_stack)
         self.assertLessEqual(m2 - m1, 1, "自动重复每次至多走一步")
 
+    # ================= AI 推荐方向：原生边框内嵌高亮（渲染/边界） =================
+    def _hint_overlay_image(self):
+        from PyQt5.QtGui import QImage, QColor
+        ov = self.w._hint_overlay
+        img = QImage(ov.width(), ov.height(), QImage.Format_ARGB32_Premultiplied)
+        img.fill(QColor(0, 0, 0, 0))
+        ov.render(img)
+        return img
+
+    @staticmethod
+    def _border_paths():
+        from PyQt5.QtCore import QRectF
+        from PyQt5.QtGui import QPainterPath
+        import v4_pyqt_2048_animated as v4
+        W, PAD, R = v4.BOARD_SIDE, v4.BOARD_PADDING, v4.BOARD_RADIUS
+        outer = QPainterPath(); outer.addRoundedRect(QRectF(0, 0, W, W), R, R)
+        inner = QPainterPath(); inner.addRoundedRect(
+            QRectF(PAD, PAD, W - 2 * PAD, W - 2 * PAD), max(0.0, R - PAD), max(0.0, R - PAD))
+        return outer, inner, W, PAD
+
+    def test_hint_overlay_within_native_border(self):
+        """四方向：着色完全落在原边框内、目标侧有核心高亮、其他侧与瓦片不受影响、核心长约 40%。"""
+        from PyQt5.QtCore import Qt, QPointF, QRectF
+        import numpy as np
+        import v4_pyqt_2048_animated as v4
+        outer, inner, W, PAD = self._border_paths()
+        ov = self.w._hint_overlay
+        self.assertIsNotNone(ov, '未挂载提示高亮层')
+        self.assertTrue(ov.testAttribute(Qt.WA_TransparentForMouseEvents), '提示层应鼠标透传')
+        for d in ('up', 'down', 'left', 'right'):
+            self.w._show_hint(d)
+            pump(self.app, 60)
+            img = self._hint_overlay_image()
+            H, Wd = img.height(), img.width()
+            arr = np.frombuffer(img.constBits().asstring(img.byteCount()),
+                                dtype=np.uint8).reshape(H, Wd, 4)
+            alpha = arr[:, :, 3].astype(np.int32)
+            ys, xs = np.where(alpha > 0)
+            self.assertGreater(len(xs), 0, '%s 无着色像素' % d)
+            # 1) 不越出棋盘外轮廓；不进入瓦片矩形（含抗锯齿边界像素）
+            for x, y in zip(xs[::7], ys[::7]):
+                self.assertTrue(outer.intersects(QRectF(int(x), int(y), 1.0, 1.0)),
+                                '%s 着色越出棋盘外轮廓 (x=%d,y=%d)' % (d, x, y))
+                self.assertFalse(inner.contains(QPointF(x + 0.5, y + 0.5)),
+                                 '%s 着色进入瓦片区 (x=%d,y=%d)' % (d, x, y))
+            # 2) 其他侧不受影响 + 与瓦片留 ≥1px 间隙
+            maxy, miny = ys.max(), ys.min()
+            maxx, minx = xs.max(), xs.min()
+            if d == 'up':
+                self.assertLessEqual(maxy, PAD - 1, 'up 着色侵入瓦片区')
+                self.assertEqual(int((alpha[H - PAD + 1:, :] > 0).sum()), 0, 'up 影响对侧')
+            elif d == 'down':
+                self.assertGreaterEqual(miny, H - PAD + 1, 'down 着色侵入瓦片区')
+                self.assertEqual(int((alpha[:PAD - 1, :] > 0).sum()), 0, 'down 影响对侧')
+            elif d == 'left':
+                self.assertLessEqual(maxx, PAD - 1, 'left 着色侵入瓦片区')
+                self.assertEqual(int((alpha[:, Wd - PAD + 1:] > 0).sum()), 0, 'left 影响对侧')
+            else:
+                self.assertGreaterEqual(minx, Wd - PAD + 1, 'right 着色侵入瓦片区')
+                self.assertEqual(int((alpha[:, :PAD - 1] > 0).sum()), 0, 'right 影响对侧')
+            # 3) 焦点核心长度 ≈ 40%（35%–45%）
+            cy, cx = np.where(alpha >= 60)
+            self.assertGreater(len(cx), 0, '%s 无核心像素（对比不足）' % d)
+            ext = (cy.max() - cy.min() + 1) if d in ('left', 'right') else (cx.max() - cx.min() + 1)
+            L = H if d in ('left', 'right') else Wd
+            self.assertGreaterEqual(ext / L, 0.35, '%s 核心过短' % d)
+            self.assertLessEqual(ext / L, 0.45, '%s 核心过长' % d)
+        self.w._clear_hint()
+        pump(self.app, 40)
+
+    def test_hint_overlay_clear_stops_timer(self):
+        """清除/隐藏循环：停止计时器、无残留绘制（防残留 QTimer）。"""
+        ov = self.w._hint_overlay
+        self.w._show_hint('left')
+        pump(self.app, 60)
+        self.assertTrue(ov.isVisible())
+        self.w._clear_hint()
+        pump(self.app, 40)
+        self.assertFalse(ov.isVisible())
+        self.assertFalse(ov._timer.isActive())
+        for _ in range(5):
+            self.w._show_hint('up'); pump(self.app, 20)
+            self.w._clear_hint(); pump(self.app, 20)
+        self.assertFalse(ov.isVisible())
+        self.assertFalse(ov._timer.isActive())
+
     # ---- 自动连走 ----
     def test_auto_solving_runs_and_records(self):
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])

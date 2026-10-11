@@ -28,6 +28,7 @@ PyQt5 图形界面版 2048：算法求解版（第 5 版）
 import csv
 import datetime
 import json
+import math
 import os
 import sys
 import threading
@@ -54,7 +55,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,   # noq
                              QAbstractItemView, QHeaderView, QFrame)
 from PyQt5.QtCore import (Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot,   # noqa: E402
                           QRect, QRectF, QEvent)
-from PyQt5.QtGui import (QColor, QFont, QPainter, QPen, QPainterPath)   # noqa: E402
+from PyQt5.QtGui import (QColor, QFont, QPainter, QPen, QPainterPath,   # noqa: E402
+                         QLinearGradient)
 
 
 # =====================================================================
@@ -650,73 +652,120 @@ class SolverResultsDialog(QDialog):
 # 主窗口：在第 4 版基础上“向下扩展”求解面板
 # =====================================================================
 class _SolverHintOverlay(QWidget):
-    """棋盘上的“建议方向”高亮层（跟随预测模式使用）。
+    """棋盘“建议方向”高亮层：**原生边框内嵌式局部高亮**。
 
-    覆盖在 BoardView 之上：沿建议方向画一条半透明高亮带 + 居中指向箭头；
-    默认隐藏，且对鼠标透明（不拦截棋盘的点击粒子反馈）。不修改 v4 的 BoardView。
+    仅在棋盘**已有边框**的像素区域内，对目标边中间约 60% 做柔和的明暗调整，
+    两端沿边方向渐隐并融入原边框；不新增外侧光轨、箭头、光点、光晕、阴影或任何
+    装饰，不改变棋盘/边框几何、圆角、内外边距与窗口布局。
+    鼠标事件透传；四方向几何对称；尺寸/DPI 变化时按当前控件尺寸实时重算（不缓存
+    全局坐标）。覆盖在 BoardView 之上（绘制区域被裁剪在原边框内，不覆盖任何方块）。
     """
 
-    _HINT_RGB = (74, 176, 132)        # 青绿：与主题配色区分且不刺眼
+    # 视觉参数（P1）：整条推荐边轻量加深 + 中间约 40% 的深暖棕焦点核心
+    _CORE_RGB = (117, 96, 82)      # #756052 哑光深暖棕（候选值，对 #bbada0 底对比明显但不黑）
+    _BASE_ALPHA = 0.12             # 整条推荐边（目标侧）轻量加深
+    _CORE_ALPHA = 0.84             # 焦点核心峰值不透明度
+    _ANIM_ALPHA = 0.07             # 核心亮度的受控脉动幅度（≈±8%）
+    _CORE_A0 = 0.28                # 焦点区起点（沿边比例）
+    _CORE_A1 = 0.72                # 焦点区终点（沿边比例）⇒ 覆盖约 44%（两端各羽化 10%）
+    _CORE_P0 = 0.38                # 平台起点 ⇒ 0.28–0.38 渐入
+    _CORE_P1 = 0.62                # 平台终点 ⇒ 0.62–0.72 渐出
+    _CLEARANCE = 1.0               # 与瓦片矩形至少保留的逻辑像素间隙
 
     def __init__(self, parent):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.direction = None
+        self._phase = 0.0
+        self._timer = QTimer(self)                  # 仅驱动提示层自身重绘（开销极小）
+        self._timer.setInterval(90)
+        self._timer.timeout.connect(self._tick)
         self.hide()
 
+    # ---------------- 对外 ----------------
     def set_direction(self, direction):
         self.direction = direction
         if direction is None:
+            self._timer.stop()
             self.hide()
         else:
             self.show()
             self.raise_()
+            if not self._timer.isActive():
+                self._timer.start()
         self.update()
+
+    def hideEvent(self, event):
+        self._timer.stop()                          # 隐藏即停表，避免残留 QTimer
+        super().hideEvent(event)
+
+    def _tick(self):
+        if not self.isVisible() or not self.direction:
+            self._timer.stop()
+            return
+        self._phase = (self._phase + 0.045) % 1.0
+        self.update()
+
+    # ---------------- 几何：原边框区域 = 外轮廓(圆角) − 内边界 ----------------
+    def _border_path(self, w, h):
+        r = float(getattr(v4, "BOARD_RADIUS", 9))
+        pad = float(getattr(v4, "BOARD_PADDING", 10))
+        outer = QPainterPath()
+        outer.addRoundedRect(QRectF(0.0, 0.0, w, h), r, r)
+        inner = QPainterPath()
+        ir = max(0.0, r - pad)
+        inner.addRoundedRect(
+            QRectF(pad, pad, max(0.0, w - 2.0 * pad), max(0.0, h - 2.0 * pad)), ir, ir)
+        return outer.subtracted(inner), pad
 
     def paintEvent(self, event):
         d = self.direction
         if not d:
             return
+        w, h = float(self.width()), float(self.height())
+        if w <= 1.0 or h <= 1.0:
+            return
+        border, pad = self._border_path(w, h)          # pad = 原边框厚度（BOARD_PADDING）
+        thick = max(1.0, pad - self._CLEARANCE)        # 与瓦片矩形保留 ≥1 逻辑像素间隙
+
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setPen(Qt.NoPen)
-        r, g, b = self._HINT_RGB
-        w, h = float(self.width()), float(self.height())
-        m, thick = 8.0, 14.0
-        # 1) 方向侧高亮带
-        p.setBrush(QColor(r, g, b, 70))
-        if d == "left":
-            band = QRectF(m, m, thick, h - 2 * m)
-        elif d == "right":
-            band = QRectF(w - m - thick, m, thick, h - 2 * m)
-        elif d == "up":
-            band = QRectF(m, m, w - 2 * m, thick)
-        else:  # down
-            band = QRectF(m, h - m - thick, w - 2 * m, thick)
-        p.drawRoundedRect(band, 7.0, 7.0)
-        # 2) 居中指向箭头
-        cx, cy = w / 2.0, h / 2.0
-        a = 26.0
-        path = QPainterPath()
-        if d == "left":
-            path.moveTo(cx - a, cy)
-            path.lineTo(cx + a * 0.5, cy - a)
-            path.lineTo(cx + a * 0.5, cy + a)
-        elif d == "right":
-            path.moveTo(cx + a, cy)
-            path.lineTo(cx - a * 0.5, cy - a)
-            path.lineTo(cx - a * 0.5, cy + a)
-        elif d == "up":
-            path.moveTo(cx, cy - a)
-            path.lineTo(cx - a, cy + a * 0.5)
-            path.lineTo(cx + a, cy + a * 0.5)
-        else:  # down
-            path.moveTo(cx, cy + a)
-            path.lineTo(cx - a, cy - a * 0.5)
-            path.lineTo(cx + a, cy - a * 0.5)
-        path.closeSubpath()
-        p.fillPath(path, QColor(r, g, b, 150))
+        p.setClipPath(border)                          # 严格限制在原边框像素区域内
+
+        base = QColor(*self._CORE_RGB)                 # 哑光深暖棕（非黑、非高饱和）
+        br, bg, bb = base.red(), base.green(), base.blue()
+
+        if d == "up":
+            band = QRectF(0.0, 0.0, w, thick)
+            ax = (self._CORE_A0 * w, 0.0, self._CORE_A1 * w, 0.0)
+        elif d == "down":
+            band = QRectF(0.0, h - thick, w, thick)
+            ax = (self._CORE_A0 * w, h, self._CORE_A1 * w, h)
+        elif d == "left":
+            band = QRectF(0.0, 0.0, thick, h)
+            ax = (0.0, self._CORE_A0 * h, 0.0, self._CORE_A1 * h)
+        else:  # right
+            band = QRectF(w - thick, 0.0, thick, h)
+            ax = (w, self._CORE_A0 * h, w, self._CORE_A1 * h)
+
+        # 1) 基础层：**仅目标侧**整条边框低幅度加深（其余三边保持不变）
+        p.setBrush(QColor(br, bg, bb, int(255 * self._BASE_ALPHA)))
+        p.drawRect(band)
+
+        # 2) 焦点核心：沿边中间约 40%，两端各羽化 ~10%，峰值受控脉动（无位移光点）
+        peak = self._CORE_ALPHA + self._ANIM_ALPHA * math.sin(2.0 * math.pi * self._phase)
+        a0, a1 = self._CORE_A0, self._CORE_A1
+        t0 = (self._CORE_P0 - a0) / max(1e-6, a1 - a0)
+        t1 = (self._CORE_P1 - a0) / max(1e-6, a1 - a0)
+        g = QLinearGradient(ax[0], ax[1], ax[2], ax[3])
+        g.setColorAt(0.0, QColor(br, bg, bb, 0))
+        g.setColorAt(t0, QColor(br, bg, bb, int(255 * peak)))
+        g.setColorAt(t1, QColor(br, bg, bb, int(255 * peak)))
+        g.setColorAt(1.0, QColor(br, bg, bb, 0))
+        p.setBrush(g)
+        p.drawRect(band)
         p.end()
 
 
@@ -1144,6 +1193,7 @@ class SolverMainWindow(v4.MainWindow):
             [(solver.PRESET_LABELS[k], k) for k in solver.PRESET_ORDER])
         self.solver_depth.setCurrentIndex(1)
         self.solver_mode = self._make_combo([("自动连走", "auto"), ("单步建议", "single")])
+        self.solver_mode.currentIndexChanged.connect(lambda _i: self._clear_hint())  # 切换模式清除旧提示
         self.solver_mode.setToolTip(
             "自动连走：AI 驱动棋盘走子；单步建议：常驻跟随——你每走一步即自动给出下一步最佳方向（棋盘高亮）")
         self.solver_strategy.setCurrentIndex(solver.STRATEGY_ORDER.index("expectimax"))  # 默认 Expectimax

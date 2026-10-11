@@ -212,5 +212,53 @@ class ArrowKeyV6Test(unittest.TestCase):
         self.w.solver_backend_combo.setCurrentIndex(0)
 
 
+    def test_hint_overlay_shared_renderer_and_border(self):
+        """V6 复用 V5 的高亮渲染器（无分叉）；着色限定在原边框内、核心长约 40%、与瓦片留间隙。"""
+        from PyQt5.QtCore import QRectF, QPointF
+        from PyQt5.QtGui import QPainterPath, QImage, QColor
+        import numpy as np
+        import v4_pyqt_2048_animated as v4
+        ov = self.w._hint_overlay
+        self.assertIsNotNone(ov, 'V6 未继承到提示高亮层')
+        self.assertIn('v5_pyqt_2048_solver', type(ov).__module__,
+                      'V6 应复用 V5 的统一实现，不得复制分叉渲染器')
+        W, PAD, R = v4.BOARD_SIDE, v4.BOARD_PADDING, v4.BOARD_RADIUS
+        outer = QPainterPath(); outer.addRoundedRect(QRectF(0, 0, W, W), R, R)
+        inner = QPainterPath(); inner.addRoundedRect(
+            QRectF(PAD, PAD, W - 2 * PAD, W - 2 * PAD), max(0.0, R - PAD), max(0.0, R - PAD))
+        for d in ('up', 'down', 'left', 'right'):
+            self.w._show_hint(d)
+            pump(self.app, 60)
+            img = QImage(ov.width(), ov.height(), QImage.Format_ARGB32_Premultiplied)
+            img.fill(QColor(0, 0, 0, 0))
+            ov.render(img)
+            H, Wd = img.height(), img.width()
+            arr = np.frombuffer(img.constBits().asstring(img.byteCount()),
+                                dtype=np.uint8).reshape(H, Wd, 4)
+            alpha = arr[:, :, 3].astype(np.int32)
+            ys, xs = np.where(alpha > 0)
+            self.assertGreater(len(xs), 0, 'V6 %s 无着色' % d)
+            for x, y in zip(xs[::7], ys[::7]):
+                self.assertTrue(outer.intersects(QRectF(int(x), int(y), 1.0, 1.0)),
+                                'V6 %s 越出棋盘外轮廓' % d)
+                self.assertFalse(inner.contains(QPointF(x + 0.5, y + 0.5)),
+                                 'V6 %s 着色进入瓦片区' % d)
+            if d == 'up':
+                self.assertLessEqual(ys.max(), PAD - 1, 'V6 up 侵入瓦片')
+            elif d == 'down':
+                self.assertGreaterEqual(ys.min(), H - PAD + 1, 'V6 down 侵入瓦片')
+            elif d == 'left':
+                self.assertLessEqual(xs.max(), PAD - 1, 'V6 left 侵入瓦片')
+            else:
+                self.assertGreaterEqual(xs.min(), Wd - PAD + 1, 'V6 right 侵入瓦片')
+            cy, cx = np.where(alpha >= 60)
+            ext = (cy.max() - cy.min() + 1) if d in ('left', 'right') else (cx.max() - cx.min() + 1)
+            L = H if d in ('left', 'right') else Wd
+            self.assertGreaterEqual(ext / L, 0.35, 'V6 %s 核心过短' % d)
+            self.assertLessEqual(ext / L, 0.45, 'V6 %s 核心过长' % d)
+        self.w._clear_hint()
+        pump(self.app, 40)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
