@@ -28,7 +28,6 @@ PyQt5 图形界面版 2048：算法求解版（第 5 版）
 import csv
 import datetime
 import json
-import math
 import os
 import sys
 import threading
@@ -56,7 +55,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,   # noq
 from PyQt5.QtCore import (Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot,   # noqa: E402
                           QRect, QRectF, QEvent)
 from PyQt5.QtGui import (QColor, QFont, QPainter, QPen, QPainterPath,   # noqa: E402
-                         QLinearGradient)
+                         QLinearGradient, QPixmap)
 
 
 # =====================================================================
@@ -652,25 +651,34 @@ class SolverResultsDialog(QDialog):
 # 主窗口：在第 4 版基础上“向下扩展”求解面板
 # =====================================================================
 class _SolverHintOverlay(QWidget):
-    """棋盘“建议方向”高亮层：**原生边框内嵌式局部高亮**。
+    """棋盘“建议方向”高亮层：**A+B 组合**（辨识度增强）。
 
-    仅在棋盘**已有边框**的像素区域内，对目标边中间约 60% 做柔和的明暗调整，
-    两端沿边方向渐隐并融入原边框；不新增外侧光轨、箭头、光点、光晕、阴影或任何
-    装饰，不改变棋盘/边框几何、圆角、内外边距与窗口布局。
-    鼠标事件透传；四方向几何对称；尺寸/DPI 变化时按当前控件尺寸实时重算（不缓存
-    全局坐标）。覆盖在 BoardView 之上（绘制区域被裁剪在原边框内，不覆盖任何方块）。
+    A（目标边暖白）：在棋盘**已有外轮廓内部、且属背景像素**的 10px 内侧边框带中做“双层明暗”：
+      暖白主亮面（#FFF4E7，中心 #FFF9F2，峰值不透明度 0.90，贯穿带宽大部分）+ 靠瓦片一侧
+      1–2px 暖灰棕过渡边界（#9E8D7F）衬托轮廓；ΔL≥30 的明亮识别区约占边长 75%，两端消隐；
+      其余三边完全不变。
+    B（内向梭形流光）：在既有 10px 格间留白中绘制 3 条**短梭形**渐变光段（每条对应一条内部
+      缝隙，中心宽 ~4.4px、长 ~34px、峰值 alpha 0.80），沿推荐方向汇聚、临边收缩消隐；单时钟 26FPS。
+    所有绘制裁剪到“圆角外轮廓 ∖ 16 个圆角瓦片”：**绝不越出外轮廓、绝不覆盖瓦片**。
+    静态光带缓存为 QPixmap（仅尺寸/DPR/方向变化重建）；动画只刷新局部脏矩形。
+    几何不足/不可见/禁用时降级为 A-only 并真正停表。
     """
-
-    # 视觉参数（P1）：整条推荐边轻量加深 + 中间约 40% 的深暖棕焦点核心
-    _CORE_RGB = (117, 96, 82)      # #756052 哑光深暖棕（候选值，对 #bbada0 底对比明显但不黑）
-    _BASE_ALPHA = 0.12             # 整条推荐边（目标侧）轻量加深
-    _CORE_ALPHA = 0.84             # 焦点核心峰值不透明度
-    _ANIM_ALPHA = 0.07             # 核心亮度的受控脉动幅度（≈±8%）
-    _CORE_A0 = 0.28                # 焦点区起点（沿边比例）
-    _CORE_A1 = 0.72                # 焦点区终点（沿边比例）⇒ 覆盖约 44%（两端各羽化 10%）
-    _CORE_P0 = 0.38                # 平台起点 ⇒ 0.28–0.38 渐入
-    _CORE_P1 = 0.62                # 平台终点 ⇒ 0.62–0.72 渐出
-    _CLEARANCE = 1.0               # 与瓦片矩形至少保留的逻辑像素间隙
+    _WARM_PRIMARY = (255, 244, 231)   # #FFF4E7
+    _WARM_CENTER = (255, 249, 242)    # #FFF9F2
+    _WARM_EDGE = (158, 141, 127)      # #9E8D7F 暖灰棕过渡边界
+    _EDGE_SPAN = 0.96                 # A 渐变轴跨度
+    _EDGE_PEAK = 0.90                 # 主亮面峰值不透明度（暖白、非纯白）
+    _EDGE_SHOULDER = 0.45             # 轴 11.5%/88.5% 处不透明度 ⇒ ΔL≥30 覆盖 ≈75% 边长
+    _TRANSITION_PX = 1.6              # 靠瓦片一侧过渡边界厚度（1–2 逻辑像素）
+    _TRANSITION_GAP = 0.6             # 过渡边界与瓦片矩形的间隙
+    _TRANSITION_ALPHA = 0.58
+    _STREAK_COUNT = 3                 # 梭形光段组数 = 内部缝隙数（三条通道全部参与）
+    _FLOW_FPS = 26                    # 24–30
+    _FLOW_PERIOD_S = 1.30
+    _FLOW_ALPHA = 0.80                # 梭形峰值不透明度
+    _STREAK_LEN_RATIO = 0.078         # 梭形长度占轴长（434px ≈ 34px，落在 22–42px）
+    _STREAK_HALFW = 2.2               # 梭形半宽（中心宽 ≈ 4.4px）
+    _MIN_GAP = 4.0
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -678,46 +686,235 @@ class _SolverHintOverlay(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.direction = None
         self._phase = 0.0
-        self._timer = QTimer(self)                  # 仅驱动提示层自身重绘（开销极小）
-        self._timer.setInterval(90)
+        self.flow_enabled = True
+        self._bg_key = None
+        self._bg = QPainterPath()
+        self._edge_key = None
+        self._edge_pm = None
+        self._flow_bbox = QRectF()
+        self._timer = QTimer(self)
+        self._timer.setInterval(max(16, int(round(1000.0 / self._FLOW_FPS))))
         self._timer.timeout.connect(self._tick)
         self.hide()
 
     # ---------------- 对外 ----------------
     def set_direction(self, direction):
         self.direction = direction
+        self._flow_bbox = QRectF()
         if direction is None:
             self._timer.stop()
             self.hide()
         else:
             self.show()
             self.raise_()
-            if not self._timer.isActive():
-                self._timer.start()
+            if self._flow_available():
+                if not self._timer.isActive():
+                    self._timer.start()
+            else:
+                self._timer.stop()                  # A-only：无需动画时钟
         self.update()
+
+    def set_flow_enabled(self, enabled):
+        """运行时开关 B 层（性能/异常时降级为 A-only）。"""
+        self.flow_enabled = bool(enabled)
+        if self.direction is not None:
+            if self._flow_available():
+                if not self._timer.isActive():
+                    self._timer.start()
+            else:
+                self._timer.stop()
+            self.update()
 
     def hideEvent(self, event):
         self._timer.stop()                          # 隐藏即停表，避免残留 QTimer
         super().hideEvent(event)
 
+    def _flow_available(self):
+        if not self.flow_enabled or not self.isVisible() or not self.direction:
+            return False
+        return min(float(v4.TILE_GAP), float(v4.BOARD_PADDING)) >= self._MIN_GAP
+
     def _tick(self):
-        if not self.isVisible() or not self.direction:
+        if not self._flow_available():
             self._timer.stop()
             return
-        self._phase = (self._phase + 0.045) % 1.0
-        self.update()
+        w, h = float(self.width()), float(self.height())
+        self._phase = (self._phase + (self._timer.interval() / 1000.0) / self._FLOW_PERIOD_S) % 1.0
+        _, bbox = self._flow_items(w, h, self.direction)
+        dirty = bbox
+        if self._flow_bbox.isValid():
+            dirty = dirty.united(self._flow_bbox)
+        self._flow_bbox = bbox
+        self.update(dirty.adjusted(-2.0, -2.0, 2.0, 2.0).toAlignedRect())
 
-    # ---------------- 几何：原边框区域 = 外轮廓(圆角) − 内边界 ----------------
-    def _border_path(self, w, h):
-        r = float(getattr(v4, "BOARD_RADIUS", 9))
-        pad = float(getattr(v4, "BOARD_PADDING", 10))
-        outer = QPainterPath()
-        outer.addRoundedRect(QRectF(0.0, 0.0, w, h), r, r)
-        inner = QPainterPath()
-        ir = max(0.0, r - pad)
-        inner.addRoundedRect(
-            QRectF(pad, pad, max(0.0, w - 2.0 * pad), max(0.0, h - 2.0 * pad)), ir, ir)
-        return outer.subtracted(inner), pad
+    # ---------------- 几何：可用背景 = 外轮廓 ∖ 瓦片矩形（带缓存） ----------------
+    def _background(self, w, h):
+        key = (round(w, 2), round(h, 2))
+        if self._bg_key == key:
+            return self._bg
+        pad = float(v4.BOARD_PADDING); size = float(v4.TILE_SIZE)
+        gap = float(v4.TILE_GAP); tr = float(v4.TILE_RADIUS); r = float(v4.BOARD_RADIUS)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0.0, 0.0, w, h), r, r)
+        step = size + gap
+        for rr in range(4):
+            for cc in range(4):
+                cell = QPainterPath()
+                cell.addRoundedRect(QRectF(pad + cc * step, pad + rr * step, size, size), tr, tr)
+                path = path.subtracted(cell)
+        self._bg_key = key
+        self._bg = path
+        return path
+
+    def _edge_geom(self, w, h, d):
+        pad = float(v4.BOARD_PADDING)
+        a0 = 0.5 - self._EDGE_SPAN / 2.0
+        a1 = 0.5 + self._EDGE_SPAN / 2.0
+        if d == "up":
+            return QRectF(0.0, 0.0, w, pad), (a0 * w, 0.0, a1 * w, 0.0)
+        if d == "down":
+            return QRectF(0.0, h - pad, w, pad), (a0 * w, h, a1 * w, h)
+        if d == "left":
+            return QRectF(0.0, 0.0, pad, h), (0.0, a0 * h, 0.0, a1 * h)
+        return QRectF(w - pad, 0.0, pad, h), (w, a0 * h, w, a1 * h)
+
+    def _along_axis(self, axis, peak, shoulder):
+        pr, pg, pb = self._WARM_CENTER
+        mr, mg, mb = self._WARM_PRIMARY
+        g = QLinearGradient(axis[0], axis[1], axis[2], axis[3])
+        g.setColorAt(0.000, QColor(mr, mg, mb, 0))
+        g.setColorAt(0.115, QColor(pr, pg, pb, int(255 * shoulder)))
+        g.setColorAt(0.500, QColor(pr, pg, pb, int(255 * peak)))
+        g.setColorAt(0.885, QColor(pr, pg, pb, int(255 * shoulder)))
+        g.setColorAt(1.000, QColor(mr, mg, mb, 0))
+        return g
+
+    def _paint_edge(self, p, w, h, d):
+        band, axis = self._edge_geom(w, h, d)
+        pad = float(v4.BOARD_PADDING)
+        p.save()
+        p.setClipPath(self._background(w, h))           # 只在背景像素内（外轮廓 ∩ ∖瓦片）
+        # 1) 暖白主亮面：贯穿带宽、沿边柔和变化 + 稳定明亮填充
+        p.setBrush(self._along_axis(axis, self._EDGE_PEAK, self._EDGE_SHOULDER))
+        p.drawRect(band)
+        # 2) 靠瓦片一侧 1–2px 暖灰棕过渡边界（衬托暖白，不形成深色粗框）
+        t = self._TRANSITION_PX
+        gp = self._TRANSITION_GAP
+        if d == "up":
+            strip = QRectF(0.0, pad - gp - t, w, t)
+        elif d == "down":
+            strip = QRectF(0.0, h - pad + gp, w, t)
+        elif d == "left":
+            strip = QRectF(pad - gp - t, 0.0, t, h)
+        else:
+            strip = QRectF(w - pad + gp, 0.0, t, h)
+        er, eg, eb = self._WARM_EDGE
+        g = QLinearGradient(axis[0], axis[1], axis[2], axis[3])
+        g.setColorAt(0.000, QColor(er, eg, eb, 0))
+        g.setColorAt(0.115, QColor(er, eg, eb, int(255 * self._TRANSITION_ALPHA * 0.62)))
+        g.setColorAt(0.500, QColor(er, eg, eb, int(255 * self._TRANSITION_ALPHA)))
+        g.setColorAt(0.885, QColor(er, eg, eb, int(255 * self._TRANSITION_ALPHA * 0.62)))
+        g.setColorAt(1.000, QColor(er, eg, eb, 0))
+        p.setBrush(g)
+        p.drawRect(strip)
+        p.restore()
+
+    def _edge_pixmap(self, w, h, d):
+        """缓存静态暖白光带（仅尺寸/DPR/方向变化时重建）。"""
+        dpr = self.devicePixelRatioF() or 1.0
+        key = (round(w, 1), round(h, 1), d, round(dpr, 2))
+        if self._edge_key == key and self._edge_pm is not None:
+            return self._edge_pm
+        Wd = int(round(w * dpr))
+        Hd = int(round(h * dpr))
+        pm = QPixmap(Wd, Hd)
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        pp = QPainter(pm)
+        pp.setRenderHint(QPainter.Antialiasing, True)
+        pp.setPen(Qt.NoPen)
+        self._paint_edge(pp, w, h, d)
+        pp.end()
+        self._edge_key = key
+        self._edge_pm = pm
+        return pm
+
+    def _gap_centers(self):
+        """三条内部缝隙的中心坐标（全部参与流光，不再固定截取前两条）。
+
+        仅由 V4 只读常量 BOARD_PADDING / TILE_SIZE / TILE_GAP 推导，无写死的绝对坐标；
+        4×4 棋盘内部缝隙数为 3，故 up/down 使用全部 3 条纵向缝隙、left/right 使用全部 3 条横向缝隙。
+        """
+        pad = float(v4.BOARD_PADDING); size = float(v4.TILE_SIZE); gap = float(v4.TILE_GAP)
+        step = size + gap
+        return [pad + size + gap / 2.0 + k * step for k in range(3)]
+
+    @staticmethod
+    def _spindle_path(hx, hy, tx, ty, halfw):
+        """两端尖、中间最宽的梭形（二次曲线：实际半宽 = halfw）。"""
+        dx, dy = tx - hx, ty - hy
+        n = max(1e-6, (dx * dx + dy * dy) ** 0.5)
+        ux, uy = -dy / n, dx / n
+        mx, my = (hx + tx) / 2.0, (hy + ty) / 2.0
+        path = QPainterPath()
+        path.moveTo(hx, hy)
+        path.quadTo(mx + ux * 2.0 * halfw, my + uy * 2.0 * halfw, tx, ty)
+        path.quadTo(mx - ux * 2.0 * halfw, my - uy * 2.0 * halfw, hx, hy)
+        return path
+
+    def _flow_items(self, w, h, d):
+        """返回 ([(path, head, tail)...], bbox)；全部落在沿移动轴的安全段内。"""
+        gap = float(v4.TILE_GAP); pad = float(v4.BOARD_PADDING)
+        if min(gap, pad) < self._MIN_GAP:
+            return [], QRectF()
+        axis_len = h if d in ("up", "down") else w
+        mrg = 2.0
+        lo, hi = pad + mrg, axis_len - pad - mrg
+        length = axis_len * self._STREAK_LEN_RATIO
+        if hi - lo <= length + 4.0:
+            return [], QRectF()
+        halfw = min(self._STREAK_HALFW, gap * 0.5 - 0.6)
+        centers = self._gap_centers()
+        n = max(1, self._STREAK_COUNT)
+        items = []
+        bbox = QRectF()
+        for i in range(n):
+            c = centers[i % len(centers)]
+            tt = (self._phase + i / float(n)) % 1.0
+            e = 1.0 - (1.0 - tt) ** 2                    # ease_out
+            if d in ("up", "left"):                      # 朝小坐标（上/左）推进
+                pos = (hi - length) + (lo - (hi - length)) * e
+            else:                                        # down / right：朝大坐标推进
+                pos = (lo + length) + (hi - (lo + length)) * e
+            if d == "up":
+                head = (c, pos); tail = (c, pos + length)
+            elif d == "down":
+                head = (c, pos); tail = (c, pos - length)
+            elif d == "left":
+                head = (pos, c); tail = (pos + length, c)
+            else:  # right
+                head = (pos, c); tail = (pos - length, c)
+            path = self._spindle_path(head[0], head[1], tail[0], tail[1], halfw)
+            bbox = bbox.united(path.boundingRect())
+            items.append((path, head, tail))
+        return items, bbox
+
+    def _draw_flow(self, p, items):
+        if not items:
+            return
+        pr, pg, pb = self._WARM_CENTER
+        a = int(255 * self._FLOW_ALPHA)
+        p.save()
+        p.setClipPath(self._background(float(self.width()), float(self.height())))
+        for path, head, tail in items:
+            g = QLinearGradient(head[0], head[1], tail[0], tail[1])
+            g.setColorAt(0.00, QColor(pr, pg, pb, int(a * 0.30)))
+            g.setColorAt(0.28, QColor(pr, pg, pb, a))
+            g.setColorAt(0.70, QColor(pr, pg, pb, int(a * 0.42)))
+            g.setColorAt(1.00, QColor(pr, pg, pb, 0))
+            p.setBrush(g)
+            p.drawPath(path)
+        p.restore()
 
     def paintEvent(self, event):
         d = self.direction
@@ -726,46 +923,14 @@ class _SolverHintOverlay(QWidget):
         w, h = float(self.width()), float(self.height())
         if w <= 1.0 or h <= 1.0:
             return
-        border, pad = self._border_path(w, h)          # pad = 原边框厚度（BOARD_PADDING）
-        thick = max(1.0, pad - self._CLEARANCE)        # 与瓦片矩形保留 ≥1 逻辑像素间隙
-
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setPen(Qt.NoPen)
-        p.setClipPath(border)                          # 严格限制在原边框像素区域内
-
-        base = QColor(*self._CORE_RGB)                 # 哑光深暖棕（非黑、非高饱和）
-        br, bg, bb = base.red(), base.green(), base.blue()
-
-        if d == "up":
-            band = QRectF(0.0, 0.0, w, thick)
-            ax = (self._CORE_A0 * w, 0.0, self._CORE_A1 * w, 0.0)
-        elif d == "down":
-            band = QRectF(0.0, h - thick, w, thick)
-            ax = (self._CORE_A0 * w, h, self._CORE_A1 * w, h)
-        elif d == "left":
-            band = QRectF(0.0, 0.0, thick, h)
-            ax = (0.0, self._CORE_A0 * h, 0.0, self._CORE_A1 * h)
-        else:  # right
-            band = QRectF(w - thick, 0.0, thick, h)
-            ax = (w, self._CORE_A0 * h, w, self._CORE_A1 * h)
-
-        # 1) 基础层：**仅目标侧**整条边框低幅度加深（其余三边保持不变）
-        p.setBrush(QColor(br, bg, bb, int(255 * self._BASE_ALPHA)))
-        p.drawRect(band)
-
-        # 2) 焦点核心：沿边中间约 40%，两端各羽化 ~10%，峰值受控脉动（无位移光点）
-        peak = self._CORE_ALPHA + self._ANIM_ALPHA * math.sin(2.0 * math.pi * self._phase)
-        a0, a1 = self._CORE_A0, self._CORE_A1
-        t0 = (self._CORE_P0 - a0) / max(1e-6, a1 - a0)
-        t1 = (self._CORE_P1 - a0) / max(1e-6, a1 - a0)
-        g = QLinearGradient(ax[0], ax[1], ax[2], ax[3])
-        g.setColorAt(0.0, QColor(br, bg, bb, 0))
-        g.setColorAt(t0, QColor(br, bg, bb, int(255 * peak)))
-        g.setColorAt(t1, QColor(br, bg, bb, int(255 * peak)))
-        g.setColorAt(1.0, QColor(br, bg, bb, 0))
-        p.setBrush(g)
-        p.drawRect(band)
+        p.drawPixmap(0, 0, self._edge_pixmap(w, h, d))      # A：缓存的静态暖白边
+        if self._flow_available():                          # B：向内梭形流光
+            items, bbox = self._flow_items(w, h, d)
+            self._flow_bbox = bbox
+            self._draw_flow(p, items)
         p.end()
 
 

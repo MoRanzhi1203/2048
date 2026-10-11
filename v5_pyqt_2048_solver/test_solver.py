@@ -929,18 +929,42 @@ class SolverGuiTest(unittest.TestCase):
             QRectF(PAD, PAD, W - 2 * PAD, W - 2 * PAD), max(0.0, R - PAD), max(0.0, R - PAD))
         return outer, inner, W, PAD
 
-    def test_hint_overlay_within_native_border(self):
-        """四方向：着色完全落在原边框内、目标侧有核心高亮、其他侧与瓦片不受影响、核心长约 40%。"""
-        from PyQt5.QtCore import Qt, QPointF, QRectF
+    @staticmethod
+    def _hint_masks(W, PAD):
+        """瓦片掩码（内缩 1px 容差）、内部背景间隙掩码、四条边带掩码。"""
         import numpy as np
         import v4_pyqt_2048_animated as v4
+        H = W
+        X, Y = np.meshgrid(np.arange(W) + 0.5, np.arange(H) + 0.5)
+        step = v4.TILE_SIZE + v4.TILE_GAP
+        tile = np.zeros((H, W), bool)
+        for rr in range(4):
+            for cc in range(4):
+                x0 = PAD + cc * step; y0 = PAD + rr * step; s = v4.TILE_SIZE
+                tile |= (X >= x0 + 1) & (X < x0 + s - 1) & (Y >= y0 + 1) & (Y < y0 + s - 1)
+        gc = [PAD + v4.TILE_SIZE + v4.TILE_GAP / 2.0 + k * step for k in range(3)]
+        vgap = np.zeros((H, W), bool); hgap = np.zeros((H, W), bool)
+        for c in gc:
+            vgap |= (X >= c - v4.TILE_GAP / 2.0) & (X < c + v4.TILE_GAP / 2.0)
+            hgap |= (Y >= c - v4.TILE_GAP / 2.0) & (Y < c + v4.TILE_GAP / 2.0)
+        interior = (X >= PAD + 1) & (X < W - PAD - 1) & (Y >= PAD + 1) & (Y < H - PAD - 1)
+        gaps = (vgap | hgap) & interior
+        bands = {'up': Y < PAD, 'down': Y >= H - PAD, 'left': X < PAD, 'right': X >= W - PAD}
+        corner = ((X < PAD) | (X >= W - PAD)) & ((Y < PAD) | (Y >= H - PAD))
+        return tile, gaps, bands, corner
+
+    def test_hint_overlay_within_native_border(self):
+        """A+B：着色不越出外轮廓、不覆盖瓦片、其他三边不变；A 亮区占边 65%–80%；B 出现在内部间隙。"""
+        from PyQt5.QtCore import Qt, QRectF
+        import numpy as np
         outer, inner, W, PAD = self._border_paths()
+        tile, gaps, bands, corner = self._hint_masks(W, PAD)
         ov = self.w._hint_overlay
         self.assertIsNotNone(ov, '未挂载提示高亮层')
         self.assertTrue(ov.testAttribute(Qt.WA_TransparentForMouseEvents), '提示层应鼠标透传')
         for d in ('up', 'down', 'left', 'right'):
             self.w._show_hint(d)
-            pump(self.app, 60)
+            pump(self.app, 90)
             img = self._hint_overlay_image()
             H, Wd = img.height(), img.width()
             arr = np.frombuffer(img.constBits().asstring(img.byteCount()),
@@ -948,34 +972,106 @@ class SolverGuiTest(unittest.TestCase):
             alpha = arr[:, :, 3].astype(np.int32)
             ys, xs = np.where(alpha > 0)
             self.assertGreater(len(xs), 0, '%s 无着色像素' % d)
-            # 1) 不越出棋盘外轮廓；不进入瓦片矩形（含抗锯齿边界像素）
-            for x, y in zip(xs[::7], ys[::7]):
+            for x, y in zip(xs[::9], ys[::9]):
                 self.assertTrue(outer.intersects(QRectF(int(x), int(y), 1.0, 1.0)),
-                                '%s 着色越出棋盘外轮廓 (x=%d,y=%d)' % (d, x, y))
-                self.assertFalse(inner.contains(QPointF(x + 0.5, y + 0.5)),
-                                 '%s 着色进入瓦片区 (x=%d,y=%d)' % (d, x, y))
-            # 2) 其他侧不受影响 + 与瓦片留 ≥1px 间隙
-            maxy, miny = ys.max(), ys.min()
-            maxx, minx = xs.max(), xs.min()
+                                '%s 着色越出棋盘外轮廓' % d)
+            self.assertEqual(int(((alpha > 0) & tile).sum()), 0, '%s 覆盖瓦片像素' % d)
+            other = np.zeros((H, Wd), bool)
+            for s, bm in bands.items():
+                if s != d:
+                    other |= bm
+            other &= ~corner                            # 角块同属两条边，单独排除
+            self.assertEqual(int((alpha[other] > 0).sum()), 0, '%s 其他三边被改动' % d)
+            # A 明亮识别区：取边框带外 1/3 处单线剖面（避开靠瓦片的过渡边界），测半高连续长度
+            off = max(1, int(PAD * 0.4))
             if d == 'up':
-                self.assertLessEqual(maxy, PAD - 1, 'up 着色侵入瓦片区')
-                self.assertEqual(int((alpha[H - PAD + 1:, :] > 0).sum()), 0, 'up 影响对侧')
+                prof = alpha[off, :]
             elif d == 'down':
-                self.assertGreaterEqual(miny, H - PAD + 1, 'down 着色侵入瓦片区')
-                self.assertEqual(int((alpha[:PAD - 1, :] > 0).sum()), 0, 'down 影响对侧')
+                prof = alpha[H - 1 - off, :]
             elif d == 'left':
-                self.assertLessEqual(maxx, PAD - 1, 'left 着色侵入瓦片区')
-                self.assertEqual(int((alpha[:, Wd - PAD + 1:] > 0).sum()), 0, 'left 影响对侧')
+                prof = alpha[:, off]
             else:
-                self.assertGreaterEqual(minx, Wd - PAD + 1, 'right 着色侵入瓦片区')
-                self.assertEqual(int((alpha[:, :PAD - 1] > 0).sum()), 0, 'right 影响对侧')
-            # 3) 焦点核心长度 ≈ 40%（35%–45%）
-            cy, cx = np.where(alpha >= 60)
-            self.assertGreater(len(cx), 0, '%s 无核心像素（对比不足）' % d)
-            ext = (cy.max() - cy.min() + 1) if d in ('left', 'right') else (cx.max() - cx.min() + 1)
+                prof = alpha[:, Wd - 1 - off]
+            thr = 0.5 * float(prof.max())
+            idx = np.where(prof >= thr)[0]
+            self.assertGreater(len(idx), 0, '%s A 层暖白缺失' % d)
+            ext = int(idx.max() - idx.min() + 1)
             L = H if d in ('left', 'right') else Wd
-            self.assertGreaterEqual(ext / L, 0.35, '%s 核心过短' % d)
-            self.assertLessEqual(ext / L, 0.45, '%s 核心过长' % d)
+            self.assertGreaterEqual(ext / L, 0.65, '%s 暖白亮区过短' % d)
+            self.assertLessEqual(ext / L, 0.80, '%s 暖白亮区过长' % d)
+            self.assertGreater(int(((alpha > 0) & gaps).sum()), 0, '%s B 层流光缺失' % d)
+        self.w._clear_hint()
+        pump(self.app, 40)
+
+    def test_hint_flow_degrade_a_only(self):
+        """降级：flow_enabled=False → 仅 A（无内部流光），且停下动画时钟。"""
+        import numpy as np
+        outer, inner, W, PAD = self._border_paths()
+        tile, gaps, bands, corner = self._hint_masks(W, PAD)
+        ov = self.w._hint_overlay
+        ov.set_flow_enabled(False)
+        try:
+            self.w._show_hint('up')
+            pump(self.app, 90)
+            self.assertFalse(ov._timer.isActive(), 'A-only 不应运行动画时钟')
+            img = self._hint_overlay_image()
+            arr = np.frombuffer(img.constBits().asstring(img.byteCount()),
+                                dtype=np.uint8).reshape(img.height(), img.width(), 4)
+            alpha = arr[:, :, 3].astype(np.int32)
+            self.assertEqual(int(((alpha > 0) & gaps).sum()), 0, 'A-only 仍出现内部流光')
+            self.assertGreater(int((alpha[bands['up']] > 0).sum()), 0, 'A-only 缺失边缘高亮')
+        finally:
+            ov.set_flow_enabled(True)
+            self.w._clear_hint()
+            pump(self.app, 40)
+
+    def test_hint_flow_three_channels_all_directions(self):
+        """B 层三通道修复：四方向三条内部缝隙均出现流光，多相位无永久空通道；每通道朝目标边运动。"""
+        import numpy as np
+        import v4_pyqt_2048_animated as v4
+        ov = self.w._hint_overlay
+        self.assertEqual(int(ov._STREAK_COUNT), 3, 'B 层应使用三条通道')
+        centers = ov._gap_centers()
+        self.assertEqual(len(centers), 3, '_gap_centers 必须返回三条内部缝隙（禁止截取前两条）')
+        step = v4.TILE_SIZE + v4.TILE_GAP
+        expect = [v4.BOARD_PADDING + v4.TILE_SIZE + v4.TILE_GAP / 2.0 + k * step for k in range(3)]
+        for c, e in zip(centers, expect):
+            self.assertAlmostEqual(c, e, places=6, msg='通道中心须由常量推导，不得写死绝对坐标')
+        lo = v4.BOARD_PADDING + 2
+        for d in ('up', 'down', 'left', 'right'):
+            self.w._show_hint(d)
+            pump(self.app, 80)
+            mins = [10 ** 9, 10 ** 9, 10 ** 9]
+            for _ in range(6):
+                pump(self.app, 150)
+                img = self._hint_overlay_image()
+                H, Wd = img.height(), img.width()
+                a = np.frombuffer(img.constBits().asstring(img.byteCount()),
+                                  dtype=np.uint8).reshape(H, Wd, 4)[:, :, 3].astype(np.int32)
+                for k, c in enumerate(centers):
+                    cc = int(round(c))
+                    if d in ('up', 'down'):
+                        band = a[lo:H - lo, max(0, cc - 4):cc + 5]
+                    else:
+                        band = a[max(0, cc - 4):cc + 5, lo:Wd - lo]
+                    mins[k] = min(mins[k], int((band > 0).sum()))
+            self.assertTrue(all(m > 0 for m in mins),
+                            '%s 存在永久空通道（每条通道应始终有流光）: %s' % (d, mins))
+        for d in ('up', 'down', 'left', 'right'):
+            for i in range(3):
+                ys = []
+                for tt in (0.0, 0.25, 0.5, 0.75, 0.95):
+                    ov._phase = (tt - i / 3.0) % 1.0
+                    items, _ = ov._flow_items(float(ov.width()), float(ov.height()), d)
+                    head = items[i][1]
+                    ys.append(head[1] if d in ('up', 'down') else head[0])
+                if d in ('down', 'right'):
+                    self.assertTrue(all(ys[j] <= ys[j + 1] + 1e-6 for j in range(len(ys) - 1)),
+                                    '%s 通道%d 未朝目标边运动: %s' % (d, i, ys))
+                else:
+                    self.assertTrue(all(ys[j] >= ys[j + 1] - 1e-6 for j in range(len(ys) - 1)),
+                                    '%s 通道%d 未朝目标边运动: %s' % (d, i, ys))
+        ov._phase = 0.0
         self.w._clear_hint()
         pump(self.app, 40)
 
