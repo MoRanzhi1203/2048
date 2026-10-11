@@ -530,6 +530,257 @@ def _mcts_decision(backend, grid, simulations=200, time_limit=0.3, rollout_depth
 
 
 # =====================================================================
+# 原生整树搜索（V6.2）：C++ native Expectimax / MCTS（可关闭的加速路径）
+# =====================================================================
+def _native_expectimax_applicable(options):
+    """native 精确 Expectimax 仅适用于「无空位采样、无概率截断」的精确语义配置。"""
+    prune = bool(options.get('prune', True))
+    if not prune:
+        return True
+    sample_limit = options.get('sample_limit')
+    prob_cutoff = options.get('prob_cutoff')
+    if sample_limit is None:
+        sample_limit = PRUNE_DEFAULTS['sample_limit']
+    if prob_cutoff is None:
+        prob_cutoff = PRUNE_DEFAULTS['prob_cutoff']
+    return not (sample_limit and sample_limit > 0) and not (prob_cutoff and prob_cutoff > 0.0)
+
+
+def _native_expectimax_decision(be, grid, options, weights):
+    from solver_backends import native_api as NA
+    start = time.time()
+    prune = bool(options.get('prune', True))
+    req = NA.NativeSearchRequest(
+        board=[list(r) for r in grid], strategy='expectimax',
+        budget_type=NA.BUDGET_DEPTH, budget_value=int(options.get('depth', 4)),
+        weights=NA.weight_vector(weights or DEFAULT_WEIGHTS),
+        seed=int(options.get('seed', DEFAULT_SEED)),
+        time_limit_ms=max(1.0, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT) * 1000.0),
+        score_weight=float(options.get('score_weight', 0.0)),
+        prune=prune,
+        use_tt=prune and bool(options.get('use_tt', True)),
+        move_order=prune and bool(options.get('move_order', True)),
+        sample_limit=0, prob_cutoff=0.0,
+        cancel_token=options.get('cancel_token'))
+    r = NA.run_expectimax(be, req)
+    if r.overflow:
+        raise _api.BoardOverflowError('native Expectimax 遇到 >=65536 方块，整次决策回退 reference')
+    res = _result('expectimax', r.best_direction, r.evaluations, r.depth_reached, r.node_count,
+                  start, timed_out=r.timed_out,
+                  extra={'pruned': prune, 'tt_entries': None,
+                         'cache_hits': r.stats.get('cache_hits'), 'cutoffs': 0,
+                         'sampled_chance': 0, 'chance_nodes': r.stats.get('chance_nodes'),
+                         'leaf_evals': r.stats.get('leaf_evals'),
+                         'engine_used': 'native', 'board_signature': r.board_signature,
+                         'cancelled': r.cancelled})
+    return res
+
+
+def _native_mcts_decision(be, grid, options, weights):
+    from solver_backends import native_api as NA
+    start = time.time()
+    sims = int(options.get('simulations', 200))
+    rdepth = int(options.get('rollout_depth', 16))
+    req = NA.NativeSearchRequest(
+        board=[list(r) for r in grid], strategy='mcts',
+        budget_type=NA.BUDGET_ROLLOUTS, budget_value=sims,
+        weights=NA.weight_vector(weights or DEFAULT_WEIGHTS),
+        seed=int(options.get('seed', DEFAULT_SEED)),
+        time_limit_ms=max(1.0, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT) * 1000.0),
+        simulations=sims, rollout_depth=rdepth,
+        uct_c=float(options.get('c', 1.4)),
+        max_chance_width=int(options.get('max_chance_width', 8)),
+        progressive_widening=bool(options.get('progressive_widening', False)),
+        cpw=float(options.get('cpw', 1.0)), alpha=float(options.get('alpha', 0.5)),
+        cancel_token=options.get('cancel_token'))
+    r = NA.run_mcts(be, req)
+    if r.overflow:
+        raise _api.BoardOverflowError('native MCTS 遇到 >=65536 方块，整次决策回退 reference')
+    res = _result('mcts', r.best_direction, r.evaluations, rdepth,
+                  r.stats.get('tree_nodes', 0), start, timed_out=r.timed_out,
+                  extra={'simulations': r.stats.get('simulations'),
+                         'completed_simulations': r.stats.get('simulations'),
+                         'backpropagated_simulations': r.stats.get('simulations'),
+                         'root_visits': r.root_visits,
+                         'root_move_visits': r.root_move_visits,
+                         'width_limit_rollouts': r.stats.get('width_limit_rollouts'),
+                         'rollout_depth': rdepth,
+                         'chance_nodes': r.stats.get('chance_nodes'),
+                         'chance_children': r.stats.get('chance_children'),
+                         'reused_chance_children': r.stats.get('reused_children'),
+                         'rollout_steps': r.stats.get('rollout_steps'),
+                         'max_chance_width': int(options.get('max_chance_width', 8)),
+                         'progressive_widening': bool(options.get('progressive_widening', False)),
+                         'cpw': float(options.get('cpw', 1.0)),
+                         'alpha': float(options.get('alpha', 0.5)),
+                         'uct_c': float(options.get('c', 1.4)),
+                         'engine_used': 'native', 'board_signature': r.board_signature,
+                         'cancelled': r.cancelled})
+    return res
+
+
+def _mcts_decision_events(backend, grid, simulations=200, rollout_depth=16, weights=None,
+                          seed=DEFAULT_SEED, c=1.4, max_chance_width=8,
+                          progressive_widening=False, cpw=1.0, alpha=0.5, stream=None,
+                          time_limit=0.3):
+    """事件流驱动的 Python MCTS 镜像 —— **仅用于与 C++ native_mcts 的逐步等价性验证**。
+
+    消费规则与 native 完全一致：单游标；每次 spawn 用同一游标取 (cell[i], value[i])，
+    每次选向用同一游标取 move[i]（i = cursor % n）。不使用 Python RNG，故可跨语言逐位比对。
+    """
+    start = time.time()
+    weights = weights or DEFAULT_WEIGHTS
+    kmax = max(1, int(max_chance_width))
+    progressive = bool(progressive_widening)
+    if stream is None:
+        stream = SpawnEventStream(int(seed), 65536)
+    cur = [0]
+
+    def spawn_pair():
+        i = cur[0] % stream.n
+        cur[0] += 1
+        return stream.cell[i], stream.value[i]
+
+    def next_move_u():
+        i = cur[0] % stream.n
+        cur[0] += 1
+        return stream.move[i]
+
+    def sample_spawn(g):
+        cells = backend.empty_cells(g)
+        if not cells:
+            return g
+        uc, uv = spawn_pair()
+        idx = min(len(cells) - 1, int(uc * len(cells)))
+        i, j = cells[idx]
+        ng = [row[:] for row in g]
+        ng[i][j] = 4 if uv >= 0.9 else 2
+        return ng
+
+    stats = {'tree_nodes': 0, 'chance_nodes': 0, 'chance_children': 0, 'rollout_steps': 0,
+             'reused_children': 0, 'no_spawn_leaves': 0, 'width_limit_rollouts': 0}
+
+    def ucb(parent, child):
+        if child.visits == 0:
+            return float('inf')
+        return child.total_return / child.visits + c * math.sqrt(
+            math.log(max(1, parent.visits)) / child.visits)
+
+    def chance_width(node):
+        if not progressive:
+            return kmax
+        n = max(1, node.visits)
+        return max(1, min(kmax, int(math.ceil(cpw * (n ** alpha)))))
+
+    def rollout(g, kind, acc):
+        if kind == 'C':
+            g = sample_spawn(g)
+        for _ in range(max(1, rollout_depth)):
+            if backend.is_game_over(g):
+                break
+            moves = backend.legal_moves(g)
+            if not moves:
+                break
+            um = next_move_u()
+            mi = min(len(moves) - 1, int(um * len(moves)))
+            g, gain, _m = backend.move(g, moves[mi])
+            acc += gain
+            g = sample_spawn(g)
+            stats['rollout_steps'] += 1
+        return acc + backend.evaluate(g, weights)
+
+    def descend(root_node):
+        node = root_node
+        acc = 0.0
+        path = []
+        while True:
+            path.append(node)
+            if node.kind == 'P':
+                if node.untried:
+                    d = node.untried.pop(0)
+                    child_grid, gain, _moved = backend.move(node.grid, d)
+                    child = _MCTSNode(child_grid, 'C', node, d, untried=None, edge_gain=gain)
+                    node.children.append(child)
+                    stats['tree_nodes'] += 1
+                    stats['chance_nodes'] += 1
+                    path.append(child)
+                    return child.grid, child.kind, path, acc + gain
+                if not node.children:
+                    return node.grid, node.kind, path, acc
+                nxt = max(node.children, key=lambda ch: ucb(node, ch))
+                acc += nxt.edge_gain
+                node = nxt
+            else:
+                cells = backend.empty_cells(node.grid)
+                if not cells:
+                    stats['no_spawn_leaves'] += 1
+                    return node.grid, node.kind, path, acc
+                child_grid = sample_spawn(node.grid)
+                key = tuple(tuple(row) for row in child_grid)
+                child = node.child_index.get(key)
+                if child is None:
+                    if len(node.children) >= chance_width(node):
+                        stats['width_limit_rollouts'] += 1
+                        return child_grid, 'P', path, acc
+                    child = _MCTSNode(child_grid, 'P', node, None,
+                                      untried=_ordered_dirs(backend, child_grid, weights))
+                    node.children.append(child)
+                    node.child_index[key] = child
+                    stats['tree_nodes'] += 1
+                    stats['chance_children'] += 1
+                else:
+                    stats['reused_children'] += 1
+                node = child
+
+    root = _MCTSNode([row[:] for row in grid], 'P',
+                     untried=_ordered_dirs(backend, grid, weights))
+    total = max(1, simulations)
+    completed = 0
+    backpropagated = 0
+    while completed < total and (time.time() - start) <= time_limit:
+        leaf_grid, leaf_kind, path, acc = descend(root)
+        value = rollout(leaf_grid, leaf_kind, acc)
+        for n in path:
+            n.visits += 1
+            n.total_return += value
+        backpropagated += 1
+        completed += 1
+
+    evaluations = {}
+    root_move_visits = {}
+    best_dir, best_value = None, -float('inf')
+    for child in root.children:
+        if child.visits == 0:
+            continue
+        mean = child.total_return / child.visits
+        evaluations[child.move] = mean
+        root_move_visits[child.move] = child.visits
+        if mean > best_value:
+            best_value, best_dir = mean, child.move
+    for d in DIRECTIONS:
+        evaluations.setdefault(d, None)
+        root_move_visits.setdefault(d, 0)
+
+    return _result('mcts', best_dir, evaluations, rollout_depth, stats['tree_nodes'], start,
+                   timed_out=completed < total,
+                   extra={'simulations': completed,
+                          'completed_simulations': completed,
+                          'backpropagated_simulations': backpropagated,
+                          'root_visits': root.visits,
+                          'root_move_visits': root_move_visits,
+                          'width_limit_rollouts': stats['width_limit_rollouts'],
+                          'rollout_depth': rollout_depth,
+                          'chance_nodes': stats['chance_nodes'],
+                          'chance_children': stats['chance_children'],
+                          'reused_chance_children': stats['reused_children'],
+                          'rollout_steps': stats['rollout_steps'],
+                          'max_chance_width': kmax,
+                          'progressive_widening': progressive,
+                          'cpw': cpw, 'alpha': alpha, 'uct_c': c,
+                          'engine_used': 'python_events_mirror'})
+
+
+# =====================================================================
 # 策略五：强化学习（复用 V5 的 rl_2048，只读模型）
 # =====================================================================
 def _rl_decision(grid, model_path=None, weights=None):
@@ -574,6 +825,7 @@ def _error_result(strategy, message):
 
 def _run_strategy(be, grid, strategy, options, weights):
     """在给定后端上执行指定策略（纯函数，不做回退）。"""
+    native_search = bool(options.get('native_search', False))
     if strategy == 'heuristic':
         return _heuristic_decision(be, grid, weights)
     if strategy == 'rollout':
@@ -588,6 +840,10 @@ def _run_strategy(be, grid, strategy, options, weights):
             paired=bool(options.get('paired', True)),
             native_rollout=bool(options.get('native_rollout', False)))
     if strategy == 'expectimax':
+        # V6.2 原生整树（仅在精确语义配置下启用；近似模式不冒充精确结果）
+        if (native_search and getattr(be, 'kind', '') == 'cpp'
+                and _native_expectimax_applicable(options)):
+            return _native_expectimax_decision(be, grid, options, weights)
         time_limit = max(0.001, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT))
         return _expectimax_decision(
             be, grid, int(options.get('depth', 4)), time_limit, weights,
@@ -599,6 +855,8 @@ def _run_strategy(be, grid, strategy, options, weights):
             seed=int(options.get('seed', DEFAULT_SEED)),
             score_weight=float(options.get('score_weight', 0.0)))
     if strategy == 'mcts':
+        if native_search and getattr(be, 'kind', '') == 'cpp':
+            return _native_mcts_decision(be, grid, options, weights)
         time_limit = max(0.001, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT))
         return _mcts_decision(
             be, grid,
@@ -632,6 +890,7 @@ def solve(grid, strategy='expectimax', backend='auto', **options):
         res = _error_result(strategy, '非法棋盘：%s' % exc)
         res['backend_requested'] = backend_requested
         res['backend_used'] = None
+        res['engine_used'] = None
         return res
 
     weights = options.get('weights')
@@ -659,6 +918,7 @@ def solve(grid, strategy='expectimax', backend='auto', **options):
             'backend_requested': backend_requested,
             'backend_used': backend_used,
             'backend_fallback_reason': fallback_reason,
+            'engine_used': 'none',       # 无可行方向：未执行任何搜索
             'backend_metrics': {'kind': be.kind},
         }
         return data
@@ -687,6 +947,13 @@ def solve(grid, strategy='expectimax', backend='auto', **options):
     res['backend_requested'] = backend_requested
     res['backend_used'] = backend_used
     res['backend_fallback_reason'] = fallback_reason
+    # engine_used：区分「native 整树搜索」/「Python 搜索内核驱动后端原语」/「reference」
+    if not res.get('engine_used'):
+        if backend_used == 'reference' or getattr(be, 'kind', '') == 'python':
+            res['engine_used'] = 'reference'
+        else:
+            res['engine_used'] = 'python_kernel'
+    res.setdefault('board_signature', tuple(tuple(row) for row in grid))
     res['backend_metrics'] = {
         'kind': be.kind,
         'nodes': res.get('nodes'),

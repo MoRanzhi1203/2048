@@ -6,15 +6,6 @@
 
 namespace bb2048 {
 
-inline int cell_exp(uint64_t bb, int r, int c) {
-    return int((bb >> (4 * (4 * r + (3 - c)))) & 0xF);
-}
-
-inline void set_exp(uint64_t* bb, int r, int c, int e) {
-    int p = 4 * (4 * r + (3 - c));
-    *bb |= uint64_t(e & 0xF) << p;
-}
-
 void slide_row(int code, int* out, int* gained, bool* overflow) {
     int e[4];
     for (int k = 0; k < 4; ++k) e[k] = (code >> (4 * (3 - k))) & 0xF;

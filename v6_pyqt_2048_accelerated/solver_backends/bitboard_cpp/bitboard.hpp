@@ -36,6 +36,16 @@ void slide_row(int code, int* out, int* gained, bool* overflow);
 
 inline int row_get(uint64_t bb, int r) { return int((bb >> (16 * r)) & 0xFFFF); }
 
+// 单格指数读写（4bit 指数，nibble 位置 p = 4*r + (3-c)）
+inline int cell_exp(uint64_t bb, int r, int c) {
+    return int((bb >> (4 * (4 * r + (3 - c)))) & 0xF);
+}
+
+inline void set_exp(uint64_t* bb, int r, int c, int e) {
+    int p = 4 * (4 * r + (3 - c));
+    *bb |= uint64_t(e & 0xF) << p;
+}
+
 // 4×4 nibble 转置
 uint64_t transpose_bb(uint64_t bb);
 

@@ -18,7 +18,7 @@ if(NOT pybind11_FOUND)
   find_package(pybind11 CONFIG REQUIRED)
 endif()
 
-pybind11_add_module(bitboard_cpp bindings.cpp bitboard.cpp)
+pybind11_add_module(bitboard_cpp bindings.cpp bitboard.cpp search.cpp)
 
 # 独立自测可执行文件（不依赖 Python）
-add_executable(bitboard_tests tests.cpp bitboard.cpp)
+add_executable(bitboard_tests tests.cpp bitboard.cpp search.cpp)

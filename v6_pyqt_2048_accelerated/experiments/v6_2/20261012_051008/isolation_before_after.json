@@ -1,0 +1,73 @@
+{
+  "kind": "v6_2_isolation_before_after",
+  "checked_at": "2026-10-12 05:32:51",
+  "note": "V6.2 改动仅限 v6_pyqt_2048_accelerated/；V1–V5 源码/模型/运行时目录为真实文件系统哈希比对",
+  "v5_protected_before": {
+    "solver_2048.py": "ab8e23ce221d343e1ad93798e2cbd74fddbcf4937a78fdbc829616eb78abadc1",
+    "solver_2048_gui.py": null,
+    "v5_pyqt_2048_solver.py": "8114c0d0c4d6a034a64af98bd1cbe1f4c34c79a8d89d20c4e92f97b21526da6a",
+    "rl_2048.py": "16c29226d6a744ae7c2ae8ab0b147fdd362d2d07b1abde1daaf95f8adbf22ed3",
+    "rl_model.npz": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40"
+  },
+  "v5_protected_after": {
+    "solver_2048.py": "ab8e23ce221d343e1ad93798e2cbd74fddbcf4937a78fdbc829616eb78abadc1",
+    "solver_2048_gui.py": null,
+    "v5_pyqt_2048_solver.py": "8114c0d0c4d6a034a64af98bd1cbe1f4c34c79a8d89d20c4e92f97b21526da6a",
+    "rl_2048.py": "16c29226d6a744ae7c2ae8ab0b147fdd362d2d07b1abde1daaf95f8adbf22ed3",
+    "rl_model.npz": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40"
+  },
+  "v1_v5_py_file_counts": {
+    "v1_console_2048": 1,
+    "v2_console_2048_with_history": 1,
+    "v3_pyqt_2048": 1,
+    "v4_pyqt_2048_animated": 1,
+    "v5_pyqt_2048_solver": 4
+  },
+  "runtime_dirs_after": {
+    "v1_console_2048/game_history": {
+      "exists": false
+    },
+    "v1_console_2048/solver_results": {
+      "exists": false
+    },
+    "v2_console_2048_with_history/game_history": {
+      "exists": true,
+      "n_files": 22
+    },
+    "v2_console_2048_with_history/solver_results": {
+      "exists": false
+    },
+    "v3_pyqt_2048/game_history": {
+      "exists": true,
+      "n_files": 26
+    },
+    "v3_pyqt_2048/solver_results": {
+      "exists": false
+    },
+    "v4_pyqt_2048_animated/game_history": {
+      "exists": true,
+      "n_files": 202
+    },
+    "v4_pyqt_2048_animated/solver_results": {
+      "exists": false
+    },
+    "v5_pyqt_2048_solver/game_history": {
+      "exists": true,
+      "n_files": 122
+    },
+    "v5_pyqt_2048_solver/solver_results": {
+      "exists": true,
+      "n_files": 4
+    },
+    "v6_pyqt_2048_accelerated/game_history": {
+      "exists": true,
+      "n_files": 17
+    },
+    "v6_pyqt_2048_accelerated/solver_results": {
+      "exists": true,
+      "n_files": 6
+    }
+  },
+  "unexpected_changes": [],
+  "isolation_pass": true
+}

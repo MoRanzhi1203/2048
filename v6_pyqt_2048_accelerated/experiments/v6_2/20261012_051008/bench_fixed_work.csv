@@ -1,0 +1,15 @@
+group,algorithm,variant,median_ms,p95_ms,agreement
+fixed_work,rollout,reference,1845.3583,2517.9341,1.0
+fixed_work,rollout,numba,2350.2877,4054.067,1.0
+fixed_work,rollout,python_kernel_cpp,451.4665,494.6282,1.0
+fixed_work,rollout,native_rollout_batch,197.2613,217.7393,0.3333
+fixed_work,expectimax_exact_d3,reference,165.5183,308.1033,1.0
+fixed_work,expectimax_exact_d3,numba,135.4247,171.4224,1.0
+fixed_work,expectimax_exact_d3,python_kernel_cpp,100.9416,108.6342,1.0
+fixed_work,expectimax_exact_d3,native_full_tree,16.0919,17.9559,1.0
+fixed_work,expectimax_exact_d4,python_kernel_cpp,666.2696,1006.297,1.0
+fixed_work,expectimax_exact_d4,native_full_tree,30.1266,40.3792,1.0
+rollout_roundtrip,,native_batch,0.1609,0.1954,
+rollout_roundtrip,,native_single_loop,61.8947,68.5507,
+rollout_roundtrip,,python_driver_cpp,56.2924,63.4034,
+rollout_roundtrip,,python_driver_ref,87.8838,98.6212,

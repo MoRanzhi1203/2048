@@ -1,0 +1,28 @@
+﻿ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/CMakeLists.txt
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bindings.cpp
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard.cpp
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard.hpp
+ M v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/bitboard_cpp.cp312-win_amd64.pyd
+ M v6_pyqt_2048_accelerated/solver_backends/events.py
+ M v6_pyqt_2048_accelerated/solver_v6.py
+?? v6_pyqt_2048_accelerated/benchmarks/run_native_bench.py
+?? v6_pyqt_2048_accelerated/experiments/v6_2/
+?? v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/search.cpp
+?? v6_pyqt_2048_accelerated/solver_backends/bitboard_cpp/search.hpp
+?? v6_pyqt_2048_accelerated/solver_backends/native_api.py
+?? v6_pyqt_2048_accelerated/tests/test_native_search.py
+==== diff stat ====
+ .../solver_backends/bitboard_cpp/CMakeLists.txt    |   4 +-
+ .../solver_backends/bitboard_cpp/bindings.cpp      | 113 +++++++++
+ .../solver_backends/bitboard_cpp/bitboard.cpp      |   9 -
+ .../solver_backends/bitboard_cpp/bitboard.hpp      |  10 +
+ .../bitboard_cpp/bitboard_cpp.cp312-win_amd64.pyd  | Bin 191488 -> 234496 bytes
+ v6_pyqt_2048_accelerated/solver_backends/events.py |  49 ++++
+ v6_pyqt_2048_accelerated/solver_v6.py              | 267 +++++++++++++++++++++
+ 7 files changed, 441 insertions(+), 11 deletions(-)
+==== new files sha256 ====
+solver_backends\bitboard_cpp\search.hpp  16F36F8017883DC473C21CCABCCCEF8A4339D7B974179A3E327088F6D38ACB41
+solver_backends\bitboard_cpp\search.cpp  63AC18B32BC1AD33B1DFB2202E6112FD2D96B9D91B87BAE436FBFF2C69A1BB5F
+solver_backends\native_api.py  5D81AB7A95B0B82A320126E5F72863086C10FF21B64A1CF09D4703D27BF2C1B5
+tests\test_native_search.py  4D5B6EB52BEB97BF3D5B511A155F1D27717F300ED9C5F229936FF5831E34768B
+benchmarks\run_native_bench.py  A37B752F8E4DB1762C9C31CC53047611CC152724B79B1267863446FFDEBB1CFE
