@@ -1669,7 +1669,12 @@ class SolverMainWindow(v4.MainWindow):
         try:
             os.makedirs(RESULT_DIR, exist_ok=True)
             with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
-                json.dump(self._sessions, f, ensure_ascii=False, indent=2)
+                # H8 收口：改为「紧凑序列化 + 单次大写入」。
+                # 原因：json.dump(..., indent=2) 对大历史会话是流式小写入，实测在 ~3MB / 11463 步时
+                # 单次可达 537–960ms，直接拖慢 GUI 停止路径（与线程无关）。紧凑单写约 94ms（≈5–10×）。
+                # 输出仍是标准 JSON，_load_sessions 完全兼容。
+                f.write(json.dumps(self._sessions, ensure_ascii=False,
+                                   separators=(",", ":")))
         except IOError:
             pass
 

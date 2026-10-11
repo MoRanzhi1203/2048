@@ -1,0 +1,9 @@
+{
+  "run_id": "20261011_160625",
+  "python": "3.12.3 | packaged by conda-forge | (main, Apr 15 2024, 18:20:11) [MSC v.1938 64 bit (AMD64)]",
+  "python_exe": "E:\\anaconda3\\python.exe",
+  "platform": "Windows-10-10.0.19042-SP0",
+  "numpy": "1.26.4",
+  "pyqt": "5.15.10",
+  "qt": "5.15.2"
+}

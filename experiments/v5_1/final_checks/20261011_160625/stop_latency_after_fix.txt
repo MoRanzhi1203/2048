@@ -1,0 +1,4 @@
+﻿SESSIONS_FILE size = 3119693
+AFTER mcts      /strong stop_total=677ms _save_sessions=[140.4] _shutdown_worker=[536.3]
+AFTER expectimax/strong stop_total=1ms _save_sessions=[99.6, 79.6] _shutdown_worker=[1.5, 1.6]
+DONE

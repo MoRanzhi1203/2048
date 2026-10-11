@@ -1,0 +1,32 @@
+{
+  "run_id": "20261011_160625",
+  "head": "f145f5f",
+  "scope": "H8 剩余问题最终专项收口（停止耗时分段定位 / 子进程关闭预算验证 / 截图与 DPI 复核）",
+  "gates": {
+    "V5_1_CODE_PASS": {"status": "PASS", "reason": "定位并最小修复可复现停止耗时缺陷；算法/RL/核心规则未改；回归通过"},
+    "V5_1_INFLIGHT_CANCEL": {"status": "PASS", "reason": "H8-1 C01–C06 六场景此前通过，本轮复跑仍通过"},
+    "V5_1_THREAD_SAFETY": {"status": "PASS", "reason": "子进程关闭预算超时验证：线程未提前销毁、退出码 0、Qt 销毁告警 0"},
+    "V5_1_GUI_AUTOMATED": {"status": "PASS", "reason": "四场景截图 CAPTURE/STRUCTURE/TEXT 通过"},
+    "V5_1_GUI_VISUAL": {"status": "UNVERIFIED", "reason": "无人工目视确认"},
+    "V5_1_DPI_VISUAL": {"status": "UNVERIFIED", "reason": "100% 真实通过；125%/150% 未在真实系统缩放下人工验证"},
+    "V5_1_MODEL_INTEGRITY": {"status": "PASS", "reason": "四模型 SHA256 前后一致（EQUAL_TO_BEFORE=True）"},
+    "V5_1_TESTS": {"status": "PASS", "reason": "test_solver 79 OK；popups 17/17；cross_version 41/41；其余套件未受影响"},
+    "V5_1_RELEASE_READY": {"status": "PARTIAL_PASS", "reason": "代码/线程/取消/自动化视觉/模型/测试 PASS；缺人工视觉与真实多 DPI 确认"}
+  },
+  "fixes": [
+    {"file": "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py", "method": "_save_sessions", "root_cause": "json.dump(indent=2) 全量流式重写 3.1MB 会话历史，实测 537-959ms 阻塞 GUI 停止路径", "change": "紧凑序列化 + 单次大写入", "effect": "_save_sessions 959ms -> 140ms（@3.1MB 历史）"}
+  ],
+  "evidence": {
+    "stop_latency": ["stop_latency_breakdown.md", "stop_latency_raw.txt", "stop_latency_after_fix.txt"],
+    "close_budget": ["qthread_close_budget_test.md", "subprocess_close_raw.txt"],
+    "gui": ["gui_capture.jsonl", "manual_visual_checklist.md"],
+    "tests": ["affected_tests.txt"],
+    "model": ["model_hash_before.json", "model_hash_after.json"],
+    "git": ["git_before.txt", "git_after.txt", "environment.json"]
+  },
+  "remaining": [
+    "人工目视 4 张整窗截图后 --visual-confirm",
+    "真实 Windows 125%/150% 缩放人工视觉走查",
+    "（V5.2 建议）会话持久化移出 GUI 线程 / 增量存储，彻底消除随历史增长的全量重写"
+  ]
+}

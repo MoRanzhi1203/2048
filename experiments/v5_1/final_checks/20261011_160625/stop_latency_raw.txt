@@ -1,0 +1,13 @@
+﻿=== mcts / strong  config={'strategy': 'mcts', 'simulations': 600, 'time_limit': 0.8, 'rollout_depth': 24} SOLVER_STOP_WAIT_MS=500 ===
+  running_at_stop=True thread_isRunning=True
+  stop_total=961ms | _stop_solver=[961.2] _finalize_session=[960.4] _save_sessions=[959.1] _shutdown_worker=[1.3] cleaned=True
+  breakdown: stop_total=961  finalize=960 (save=959, shutdown=1, other_finalize=0)  stop_other=1
+=== mcts / normal  config={'strategy': 'mcts', 'simulations': 200, 'time_limit': 0.3, 'rollout_depth': 16} SOLVER_STOP_WAIT_MS=500 ===
+  running_at_stop=True thread_isRunning=True
+  stop_total=563ms | _stop_solver=[563.5] _finalize_session=[562.6] _save_sessions=[561.4] _shutdown_worker=[1.1] cleaned=True
+  breakdown: stop_total=563  finalize=563 (save=561, shutdown=1, other_finalize=0)  stop_other=1
+=== expectimax / strong  config={'strategy': 'expectimax', 'depth': 6, 'time_limit': 0.8, 'prune': True, 'sample_limit': 10} SOLVER_STOP_WAIT_MS=500 ===
+  running_at_stop=False thread_isRunning=None
+  stop_total=1ms | _stop_solver=[436.8, 461.4] _finalize_session=[436.2, 461.0] _save_sessions=[435.2, 460.1] _shutdown_worker=[0.9, 0.8] cleaned=True
+  breakdown: stop_total=1  finalize=436 (save=435, shutdown=1, other_finalize=0)  stop_other=0
+DONE
