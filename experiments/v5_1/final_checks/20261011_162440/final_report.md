@@ -34,7 +34,7 @@
 
 ## 4. GUI 与 DPI
 
-四场景整窗截图（`full_start/game/solver/collapsed.png`）重新捕获：CAPTURE/STRUCTURE/TEXT **PASS**；**`V5_1_GUI_VISUAL=UNVERIFIED`**、**`V5_1_DPI_VISUAL=UNVERIFIED`**（本机 DPR=1.0，真实 125%/150% 需人工，步骤见 `manual_visual_checklist.md`）。
+四场景整窗截图（`full_start/game/solver/collapsed.png`）重新捕获：CAPTURE/STRUCTURE/TEXT **PASS**；**人类目视确认全部通过 → `V5_1_GUI_VISUAL=PASS`**（已 `--visual-confirm`，证据 `gui_visual_confirm.jsonl`）。**`V5_1_DPI_VISUAL=UNVERIFIED`**：本机（DPR=1.0）自动化无法切换并生效（系统未被改动，见 `dpi_real_attempt.md`），真实 125%/150% 需人工，步骤见 `manual_visual_checklist.md`。
 
 ## 5. 测试与模型
 
@@ -55,7 +55,7 @@
 | 2 | V5_1_INFLIGHT_CANCEL | **PASS** |
 | 3 | V5_1_THREAD_SAFETY | **PASS** |
 | 4 | V5_1_GUI_AUTOMATED | **PASS** |
-| 5 | V5_1_GUI_VISUAL | **UNVERIFIED** |
+| 5 | V5_1_GUI_VISUAL | **PASS**（人工确认） |
 | 6 | V5_1_DPI_VISUAL | **UNVERIFIED** |
 | 7 | V5_1_MODEL_INTEGRITY | **PASS** |
 | 8 | V5_1_TESTS | **PASS** |

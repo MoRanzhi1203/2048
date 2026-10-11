@@ -1,15 +1,16 @@
 # V5.1 · 最终收口：人工视觉与真实 DPI 核对清单（manual_visual_checklist）
 
-> run: `20261011_162440` ｜ 状态：**`VISUAL_UNVERIFIED` / `DPI_VISUAL_UNVERIFIED`**（需人类目视；脚本不得授予 PASS）
+> run: `20261011_162440` ｜ 状态：**`VISUAL_PASS`（人类已目视确认）** / **`DPI_VISUAL_UNVERIFIED`**
+> 说明：4 张整窗截图由**人**目视核对并通过（随后以 `capture_gui.py --visual-confirm` 授予）；真实 125%/150% 多 DPI 仍为 UNVERIFIED（见 `dpi_real_attempt.md`）。
 
 ## 1. 四张整窗截图（本轮重新捕获，真实工具输出）
 
 | 场景 | 路径 | 尺寸 | CAPTURE | STRUCTURE | TEXT | VISUAL |
 | --- | --- | --- | --- | --- | --- | --- |
-| START | `v5_pyqt_2048_solver/screenshots/full_start.png` | 502×711 | PASS | PASS | PASS | **UNVERIFIED** |
-| GAME | `v5_pyqt_2048_solver/screenshots/full_game.png` | 908×759 | PASS | PASS | PASS | **UNVERIFIED** |
-| SOLVER_EXPANDED | `v5_pyqt_2048_solver/screenshots/full_solver.png` | 908×759 | PASS | PASS | PASS | **UNVERIFIED** |
-| SOLVER_COLLAPSED | `v5_pyqt_2048_solver/screenshots/full_collapsed.png` | 502×759 | PASS | PASS | PASS | **UNVERIFIED** |
+| START | `v5_pyqt_2048_solver/screenshots/full_start.png` | 502×711 | PASS | PASS | PASS | **PASS（人工确认）** |
+| GAME | `v5_pyqt_2048_solver/screenshots/full_game.png` | 908×759 | PASS | PASS | PASS | **PASS（人工确认）** |
+| SOLVER_EXPANDED | `v5_pyqt_2048_solver/screenshots/full_solver.png` | 908×759 | PASS | PASS | PASS | **PASS（人工确认）** |
+| SOLVER_COLLAPSED | `v5_pyqt_2048_solver/screenshots/full_collapsed.png` | 502×759 | PASS | PASS | PASS | **PASS（人工确认）** |
 
 原始门禁：`gui_capture.jsonl`（`has_titlebar=true`、`text_rendered=true`）。
 
