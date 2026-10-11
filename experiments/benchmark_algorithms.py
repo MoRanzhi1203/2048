@@ -105,10 +105,15 @@ def play_game(strategy, seed, budget, speed="normal", max_moves=MAX_MOVES):
 
 def play_game_with(strategy, seed, solve_kwargs, max_moves=MAX_MOVES,
                    preset="custom", budget="custom"):
-    """用给定求解参数跑一局（供基准与消融共用）。"""
+    """用给定求解参数跑一局（供基准与消融共用）。
+
+    环境随机数(env_rng) 与求解器内部随机数(solver_seed) **分离**：env_rng 只负责生成新块，
+    solver_seed 只影响搜索。逐移动记录耗时与（MCTS）实际完成的模拟次数。
+    """
     env_rng = random.Random(seed)                 # 环境：生成新块
     solver_seed = (seed * 2 + 1) & 0x7FFFFFFF     # 求解器内部随机数（与 env 分离）
     kwargs = dict(solve_kwargs)
+    kwargs.pop("strategy", None)                  # build_config 会附带 strategy，避免与显式入参冲突
 
     grid = [[0] * 4 for _ in range(4)]
     for _ in range(2):
@@ -121,6 +126,7 @@ def play_game_with(strategy, seed, solve_kwargs, max_moves=MAX_MOVES,
     invalid = 0
     exceptions = 0
     error_msg = None
+    sims_list = []
 
     for _ in range(max_moves):
         if S.is_game_over(grid):
@@ -139,6 +145,8 @@ def play_game_with(strategy, seed, solve_kwargs, max_moves=MAX_MOVES,
             break
         if res.get("timed_out"):
             timeouts += 1
+        if res.get("simulations") is not None:
+            sims_list.append(int(res["simulations"]))
         d = res.get("best_direction")
         if d is None:
             invalid += 1
@@ -164,11 +172,14 @@ def play_game_with(strategy, seed, solve_kwargs, max_moves=MAX_MOVES,
         "budget": budget, "seed": seed, "score": score, "max_tile": tile,
         "moves": moves,
         "hit_512": int(tile >= 512), "hit_1024": int(tile >= 1024),
-        "hit_2048": int(tile >= 2048),
+        "hit_2048": int(tile >= 2048), "hit_4096": int(tile >= 4096),
         "total_decision_ms": round(sum(times), 2),
         "move_avg_ms": round(sum(times) / len(times), 3) if times else 0.0,
-        "move_median_ms": pct(0.5), "move_p95_ms": pct(0.95),
+        "move_p10_ms": pct(0.10), "move_median_ms": pct(0.5),
+        "move_p90_ms": pct(0.90), "move_p95_ms": pct(0.95), "move_p99_ms": pct(0.99),
         "timeouts": timeouts, "invalid_moves": invalid, "exceptions": exceptions,
+        "sims_total": (sum(sims_list) if sims_list else None),
+        "sims_avg": (round(sum(sims_list) / len(sims_list), 1) if sims_list else None),
         "error": error_msg,
     }
 
@@ -177,46 +188,87 @@ def play_game_with(strategy, seed, solve_kwargs, max_moves=MAX_MOVES,
 # 汇总
 # ---------------------------------------------------------------------
 def summarize(rows):
-    """按策略汇总：均值/中位数/标准差/达成率/95% CI。"""
+    """按策略汇总：均值/中位数/标准差/P10-P90/达成率/95% CI/耗时分布/超时与模拟次数。"""
     out = {}
     for strat in sorted({r["strategy"] for r in rows}):
         rs = [r for r in rows if r["strategy"] == strat]
-        scores = [r["score"] for r in rs]
+        scores = sorted(r["score"] for r in rs)
         n = len(scores)
+        p10 = scores[int(0.10 * (n - 1))]
+        p90 = scores[int(0.90 * (n - 1))]
+        sims = [r["sims_avg"] for r in rs if r.get("sims_avg") is not None]
         out[strat] = {
             "games": n,
             "avg": round(sum(scores) / n, 2),
             "median": statistics.median(scores),
+            "p10": p10, "p90": p90,
             "std": round(statistics.pstdev(scores), 2) if n > 1 else 0.0,
             "best": max(scores),
-            "ci95_avg": bootstrap_ci(scores),
+            "ci95_avg": bootstrap_ci(list(scores)),
             "max_tile": max(r["max_tile"] for r in rs),
             "hit512_rate": round(sum(r["hit_512"] for r in rs) / n, 4),
             "hit1024_rate": round(sum(r["hit_1024"] for r in rs) / n, 4),
+            "hit2048_rate": round(sum(r["hit_2048"] for r in rs) / n, 4),
+            "hit4096_rate": round(sum(r["hit_4096"] for r in rs) / n, 4),
             "move_avg_ms": round(sum(r["move_avg_ms"] for r in rs) / n, 3),
+            "move_p10_ms": round(sum(r["move_p10_ms"] for r in rs) / n, 3),
+            "move_p90_ms": round(sum(r["move_p90_ms"] for r in rs) / n, 3),
             "move_p95_ms": round(max(r["move_p95_ms"] for r in rs), 3),
+            "move_p99_ms": round(max(r["move_p99_ms"] for r in rs), 3),
             "total_decision_s": round(sum(r["total_decision_ms"] for r in rs) / 1000.0, 2),
             "timeouts": sum(r["timeouts"] for r in rs),
             "invalid_moves": sum(r["invalid_moves"] for r in rs),
             "exceptions": sum(r["exceptions"] for r in rs),
             "moves_avg": round(sum(r["moves"] for r in rs) / n, 1),
+            "sims_avg": (round(sum(sims) / len(sims), 1) if sims else None),
+            "sims_total": (sum(r["sims_total"] for r in rs
+                               if r.get("sims_total") is not None)
+                           if any(r.get("sims_total") is not None for r in rs) else None),
         }
     return out
 
 
 def run_benchmark(strategies, games, budget, speed="normal", seeds=None,
-                  progress=True):
-    seeds = seeds or [1000 + i for i in range(games)]
+                  seed_base=1000, progress=True, max_moves=MAX_MOVES):
+    seeds = seeds or [seed_base + i for i in range(games)]
     rows = []
     for strat in strategies:
         for sd in seeds:
-            row = play_game(strat, sd, budget, speed)
+            row = play_game(strat, sd, budget, speed, max_moves=max_moves)
             rows.append(row)
             if progress:
                 print("  [%s] seed=%d score=%d tile=%d moves=%d avg=%.2fms"
                       % (strat, sd, row["score"], row["max_tile"], row["moves"],
                          row["move_avg_ms"]), flush=True)
     return rows
+
+
+def profile_strategies(strategies, board=None):
+    """对每个策略在固定盘面上做 cProfile，输出累计耗时最高的函数（识别瓶颈）。"""
+    import cProfile
+    import pstats
+    import io
+    board = board or [[2, 4, 8, 16], [32, 64, 128, 256], [512, 1024, 0, 0], [0, 0, 0, 0]]
+    print("\n=== profiling（固定盘面，每策略一次 solve 的累计耗时热点）===")
+    for strat in strategies:
+        kwargs = budget_kwargs(strat, "equal_time")
+        pr = cProfile.Profile()
+        pr.enable()
+        for _ in range(5):                       # 重复以放大可测信号
+            S.solve(board, strategy=strat, **kwargs)
+        pr.disable()
+        st = pstats.Stats(pr).sort_stats("cumulative")
+        buf = io.StringIO()
+        st.stream = buf
+        st.print_stats(10)
+        raw = [ln.rstrip() for ln in buf.getvalue().splitlines()]
+        print("  -- %s --" % strat)
+        for ln in raw[:14]:
+            if ln.strip():
+                print("    " + ln.strip())
+    print("  （说明：move_grid/legal_moves/evaluate/TT 均集中在 solver_2048.py；"
+          "模型磁盘加载仅在 rl 策略首次 solve 时发生）")
+    return True
 
 
 def env_meta(model_path=None):
@@ -245,22 +297,34 @@ def main():
     ap.add_argument("--speed", choices=["fast", "normal", "strong"], default="normal")
     ap.add_argument("--strategies", default=",".join(DEFAULT_STRATEGIES))
     ap.add_argument("--tag", default="")
+    ap.add_argument("--seed-base", type=int, default=1000, help="环境种子家族的基值")
+    ap.add_argument("--out-dir", default=RESULTS_DIR,
+                    help="结果目录（默认 experiments/results；V5.1 用 experiments/v5_1/results）")
+    ap.add_argument("--profile", action="store_true", help="仅做 cProfile 热点分析，不跑对局")
+    ap.add_argument("--max-moves", type=int, default=MAX_MOVES)
     args = ap.parse_args()
 
     strategies = [s for s in args.strategies.split(",") if s]
-    print("基准开始：策略=%s 局数/策略=%d 预算=%s 强度=%s"
-          % (strategies, args.games, args.budget, args.speed))
+
+    if args.profile:
+        profile_strategies(strategies)
+        return
+
+    print("基准开始：策略=%s 局数/策略=%d 预算=%s 强度=%s seed_base=%d"
+          % (strategies, args.games, args.budget, args.speed, args.seed_base))
     t0 = time.time()
-    rows = run_benchmark(strategies, args.games, args.budget, args.speed)
+    rows = run_benchmark(strategies, args.games, args.budget, args.speed,
+                         seed_base=args.seed_base, max_moves=args.max_moves)
     summary = summarize(rows)
     meta = env_meta()
     meta.update({"budget": args.budget, "speed": args.speed, "games_per_strategy": args.games,
+                 "seed_base": args.seed_base, "max_moves": args.max_moves,
                  "elapsed_s": round(time.time() - t0, 1)})
 
-    os.makedirs(RESULTS_DIR, exist_ok=True)
+    os.makedirs(args.out_dir, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     tag = ("_" + args.tag) if args.tag else ""
-    base = os.path.join(RESULTS_DIR, "benchmark_%s_%dg%s_%s" % (args.budget, args.games, tag, stamp))
+    base = os.path.join(args.out_dir, "benchmark_%s_%dg%s_%s" % (args.budget, args.games, tag, stamp))
     with open(base + ".json", "w", encoding="utf-8") as f:
         json.dump({"meta": meta, "summary": summary, "rows": rows}, f, ensure_ascii=False, indent=2)
     with open(base + ".csv", "w", encoding="utf-8") as f:
@@ -270,13 +334,16 @@ def main():
             f.write(",".join(str(r[c]) for c in cols) + "\n")
 
     print("\n=== 汇总（%s, %d 局/策略） ===" % (args.budget, args.games))
-    print("  %-11s %8s %8s %7s %9s %7s %8s %7s %9s %6s"
-          % ("strategy", "avg", "median", "std", "ci95", "tile", "h512%", "avgMs", "p95Ms", "err"))
+    print("  %-11s %8s %8s %7s %8s %9s %7s %8s %7s %7s %7s %6s"
+          % ("strategy", "avg", "median", "p10/p90", "std", "ci95", "tile",
+             "avgMs", "p95Ms", "p99Ms", "simsAvg", "err"))
     for strat, st in summary.items():
-        print("  %-11s %8.1f %8.1f %7.1f %9s %7d %7.1f%% %7.3f %9.3f %6d"
-              % (strat, st["avg"], st["median"], st["std"], str(st["ci95_avg"]),
-                 st["max_tile"], 100 * st["hit512_rate"], st["move_avg_ms"],
-                 st["move_p95_ms"], st["exceptions"]))
+        print("  %-11s %8.1f %8.1f %3d/%-3d %7.1f %10s %7d %7.3f %7.3f %7.3f %7s %6d"
+              % (strat, st["avg"], st["median"], st["p10"], st["p90"], st["std"],
+                 str(st["ci95_avg"]), st["max_tile"], st["move_avg_ms"],
+                 st["move_p95_ms"], st["move_p99_ms"],
+                 ("-" if st["sims_avg"] is None else "%.0f" % st["sims_avg"]),
+                 st["exceptions"]))
 
     # 配对差值（以第一个策略为基准）
     if len(strategies) > 1:

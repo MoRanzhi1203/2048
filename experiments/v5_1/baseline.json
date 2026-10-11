@@ -1,0 +1,68 @@
+{
+  "phase": "H0",
+  "generated_by": "manual audit (V5.1)",
+  "generated_at": "2026-10-11",
+  "git_head": "701566d",
+  "git_head_subject": "feat(v5): 统一 AI 求解侧栏折叠交互（整体隐藏 + 右侧贴边半胶囊把手）",
+  "git_branch": "main",
+  "working_tree_dirty_before_change": [
+    "README.md",
+    "v5_pyqt_2048_solver/rl_2048.py",
+    "v5_pyqt_2048_solver/solver_2048.py",
+    "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py",
+    "v5_pyqt_2048_solver/功能说明.md"
+  ],
+  "working_tree_dirty_note": "改动前仅 5 个文件有未提交修改，全部为 1-3 行的文档/版本号文案（第6篇→第5篇、下拉项/把手文案），与算法逻辑无关；本次收口予以保留。",
+  "environment": {
+    "python": "3.12.3",
+    "numpy": "1.26.4",
+    "pyqt5": "5.15.2 (PyQt 5.15.10)",
+    "numba": "0.60.0",
+    "python_exe": "E:\\anaconda3\\python.exe",
+    "platform": "Windows"
+  },
+  "file_locations": {
+    "solver_2048.py": "v5_pyqt_2048_solver/solver_2048.py",
+    "rl_2048.py": "v5_pyqt_2048_solver/rl_2048.py",
+    "v5_pyqt_2048_solver.py": "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py",
+    "test_solver.py": "v5_pyqt_2048_solver/test_solver.py"
+  },
+  "layout": "V5.1 已使用左右双栏（QSplitter 水平；左=游戏页 game_holder，右=SolverMainWindow 工作台 solver_container），非底部面板。",
+  "pre_change_sha256": {
+    "v5_pyqt_2048_solver/solver_2048.py": "6fca44628f295eda2cd436038f2158cbf04b8201b24b57e684ddb2c5199dec9b",
+    "v5_pyqt_2048_solver/rl_2048.py": "d2053dd773037ea875cbcecc98acd6c6589b4c1f508738923546d63b258c1b15",
+    "v5_pyqt_2048_solver/v5_pyqt_2048_solver.py": "a2fdff69f5c4f43db0d7aceb3f1a36f27d4179967452522ec21db6f5c898cedb",
+    "v5_pyqt_2048_solver/test_solver.py": "578a7f1484e20513f3f981fcaa394573b89105453db2e6129c860c061c935c6a",
+    "v5_pyqt_2048_solver/rl_model.npz": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40",
+    "v5_pyqt_2048_solver/rl_model.candidate.npz": "ee4b370e67676bfb42b43eb4df01e895c5bf92935adc16869eb135f9f891dc40",
+    "v5_pyqt_2048_solver/rl_model.npz.prev.npz": "724c4eea877421cf728fdaa56b7e8c710d98accf6c8a13ea69d9c0aa5ee9f4f9",
+    "experiments/baseline/rl_model_v1.npz": "legacy(V1, 无 _schema, 已隔离基线副本)"
+  },
+  "models": {
+    "v5_pyqt_2048_solver/rl_model.npz": {
+      "keys": ["W1", "b1", "W2", "b2", "Wv", "bv", "_schema"],
+      "shapes": {"W1": [128, 256], "b1": [128], "W2": [4, 128], "b2": [4], "Wv": [1, 128], "bv": [1], "_schema": [1]},
+      "dtype": "float32",
+      "schema": 2
+    },
+    "v5_pyqt_2048_solver/rl_model.npz.prev.npz": {"keys": ["W1", "b1", "W2", "b2", "Wv", "bv"], "schema": null},
+    "experiments/baseline/rl_model_v1.npz": {"keys": ["W1", "b1", "W2", "b2", "Wv", "bv"], "schema": null, "role": "legacy V1"}
+  },
+  "pre_change_test_results": {
+    "v5_pyqt_2048_solver/test_solver.py": {"ran": 67, "result": "OK", "seconds": 25.4},
+    "tests/test_mcts_chance.py": {"ran": 7, "result": "OK", "seconds": 4.1},
+    "tests/test_expectimax_reference.py": {"ran": 9, "result": "OK", "seconds": 0.7},
+    "tests/test_rl_gradients.py": {"ran": 8, "result": "OK", "seconds": 6.2},
+    "tests/test_rl_selftrain.py": {"passed": 9, "total": 11, "result": "FAIL(3a/3d 过期源码字符串断言)"},
+    "tests/test_popups.py": {"passed": 17, "total": 17, "result": "PASS"},
+    "tests/test_cross_version.py": {"passed": 41, "total": 41, "result": "PASS"}
+  },
+  "known_issues_before_change": [
+    "MCTS：max_chance_width 分支返回无 parent 的临时节点 —— 宽度上限触发的 simulation 计入 completed 但未回传到 root（root_visits < completed_simulations）。",
+    "Expectimax：根节点漏记 score_weight*本步合并分（在有根合并的盘面上与精确参考不一致；原测试盘面无根合并，掩盖了该问题）。",
+    "RL：门禁与验证共用同一 seed(12345)，非独立 holdout；load_model 不校验 _schema/NaN/dtype；无原子写/备份/回滚/--resume；无训练诊断。",
+    "GUI：worker 结果无 job_id/棋盘快照校验；_shutdown_worker 在 worker 未退出时 quit()+wait(1500) 后直接丢弃引用；无协作式取消。",
+    "test_solver.py：用 setCurrentIndex(1) 当 Expectimax、setCurrentIndex(2) 当 MCTS，与 STRATEGY_ORDER 索引不符。",
+    "test_rl_selftrain.py：3a/3d 依赖过期源码字符串断言。"
+  ]
+}

@@ -1,0 +1,68 @@
+﻿
+=== profiling（固定盘面，每策略一次 solve 的累计耗时热点）===
+  -- heuristic --
+    3836 function calls (3796 primitive calls) in 0.005 seconds
+    Ordered by: cumulative time
+    List reduced from 27 to 10 due to restriction <10>
+    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    5    0.000    0.000    0.005    0.001 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:905(solve)
+    5    0.000    0.000    0.003    0.001 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:384(_heuristic_decision)
+    40    0.001    0.000    0.002    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:159(move_grid)
+    10    0.000    0.000    0.002    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:318(evaluate)
+    160    0.001    0.000    0.001    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:139(slide_line)
+    5    0.000    0.000    0.001    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:182(legal_moves)
+    10    0.000    0.000    0.001    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:222(_monotonicity)
+    10    0.000    0.000    0.000    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:247(_smoothness)
+  -- rollout --
+    221741 function calls (221381 primitive calls) in 0.129 seconds
+    Ordered by: cumulative time
+    List reduced from 46 to 10 due to restriction <10>
+    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    5    0.000    0.000    0.129    0.026 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:905(solve)
+    5    0.000    0.000    0.128    0.026 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:436(_rollout_decision)
+    80    0.002    0.000    0.125    0.002 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:403(_rollout_score)
+    3215    0.029    0.000    0.099    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:159(move_grid)
+    640    0.003    0.000    0.082    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:182(legal_moves)
+    12860    0.045    0.000    0.068    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:139(slide_line)
+    126065    0.015    0.000    0.015    0.000 {built-in method builtins.len}
+    90    0.001    0.000    0.010    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:318(evaluate)
+  -- expectimax --
+    368661 function calls (361031 primitive calls) in 0.196 seconds
+    Ordered by: cumulative time
+    List reduced from 43 to 10 due to restriction <10>
+    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    5    0.000    0.000    0.196    0.039 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:905(solve)
+    5    0.001    0.000    0.195    0.039 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:478(_expectimax_decision)
+    410/40    0.004    0.000    0.188    0.005 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:562(chance_node)
+    180    0.001    0.000    0.170    0.001 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:533(max_node)
+    1815    0.007    0.000    0.166    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:318(evaluate)
+    1405    0.001    0.000    0.128    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:519(leaf)
+    1815    0.041    0.000    0.074    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:222(_monotonicity)
+    140    0.001    0.000    0.058    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:369(_ordered_moves)
+  -- mcts --
+    440726 function calls (438920 primitive calls) in 0.254 seconds
+    Ordered by: cumulative time
+    List reduced from 55 to 10 due to restriction <10>
+    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    5    0.000    0.000    0.254    0.051 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:905(solve)
+    5    0.001    0.000    0.253    0.051 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:695(_mcts_decision)
+    134    0.004    0.000    0.205    0.002 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:745(rollout)
+    5759    0.052    0.000    0.177    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:159(move_grid)
+    1062    0.004    0.000    0.136    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:182(legal_moves)
+    23036    0.081    0.000    0.121    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:139(slide_line)
+    134    0.003    0.000    0.045    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:762(descend)
+    373    0.002    0.000    0.040    0.000 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:318(evaluate)
+  -- rl --
+    13895 function calls (13621 primitive calls) in 0.039 seconds
+    Ordered by: cumulative time
+    List reduced from 292 to 10 due to restriction <10>
+    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    5    0.000    0.000    0.039    0.008 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:905(solve)
+    5    0.000    0.000    0.038    0.008 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\solver_2048.py:872(_rl_decision)
+    5    0.000    0.000    0.029    0.006 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\rl_2048.py:225(load_model)
+    5    0.000    0.000    0.027    0.005 E:\PyQt5_demo\2048\v5_pyqt_2048_solver\rl_2048.py:220(_read_npz)
+    5    0.000    0.000    0.013    0.003 C:\Users\MSIPC\AppData\Roaming\Python\Python312\site-packages\numpy\lib\npyio.py:282(load)
+    35    0.000    0.000    0.013    0.000 C:\Users\MSIPC\AppData\Roaming\Python\Python312\site-packages\numpy\lib\npyio.py:235(__getitem__)
+    5/3    0.000    0.000    0.012    0.004 <frozen importlib._bootstrap>:1349(_find_and_load)
+    5    0.000    0.000    0.011    0.002 C:\Users\MSIPC\AppData\Roaming\Python\Python312\site-packages\numpy\lib\npyio.py:185(__init__)
+  （说明：move_grid/legal_moves/evaluate/TT 均集中在 solver_2048.py；模型磁盘加载仅在 rl 策略首次 solve 时发生）

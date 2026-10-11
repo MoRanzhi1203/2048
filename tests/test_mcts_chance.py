@@ -145,6 +145,90 @@ class MctsChanceTest(unittest.TestCase):
                   (c, r["evaluations"][r["best_direction"]], r["best_name"]))
             self.assertIn(r["best_direction"], S.legal_moves(BOARD_MID))
 
+    # ---------------- H1：根回传不变量（宽度上限不得丢弃 simulation） ----------------
+    def test_mcts_backprop_invariants(self):
+        """H1 修复验证：每一次 simulation 都必须真实回传到 root。
+
+        不变量：root_visits == completed_simulations == backpropagated_simulations，
+        且根各合法动作访问次数之和 == root_visits。覆盖 sims∈{100,500,1000}、
+        width∈{1,2,4,8,16,32}（旧实现在小宽度下会丢弃回传，使 root_visits < completed）。
+        """
+        for width in (1, 2, 4, 8, 16, 32):
+            for sims in (100, 500, 1000):
+                r = S.solve(BOARD_MID, strategy="mcts", simulations=sims, time_limit=10.0,
+                            rollout_depth=4, seed=7, max_chance_width=width)
+                self.assertEqual(r["completed_simulations"], sims,
+                                 "width=%d sims=%d" % (width, sims))
+                self.assertEqual(r["backpropagated_simulations"], sims)
+                self.assertEqual(r["root_visits"], sims,
+                                 "width=%d sims=%d：root 未收到全部回传" % (width, sims))
+                self.assertEqual(sum(r["root_move_visits"].values()), r["root_visits"],
+                                 "根各方向访问次数之和 != root_visits")
+                self.assertIn(r["best_direction"], S.legal_moves(BOARD_MID))
+        # 小宽度必须真实触发宽度上限，且触发后仍全部回传
+        r1 = S.solve(BOARD_MID, strategy="mcts", simulations=300, time_limit=10.0,
+                     rollout_depth=4, seed=1, max_chance_width=1)
+        self.assertGreater(r1["width_limit_rollouts"], 0, "宽度上限未被触发")
+        self.assertEqual(r1["root_visits"], 300)
+
+    # ---------------- H1：渐进加宽 K(N) 与 spawn 分布不变 ----------------
+    def test_mcts_progressive_widening(self):
+        """H1：progressive widening K(N)=min(Kmax,max(1,ceil(cpw*N**alpha))) 实施验证。
+
+        - 仍满足回传不变量；
+        - 每个机会节点子节点数不超过 Kmax；
+        - 只在“是否新增子节点”上生效，不改变 spawn 采样分布（见下一测试）。
+        """
+        for sims in (100, 500, 1000):
+            r = S.solve(BOARD_MID, strategy="mcts", simulations=sims, time_limit=10.0,
+                        rollout_depth=4, seed=11, max_chance_width=8,
+                        progressive_widening=True, cpw=1.0, alpha=0.5)
+            self.assertTrue(r["progressive_widening"])
+            self.assertEqual(r["completed_simulations"], sims)
+            self.assertEqual(r["backpropagated_simulations"], sims)
+            self.assertEqual(r["root_visits"], sims)
+            self.assertEqual(sum(r["root_move_visits"].values()), sims)
+            self.assertIn(r["best_direction"], S.legal_moves(BOARD_MID))
+            if r["chance_nodes"]:
+                self.assertLessEqual(r["chance_children"],
+                                     r["max_chance_width"] * r["chance_nodes"],
+                                     "机会节点子节点数超过 Kmax")
+        # 渐进加宽相对固定宽度：更晚展开（chance_children 不增）
+        fixed = S.solve(BOARD_MID, strategy="mcts", simulations=600, time_limit=10.0,
+                        rollout_depth=4, seed=5, max_chance_width=8)
+        prog = S.solve(BOARD_MID, strategy="mcts", simulations=600, time_limit=10.0,
+                       rollout_depth=4, seed=5, max_chance_width=8, progressive_widening=True)
+        self.assertLessEqual(prog["chance_children"], fixed["chance_children"] + 1)
+
+    def test_progressive_widening_keeps_spawn_distribution(self):
+        """H1：渐进加宽不得改变真实 spawn 概率（仍为 1/E 均匀 × 0.9/0.1）。
+
+        直接对 sample_spawn 取样计数（descend 与 rollout 共用同一采样器），验证 ≈0.9/0.1。
+        """
+        orig = S.sample_spawn
+        records = []
+
+        def spy(grid, rng, value=None):
+            out = orig(grid, rng, value)
+            records.append(out[2])
+            return out
+
+        S.sample_spawn = spy
+        try:
+            S.solve(BOARD_MID, strategy="mcts", simulations=1500, time_limit=10.0,
+                    rollout_depth=6, seed=21, max_chance_width=8,
+                    progressive_widening=True, cpw=1.0, alpha=0.5)
+        finally:
+            S.sample_spawn = orig
+        n2 = records.count(2)
+        n4 = records.count(4)
+        self.assertGreater(n2 + n4, 1000)
+        p2 = n2 / float(n2 + n4)
+        print("\n[H1] progressive widening spawn 分布：n=%d p(2)=%.4f p(4)=%.4f"
+              % (n2 + n4, p2, 1.0 - p2))
+        self.assertLess(abs(p2 - 0.9), 0.03, "渐进加宽改变了 spawn 分布")
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-强化学习自动玩家（第 5 版 · 对应《第 6 篇》的第 5 类算法）
+强化学习自动玩家（第 5 版 · 对应《第 5 篇》的第 5 类算法）
 
 算法类型（明确）：**on-policy Actor-Critic / REINFORCE（带价值基线 + 熵正则）**，纯 numpy。
     - 特征编码：4×4×16 one-hot（通道 k = 该格指数为 k；k=0 为空格）→ 256 维
@@ -26,10 +26,13 @@
 
 import argparse
 import hashlib
+import json
 import math
 import os
 import random
+import shutil
 import sys
+import time
 
 import numpy as np
 
@@ -42,7 +45,18 @@ DIRECTIONS = _solver.DIRECTIONS
 FEAT_DIM = 16 * 16
 HIDDEN = 128
 N_ACTIONS = len(DIRECTIONS)
-MODEL_SCHEMA = 2        # 存档/模型结构版本（校验用）
+MODEL_SCHEMA = 2        # 当前存档/模型结构版本（校验用）
+LEGACY_SCHEMA = 1       # 旧版(V1，无 _schema 字段)模型，走专用兼容加载路径
+
+# 三个随机数家族（H2）：训练 / 验证 / 独立门禁（holdout）互不相同
+DEFAULT_TRAIN_SEED = 2048
+DEFAULT_VALID_SEED = 12345
+DEFAULT_HOLDOUT_SEED = 777777
+
+EXPECTED_SHAPES = {
+    'W1': (HIDDEN, FEAT_DIM), 'b1': (HIDDEN,), 'W2': (N_ACTIONS, HIDDEN),
+    'b2': (N_ACTIONS,), 'Wv': (1, HIDDEN), 'bv': (1,),
+}
 
 
 # =====================================================================
@@ -172,21 +186,94 @@ def apply_update(net, grads, lr):
 
 
 # =====================================================================
-# 模型存取（含 schema 与形状校验）
+# 模型存取（schema / 形状 / dtype / 有限性校验；原子写 + 版本化备份 + 回滚）
 # =====================================================================
-def save_model(net, path):
-    np.savez(path, **{k: v for k, v in net.items()}, _schema=np.array([MODEL_SCHEMA]))
+def validate_net(net, source='模型'):
+    """检查权重 shape / dtype / NaN-Inf；返回归一化（float32）后的 net 副本。"""
+    out = {}
+    for k, shape in EXPECTED_SHAPES.items():
+        if k not in net:
+            raise ValueError('%s 缺少张量：%s' % (source, k))
+        arr = np.asarray(net[k])
+        if tuple(arr.shape) != shape:
+            raise ValueError('%s 张量 %s 形状不符：期望 %s，实际 %s'
+                             % (source, k, shape, tuple(arr.shape)))
+        if not np.issubdtype(arr.dtype, np.floating):
+            raise ValueError('%s 张量 %s dtype 非浮点：%s' % (source, k, arr.dtype))
+        if not np.all(np.isfinite(arr)):
+            raise ValueError('%s 张量 %s 含 NaN/Inf' % (source, k))
+        out[k] = arr.astype(np.float32)
+    return out
 
 
-def load_model(path):
+def save_model(net, path, meta=None):
+    """把网络写入 path（含 _schema；可选 _meta 训练元数据）。"""
+    payload = {k: np.asarray(v) for k, v in net.items()}
+    payload['_schema'] = np.array([MODEL_SCHEMA])
+    if meta is not None:
+        payload['_meta'] = np.array(json.dumps(meta, ensure_ascii=False))
+    tmp = path + '.tmp.npz'
+    np.savez(tmp, **payload)
+    os.replace(tmp, path)                      # 原子替换（同文件系统）
+
+
+def _read_npz(path):
     with np.load(path) as data:
-        net = {k: data[k].astype(np.float32) for k in data.files if not k.startswith('_')}
-    expect = {'W1': (HIDDEN, FEAT_DIM), 'b1': (HIDDEN,), 'W2': (N_ACTIONS, HIDDEN),
-              'b2': (N_ACTIONS,), 'Wv': (1, HIDDEN), 'bv': (1,)}
-    for k, shape in expect.items():
-        if k not in net or tuple(net[k].shape) != shape:
-            raise ValueError('模型结构与当前网络不匹配：%s 期望 %s' % (k, shape))
-    return net
+        return {k: data[k] for k in data.files}
+
+
+def load_model(path, allow_legacy=False, source=None):
+    """严格加载当前 schema 模型；缺 _schema 的旧模型需 allow_legacy=True（专用兼容路径）。"""
+    src = source or os.path.basename(path)
+    raw = _read_npz(path)
+    if '_schema' in raw:
+        schema = int(np.asarray(raw['_schema']).reshape(-1)[0])
+        if schema != MODEL_SCHEMA:
+            raise ValueError('%s 的 _schema=%d 与当前版本 %d 不符' % (src, schema, MODEL_SCHEMA))
+    else:
+        if not allow_legacy:
+            raise ValueError('%s 缺少 _schema（疑似旧版 V%d 模型）；'
+                             '请改用 load_legacy_model() 或 allow_legacy=True'
+                             % (src, LEGACY_SCHEMA))
+    net = {k: v for k, v in raw.items() if not k.startswith('_')}
+    return validate_net(net, source=src)
+
+
+def load_legacy_model(path):
+    """专用兼容加载路径：读取旧版(V1，无 _schema)模型，校验形状后返回 float32 网络。"""
+    return load_model(path, allow_legacy=True, source='旧版模型(%s)' % os.path.basename(path))
+
+
+def load_meta(path):
+    """读取模型内嵌训练元数据（无则返回 {}）。"""
+    try:
+        raw = _read_npz(path)
+    except (OSError, ValueError):
+        return {}
+    if '_meta' not in raw:
+        return {}
+    try:
+        return json.loads(str(np.asarray(raw['_meta']).reshape(-1)[0]))
+    except (ValueError, TypeError):
+        return {}
+
+
+def versioned_backup(path):
+    """原子替换前的版本化备份：返回备份路径（文件不存在则返回 None）。"""
+    if not os.path.exists(path):
+        return None
+    stamp = time.strftime('%Y%m%d_%H%M%S')
+    bak = '%s.bak.%s.npz' % (path, stamp)
+    shutil.copy2(path, bak)
+    return bak
+
+
+def rollback_model(path, backup):
+    """回滚：用版本化备份覆盖正式模型。"""
+    if not backup or not os.path.exists(backup):
+        raise ValueError('回滚失败：备份不存在 %s' % backup)
+    shutil.copy2(backup, path)
+    return path
 
 
 def file_hash(path):
@@ -236,13 +323,17 @@ def _play_one(net, rng, max_moves=1000):
 # =====================================================================
 # 训练（REINFORCE + 价值基线 + 熵正则；可选 best/latest + 早停）
 # =====================================================================
-def train(games=300, lr=3e-3, gamma=0.98, entropy_beta=2e-3, seed=2048,
+def train(games=300, lr=3e-3, gamma=0.98, entropy_beta=2e-3, seed=DEFAULT_TRAIN_SEED,
           progress=True, max_moves=1000, init=None,
-          eval_every=0, eval_games=30, eval_seed=12345, patience=0):
+          eval_every=0, eval_games=30, eval_seed=DEFAULT_VALID_SEED, patience=0,
+          ckpt_prefix=None, meta=None):
     """训练；返回 (net, stats)。
 
     eval_every>0 时每隔若干局在**固定验证 seed** 上评估一次（与训练 RNG 独立），
-    维护 best/latest 双检查点，并按 patience 早停；返回的 net 为 best（若启用评估）。
+    仅由验证分数选择 best 检查点，并按 patience 早停；返回的 net 为 best（若启用评估）。
+    训练诊断（H2）：每局记录 episode_len / grad_norm / clip_scale / entropy / value_mse，
+    并在 stats['diagnostics'] 汇总（均值 + 裁剪比例）。
+    ckpt_prefix 非空时，落盘 best/latest 两个检查点（含 _schema 与训练元数据）。
     """
     rng = random.Random(seed)
     np_rng = np.random.RandomState(seed)
@@ -254,6 +345,8 @@ def train(games=300, lr=3e-3, gamma=0.98, entropy_beta=2e-3, seed=2048,
     since_improve = 0
     stopped_early = False
     ran = 0
+    diag = {'episode_len': [], 'grad_norm': [], 'clip_scale': [], 'entropy': [],
+            'value_mse': [], 'mean_return': []}
 
     for gi in range(1, games + 1):
         ran = gi
@@ -274,14 +367,28 @@ def train(games=300, lr=3e-3, gamma=0.98, entropy_beta=2e-3, seed=2048,
             returns = np.clip(returns, -5.0, 5.0)
 
             acc = {k: np.zeros_like(net[k]) for k in net}
+            ent_sum = 0.0
+            vmse_sum = 0.0
+            nstep = 0
             for (state_enc, legal, action, _reward), g in zip(traj, returns):
-                grads, _v, _p = compute_gradients(net, state_enc, legal, action,
-                                                  float(g), entropy_beta)
+                grads, v, probs = compute_gradients(net, state_enc, legal, action,
+                                                    float(g), entropy_beta)
                 for k in acc:
                     acc[k] += grads[k]
+                nz = probs[probs > 0]
+                if nz.size:
+                    ent_sum += float(-(nz * np.log(nz)).sum())
+                vmse_sum += float((v - float(g)) ** 2)
+                nstep += 1
             if all(np.all(np.isfinite(g)) for g in acc.values()):
                 n = float(len(returns))
-                apply_update(net, {k: acc[k] / n for k in acc}, lr)
+                total, scale = apply_update(net, {k: acc[k] / n for k in acc}, lr)
+                diag['episode_len'].append(len(traj))
+                diag['grad_norm'].append(float(total / n))
+                diag['clip_scale'].append(float(scale))
+                diag['entropy'].append(ent_sum / max(1, nstep))
+                diag['value_mse'].append(vmse_sum / max(1, nstep))
+                diag['mean_return'].append(float(returns.mean()))
 
         if eval_every and gi % eval_every == 0:
             ev = evaluate(net, games=eval_games, seed=eval_seed)   # 固定验证集（独立 RNG）
@@ -306,43 +413,122 @@ def train(games=300, lr=3e-3, gamma=0.98, entropy_beta=2e-3, seed=2048,
                       sum(recent) / len(recent)))
             if history:
                 msg += '  验证均值=%.1f' % history[-1]['avg']
+            if diag['grad_norm']:
+                msg += '  |g|=%.3f  熵=%.3f' % (diag['grad_norm'][-1], diag['entropy'][-1])
             print(msg, flush=True)
 
     latest = {k: v.copy() for k, v in net.items()}
     chosen = best_net if best_net is not None else latest
+
+    def _avg(xs):
+        return round(sum(xs) / len(xs), 4) if xs else None
+    clip_ratio = (round(sum(1 for s in diag['clip_scale'] if s < 1.0)
+                        / float(len(diag['clip_scale'])), 4) if diag['clip_scale'] else None)
     stats = {'games': ran, 'avg_score': sum(scores) / max(1, len(scores)),
              'best_score': max(scores) if scores else 0,
              'best_eval': None if best_net is None else round(best_eval, 2),
              'history': history, 'stopped_early': stopped_early,
-             'patience_used': since_improve}
+             'patience_used': since_improve,
+             'train_seed': seed, 'valid_seed': eval_seed,
+             'diagnostics': {'episode_len_avg': _avg(diag['episode_len']),
+                             'grad_norm_avg': _avg(diag['grad_norm']),
+                             'entropy_avg': _avg(diag['entropy']),
+                             'value_mse_avg': _avg(diag['value_mse']),
+                             'mean_return_avg': _avg(diag['mean_return']),
+                             'grad_clip_ratio': clip_ratio}}
+
+    if ckpt_prefix:
+        ckpt_meta = dict(meta or {})
+        ckpt_meta.update({'games': ran, 'lr': lr, 'gamma': gamma,
+                          'entropy_beta': entropy_beta, 'train_seed': seed,
+                          'valid_seed': eval_seed, 'best_eval': stats['best_eval'],
+                          'stopped_early': stopped_early})
+        save_model(latest, ckpt_prefix + '.latest.npz', ckpt_meta)
+        save_model(best_net if best_net is not None else latest,
+                   ckpt_prefix + '.best.npz', ckpt_meta)
     return chosen, stats
 
 
-def evaluate(net, games=20, seed=1234, max_moves=1000):
-    """用贪心策略跑若干局，返回 (平均分, 最高分, 最大瓦片)。固定 seed → 可复现验证集。"""
+# ---------------------------------------------------------------------
+# 评估 / 独立门禁（H2：训练 / 验证 / holdout 三个随机数家族分离）
+# ---------------------------------------------------------------------
+def seed_family(base, n):
+    """由基 seed 生成 n 个独立环境种子（同一家族的连续种子）。"""
+    return [int(base) + i for i in range(n)]
+
+
+def play_for_seed(net, seed, max_moves=1000):
+    """在给定环境种子上跑一局贪心评估；返回 (score, max_tile)。"""
     rng = random.Random(seed)
-    scores, tiles = [], []
-    for _ in range(games):
-        grid = _new_game(rng)
-        score = 0
-        for _ in range(max_moves):
-            if _solver.is_game_over(grid):
-                break
-            d = choose(net, grid, rng, epsilon=0.0)
-            if d is None:
-                break
-            new_grid, gain, moved = _solver.move_grid(grid, d)
-            if not moved:
-                break
-            grid = _solver.spawn(new_grid, rng)
-            score += gain
-        scores.append(score)
-        tiles.append(_solver.max_tile(grid))
-    return sum(scores) / max(1, len(scores)), max(scores), max(tiles)
+    grid = _new_game(rng)
+    score = 0
+    for _ in range(max_moves):
+        if _solver.is_game_over(grid):
+            break
+        d = choose(net, grid, rng, epsilon=0.0)
+        if d is None:
+            break
+        new_grid, gain, moved = _solver.move_grid(grid, d)
+        if not moved:
+            break
+        grid = _solver.spawn(new_grid, rng)
+        score += gain
+    return score, _solver.max_tile(grid)
+
+
+def eval_on_seeds(net, seeds, max_moves=1000):
+    """在显式的一批环境种子上评估，返回 [(score, max_tile), ...]（供配对比较）。"""
+    return [play_for_seed(net, sd, max_moves) for sd in seeds]
+
+
+def evaluate(net, games=20, seed=DEFAULT_VALID_SEED, max_moves=1000):
+    """用贪心策略在 seed 家族上跑 games 局，返回 (平均分, 最高分, 最大瓦片)。"""
+    rows = eval_on_seeds(net, seed_family(seed, games), max_moves)
+    scores = [r[0] for r in rows]
+    tiles = [r[1] for r in rows]
+    return sum(scores) / max(1, len(scores)), (max(scores) if scores else 0), \
+        (max(tiles) if tiles else 0)
+
+
+def bootstrap_ci(values, n=2000, alpha=0.05, seed=20260101):
+    """bootstrap 95% CI（与基准脚本一致的实现）。"""
+    if not values:
+        return (float('nan'), float('nan'))
+    rng = random.Random(seed)
+    m = len(values)
+    means = sorted(sum(values[rng.randrange(m)] for _ in range(m)) / m for _ in range(n))
+    return (round(means[int((alpha / 2) * n)], 2),
+            round(means[int((1 - alpha / 2) * n) - 1], 2))
+
+
+def gate_compare(old_net, new_net, games=50, holdout_seed=DEFAULT_HOLDOUT_SEED,
+                 max_moves=1000):
+    """独立 holdout 门禁：同一批环境种子配对比较新旧模型，返回差值 + bootstrap CI。
+
+    部署判据（保守）：配对差值 (new-old) 的 95% CI 下界 > 0 才认为“显著更优”；
+    否则视为差异不足，保持现有正式模型（不强行部署）。
+    """
+    seeds = seed_family(holdout_seed, games)
+    old_rows = eval_on_seeds(old_net, seeds, max_moves)
+    new_rows = eval_on_seeds(new_net, seeds, max_moves)
+    diffs = [n[0] - o[0] for n, o in zip(new_rows, old_rows)]
+    mean_diff = sum(diffs) / max(1, len(diffs))
+    ci = bootstrap_ci(diffs)
+    old_avg = sum(r[0] for r in old_rows) / max(1, len(old_rows))
+    new_avg = sum(r[0] for r in new_rows) / max(1, len(new_rows))
+    return {
+        'games': games, 'holdout_seed': holdout_seed,
+        'seed_range': [seeds[0], seeds[-1]],
+        'old_avg': round(old_avg, 2), 'new_avg': round(new_avg, 2),
+        'mean_diff': round(mean_diff, 2), 'ci95': list(ci),
+        'old_max_tile': max(r[1] for r in old_rows),
+        'new_max_tile': max(r[1] for r in new_rows),
+        'improved': bool(ci[0] > 0.0),
+    }
 
 
 # =====================================================================
-# CLI（训练 + 独立评估门禁：新模型未优于旧模型时不覆盖）
+# CLI（训练 + 独立 holdout 门禁：差异不足时保持正式模型，不强行部署）
 # =====================================================================
 def main():
     ap = argparse.ArgumentParser(description='2048 强化学习（on-policy 策略梯度）自对弈训练')
@@ -350,61 +536,96 @@ def main():
     ap.add_argument('--lr', type=float, default=3e-3)
     ap.add_argument('--gamma', type=float, default=0.98)
     ap.add_argument('--entropy-beta', type=float, default=2e-3)
-    ap.add_argument('--seed', type=int, default=2048)
+    ap.add_argument('--seed', type=int, default=DEFAULT_TRAIN_SEED, help='训练随机数家族种子')
     ap.add_argument('--out', default=os.path.join(_HERE, 'rl_model.npz'))
-    ap.add_argument('--init', default=None, help='从已有模型继续训练（增量）')
+    ap.add_argument('--init', default=None, help='从指定模型初始化权重（新一轮训练）')
+    ap.add_argument('--resume', action='store_true',
+                    help='从 --out 的 latest 检查点续训（保留元数据与 RNG 进度）')
     ap.add_argument('--eval-every', type=int, default=0, help='每 N 局在固定验证集评估一次（0=关闭）')
     ap.add_argument('--eval-games', type=int, default=30)
-    ap.add_argument('--eval-seed', type=int, default=12345)
+    ap.add_argument('--eval-seed', type=int, default=DEFAULT_VALID_SEED,
+                    help='验证随机数家族种子（仅用于 best 选择）')
+    ap.add_argument('--holdout-seed', type=int, default=DEFAULT_HOLDOUT_SEED,
+                    help='独立门禁(holdout)随机数家族种子（仅用于新旧模型替换判据）')
+    ap.add_argument('--gate-games', type=int, default=50, help='独立门禁评估局数')
     ap.add_argument('--patience', type=int, default=0, help='验证连续未提升多少次后早停（0=关闭）')
     ap.add_argument('--eval-only', action='store_true')
     ap.add_argument('--model', default=os.path.join(_HERE, 'rl_model.npz'))
-    ap.add_argument('--force', action='store_true', help='跳过独立评估门禁直接覆盖 --out')
+    ap.add_argument('--force', action='store_true', help='跳过独立门禁直接覆盖 --out')
     args = ap.parse_args()
 
     if args.eval_only:
         net = load_model(args.model)
         avg, best, tile = evaluate(net, games=max(args.eval_games, 50), seed=args.eval_seed)
-        print('评估：平均分=%.1f  最高分=%d  最大瓦片=%d' % (avg, best, tile))
+        print('评估（验证家族 seed=%d）：平均分=%.1f  最高分=%d  最大瓦片=%d'
+              % (args.eval_seed, avg, best, tile))
         return
 
-    init_net_ = load_model(args.init) if args.init else None
-    print('开始自对弈训练：局数=%d lr=%s gamma=%s 评估间隔=%s 早停=%s%s'
+    # 三个随机数家族必须互不相同（训练 / 验证 / holdout）
+    families = {args.seed, args.eval_seed, args.holdout_seed}
+    if len(families) < 3:
+        raise SystemExit('错误：训练(--seed) / 验证(--eval-seed) / 门禁(--holdout-seed) '
+                         '必须使用互不相同的随机数家族种子：%s' % sorted(families))
+
+    # 初始化权重：--resume 优先（从 --out 续训），否则 --init，否则全新初始化
+    resume_meta = {}
+    if args.resume:
+        if not os.path.exists(args.out):
+            raise SystemExit('错误：--resume 需要已存在的 --out 模型：%s' % args.out)
+        init_net_ = load_model(args.out, allow_legacy=True)
+        resume_meta = load_meta(args.out)
+        print('断点续训：基于 %s（历史元数据 games=%s best_eval=%s）'
+              % (os.path.basename(args.out), resume_meta.get('games'),
+                 resume_meta.get('best_eval')))
+    elif args.init:
+        init_net_ = load_model(args.init, allow_legacy=True)
+        print('增量训练：基于 %s' % os.path.basename(args.init))
+    else:
+        init_net_ = None
+
+    print('开始自对弈训练：局数=%d lr=%s gamma=%s 评估间隔=%s 早停=%s ｜ seed: train=%d valid=%d holdout=%d'
           % (args.games, args.lr, args.gamma, args.eval_every or 'off', args.patience or 'off',
-             '（增量，基于 %s）' % os.path.basename(args.init) if args.init else ''))
+             args.seed, args.eval_seed, args.holdout_seed))
+
+    ckpt_prefix = os.path.splitext(args.out)[0]
     net, stats = train(games=args.games, lr=args.lr, gamma=args.gamma,
                        entropy_beta=args.entropy_beta, seed=args.seed,
                        init=init_net_, eval_every=args.eval_every,
                        eval_games=args.eval_games, eval_seed=args.eval_seed,
-                       patience=args.patience)
+                       patience=args.patience, ckpt_prefix=ckpt_prefix,
+                       meta={'resumed_from': os.path.basename(args.out) if args.resume else None})
 
-    # 候选模型先落盘到隔离路径
+    validate_net(net, source='候选模型')                      # 落盘前再校验一次
     cand = os.path.join(os.path.dirname(args.out) or '.', 'rl_model.candidate.npz')
-    save_model(net, cand)
-    new_eval = evaluate(net, games=max(args.eval_games, 50), seed=args.eval_seed)
+    save_model(net, cand, meta={'train_seed': args.seed, 'valid_seed': args.eval_seed,
+                                'holdout_seed': args.holdout_seed, 'games': stats['games'],
+                                'best_eval': stats['best_eval']})
 
-    # 独立评估门禁：只有不劣于旧模型才替换正式模型
+    # 独立 holdout 门禁：同一批独立环境种子配对比较新旧模型
     if os.path.exists(args.out) and not args.force:
-        old = load_model(args.out)
-        old_eval = evaluate(old, games=max(args.eval_games, 50), seed=args.eval_seed)
-        print('旧模型评估：均值=%.1f 最大瓦片=%d ｜ 新模型评估：均值=%.1f 最大瓦片=%d'
-              % (old_eval[0], old_eval[2], new_eval[0], new_eval[2]))
-        if new_eval[0] < old_eval[0]:
-            print('门禁：新模型未优于旧模型 → 保留旧模型（候选存于 %s）' % os.path.basename(cand))
+        old = load_model(args.out, allow_legacy=True)
+        gate = gate_compare(old, net, games=max(args.gate_games, 50),
+                            holdout_seed=args.holdout_seed)
+        print('独立门禁（holdout seed=%d，%d 局配对）：旧均值=%.1f 新均值=%.1f '
+              '差值=%.2f CI95=%s 显著更优=%s'
+              % (gate['holdout_seed'], gate['games'], gate['old_avg'], gate['new_avg'],
+                 gate['mean_diff'], gate['ci95'], gate['improved']))
+        if not gate['improved']:
+            print('门禁：差异不足（CI 下界未 >0）→ 保持现有正式模型，不部署候选（候选存于 %s）'
+                  % os.path.basename(cand))
             print('训练统计：', {k: v for k, v in stats.items() if k != 'history'})
             return
-        prev = args.out + '.prev.npz'
-        if not os.path.exists(prev):
-            import shutil
-            shutil.copy2(args.out, prev)
-        print('门禁：新模型优于旧模型（+%.1f）→ 替换正式模型（旧模型备份 %s）'
-              % (new_eval[0] - old_eval[0], os.path.basename(prev)))
+        bak = versioned_backup(args.out)                      # 版本化备份后再原子替换
+        print('门禁：候选显著更优（+%.2f，CI95=%s）→ 原子替换正式模型；旧模型备份=%s'
+              % (gate['mean_diff'], gate['ci95'],
+                 os.path.basename(bak) if bak else '无'))
 
-    import shutil
-    shutil.copy2(cand, args.out)
+    save_model(net, args.out, meta={'train_seed': args.seed, 'valid_seed': args.eval_seed,
+                                    'holdout_seed': args.holdout_seed, 'games': stats['games'],
+                                    'best_eval': stats['best_eval']})
     print('正式模型已更新：%s（SHA256=%s）' % (args.out, file_hash(args.out)[:16]))
-    print('新模型评估：均值=%.1f 最高分=%d 最大瓦片=%d' % new_eval)
     print('训练统计：', {k: v for k, v in stats.items() if k != 'history'})
+    print('训练诊断：', stats['diagnostics'])
 
 
 if __name__ == '__main__':

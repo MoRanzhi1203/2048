@@ -120,6 +120,31 @@ class ExpectimaxReferenceTest(unittest.TestCase):
             else:
                 self.assertAlmostEqual(res["evaluations"][d], ref[d], delta=TOL)
 
+    def test_expectimax_score_weight_root_gain(self):
+        """H1 修复：根节点必须与内部 MAX 节点同口径地计入 score_weight*本步合并分。
+
+        BOARDS 中的盘面在根处无任何合并（gain=0），会掩盖“根漏记 gain”的错误；这里使用
+        根处必现合并的盘面（gain>0），对 depth∈{1,2,3} × score_weight∈{0,0.5,1,2}
+        与独立精确参考逐一对照（delta=TOL）。
+        """
+        grid = [[2, 2, 4, 4], [8, 8, 16, 16], [0, 0, 0, 0], [0, 0, 0, 2]]
+        # 先确认该盘面在根处确有合并分，否则无法暴露该错误
+        probe = max(g for d in S.DIRECTIONS
+                    for _ng, g, mv in [S.move_grid(grid, d)] if mv)
+        self.assertGreater(probe, 0, "探针盘面根处应存在合并分")
+        for depth in (1, 2, 3):
+            for sw in (0.0, 0.5, 1.0, 2.0):
+                res = S.solve(grid, strategy="expectimax", depth=depth, time_limit=5.0,
+                              prune=False, score_weight=sw)
+                ref = exact_root(grid, depth, sw=sw)
+                for d in S.DIRECTIONS:
+                    if ref[d] is None:
+                        self.assertIsNone(res["evaluations"][d])
+                    else:
+                        self.assertAlmostEqual(res["evaluations"][d], ref[d], delta=TOL,
+                                               msg="depth=%d sw=%s d=%s" % (depth, sw, d))
+
+
     # ---------------- E02：TT 透明（不改变结果） ----------------
     def test_tt_is_transparent_without_cutoff(self):
         for grid in BOARDS:

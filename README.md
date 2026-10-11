@@ -19,7 +19,7 @@
 │   ├── v4_pyqt_2048_animated.py      #   主程序（分层渲染 + 定时器插值动画）
 │   ├── screenshots/                  #   启动页 / 悬停与合并粒子 / 游戏页整窗截图
 │   └── game_history/                 #   对局存档（运行时生成）
-├── v5_pyqt_2048_solver/              # 第 6 篇：算法求解版（复用第 4 篇界面，增量扩展）
+├── v5_pyqt_2048_solver/              # 第 5 篇：算法求解版（复用第 4 篇界面，增量扩展）
 │   ├── v5_pyqt_2048_solver.py        #   主程序（继承第 4 版 MainWindow + 左右双栏求解工作台）
 │   ├── solver_2048.py                #   求解算法核心（启发式/贪心模拟/Expectimax/MCTS/强化学习，含剪枝）
 │   ├── rl_2048.py                    #   强化学习：numpy 策略/价值网络 + 自对弈策略梯度训练
@@ -57,7 +57,7 @@
 | **v2** | `v2_console_2048_with_history/` | `v2_console_2048_with_history.py` | 第 2 篇 | 控制台版 + 历史记录/续玩 |
 | **v3** | `v3_pyqt_2048/` | `v3_pyqt_2048_with_history.py` | 第 3 篇 | PyQt5 桌面版（MVC + 撤销/重做） |
 | **v4** | `v4_pyqt_2048_animated/` | `v4_pyqt_2048_animated.py` | 第 4 篇 | PyQt5 动画版（复用 v3 的 GameCore） |
-| **v5** | `v5_pyqt_2048_solver/` | `v5_pyqt_2048_solver.py` | 第 6 篇 | PyQt5 算法求解版（v4 界面 + **V5.1 左右双栏**求解工作台） |
+| **v5** | `v5_pyqt_2048_solver/` | `v5_pyqt_2048_solver.py` | 第 5 篇 | PyQt5 算法求解版（v4 界面 + **V5.1 左右双栏**求解工作台） |
 
 > 版本号顺序与系列博客一致；v4 通过 `sys.path` 复用 v3 的 `GameCore`（`from v3_pyqt_2048_with_history import GameCore`），v5 复用 v4 的界面与模型（`import v4_pyqt_2048_animated`）。
 
@@ -87,7 +87,7 @@ python v3_pyqt_2048/v3_pyqt_2048_with_history.py
 # 第 4 篇：PyQt5 动画版
 python v4_pyqt_2048_animated/v4_pyqt_2048_animated.py
 
-# 第 6 篇：PyQt5 算法求解版（第 5 版）
+# 第 5 篇：PyQt5 算法求解版（第 5 版）
 python v5_pyqt_2048_solver/v5_pyqt_2048_solver.py
 
 # 强化学习：训练 / 评估模型（需 numpy）

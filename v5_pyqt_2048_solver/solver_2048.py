@@ -5,7 +5,7 @@
 
 与界面完全解耦：只对 4×4 网格（list[list[int]]）做纯函数运算，可单独导入测试。
 
-包含 5 类策略（对应《第 6 篇：经典算法求解 2048》的讲解顺序）：
+包含 5 类策略（对应《第 5 篇：经典算法求解 2048》的讲解顺序）：
     1) heuristic   规则 / 启发式策略（monotonicity、smoothness、max-in-corner …，单步贪心）
     2) rollout     贪心模拟 / 随机模拟（lookahead with rollout，低成本）
     3) expectimax  带期望的 minimax（对随机新方块做期望分支，含剪枝）
@@ -525,7 +525,9 @@ def _expectimax_decision(grid, max_depth, time_limit, weights=None, prune=True,
 
     def tt_key(g, depth, kind, p):
         if use_cutoff:
-            return (state_key(g), depth, kind, round(p, 9))   # 含路径概率，避免隐藏上下文依赖
+            # 含**精确**路径概率：截断判断依赖 p，用近似舍入会把不同 p 误判为同一上下文
+            # （导致错误复用）。用精确浮点键只可能更细分缓存，不会造成错误命中。
+            return (state_key(g), depth, kind, p)
         return (state_key(g), depth, kind)
 
     def max_node(g, depth, p):
@@ -616,9 +618,11 @@ def _expectimax_decision(grid, max_depth, time_limit, weights=None, prune=True,
         evaluations = {}
         best_dir, best_value = None, -float('inf')
         completed = True
-        for direction, new_grid, _gain in _ordered_moves(grid, weights,
-                                                         order=(bool(prune) and move_order)):
-            value = chance_node(new_grid, d - 1, 1.0)
+        for direction, new_grid, gain in _ordered_moves(grid, weights,
+                                                        order=(bool(prune) and move_order)):
+            # 根节点与其它 MAX 节点同口径：value = score_weight*本步合并分 + 后续期望价值
+            # （H1 修复：此前根节点漏掉了 score_weight*gain，导致声明 score_weight>0 时根不一致）
+            value = score_weight * gain + chance_node(new_grid, d - 1, 1.0)
             if ctx['timed_out']:
                 completed = False
                 break
@@ -690,7 +694,7 @@ class _MCTSNode(object):
 
 def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
                    weights=None, seed=DEFAULT_SEED, c=1.4, max_chance_width=8,
-                   trace=None):
+                   trace=None, progressive_widening=False, cpw=1.0, alpha=0.5):
     """MCTS（UCT + 渐进加宽 + rollout 截断）。
 
     状态与顺序（显式区分，不做局面猜测）：
@@ -698,21 +702,45 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
         生成后的局面（含新块）是 CHANCE 节点的子节点，且 child.kind='P'（下一回合由玩家行动）。
     机会节点（M01/M02 修复）：
         每次按**真实转移分布**采样一次 (空位均匀 1/E × 0.9/0.1)，用“结果局面”作为子节点 key：
-        命中已缓存子节点则复用（不重复加不等价权重），未命中才新增（受 max_chance_width 限制）。
+        命中已缓存子节点则复用（不重复加不等价权重），未命中才新增（受宽度上限限制）。
+    搜索路径与回传（H1 修复，关键）：
+        descend() 返回 **从 root 到叶子的显式路径**；无论是否触发宽度上限，都沿该路径回传。
+        - 触发宽度上限时**不再构造“无 parent 的临时节点”**（旧实现在此会丢弃回传，
+          导致“已计入 completed 但未累加到 root”），而是直接对真实采样局面 rollout，
+          再把 return 沿 root→…→机会节点 路径回传（spawn 概率口径完全不变）。
+        - 不变量：root_visits == completed_simulations == backpropagated_simulations，
+          且根各合法动作访问次数之和 == root_visits。
     收益口径（M03 修复）：
         统一为“从根到叶/截断点的累计合并分 + 截断处启发式估值”，所有候选动作同一尺度，
         回传时把同一 return 累加到整条路径（不做跨深度的口径混用）。
+    渐进加宽（固定宽度回传修复验证通过后实施）：
+        progressive_widening=True 时，机会节点宽度上限为
+            K(N) = min(Kmax, max(1, ceil(cpw * N ** alpha)))
+        N 为该机会节点已访问次数；N=0 时 K=1，随访问增长扩展至 Kmax。
+        宽度只决定“是否新增子节点”，不改变采样分布（仍按真实 1/E × 0.9/0.1 采样），
+        因此不改变真实 spawn 概率。
     """
     start = time.time()
     rng = random.Random(seed)
+    kmax = max(1, int(max_chance_width))
+    progressive = bool(progressive_widening)
     stats = {'tree_nodes': 0, 'chance_nodes': 0, 'chance_children': 0,
-             'rollout_steps': 0, 'reused_children': 0, 'no_spawn_leaves': 0}
+             'rollout_steps': 0, 'reused_children': 0, 'no_spawn_leaves': 0,
+             'width_limit_rollouts': 0}
 
     def ucb(parent, child):
         if child.visits == 0:
             return float('inf')
         return child.total_return / child.visits + c * math.sqrt(
             math.log(max(1, parent.visits)) / child.visits)
+
+    def chance_width(node):
+        """机会节点的子节点宽度上限：固定 Kmax 或渐进加宽 K(N)=min(Kmax,max(1,ceil(cpw*N**alpha)))。"""
+        if not progressive:
+            return kmax
+        n = max(1, node.visits)
+        k = int(math.ceil(cpw * (n ** alpha)))
+        return max(1, min(kmax, k))
 
     def rollout(g, kind, acc):
         """按节点类型正确起步：CHANCE 先按分布生成新块；PLAYER 先移动再生成。
@@ -731,9 +759,16 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
             stats['rollout_steps'] += 1
         return acc + evaluate(g, weights)
 
-    def descend(node, acc):
-        """选择 + 扩展，返回 (叶子节点, 到达该节点的累计分)。"""
+    def descend(root_node):
+        """选择 + 扩展；返回 (叶子盘面, 叶子类型, 从 root 到叶子的显式路径, 累计分)。
+
+        路径保证包含 root：每一次 simulation 都能沿该路径回传到 root（H1 修复）。
+        """
+        node = root_node
+        acc = 0.0
+        path = []
         while True:
+            path.append(node)
             if node.kind == 'P':
                 if node.untried:
                     d = node.untried.pop(0)
@@ -745,9 +780,10 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
                     stats['chance_nodes'] += 1
                     if trace is not None:
                         trace.append(('P', d, node.kind))
-                    return child, acc + gain
+                    path.append(child)
+                    return child.grid, child.kind, path, acc + gain
                 if not node.children:
-                    return node, acc
+                    return node.grid, node.kind, path, acc
                 nxt = max(node.children, key=lambda ch: ucb(node, ch))
                 acc += nxt.edge_gain            # 补上该边的即时合并分（统一累计口径）
                 node = nxt
@@ -755,16 +791,18 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
                 cells = empty_cells(node.grid)
                 if not cells:
                     stats['no_spawn_leaves'] += 1
-                    return node, acc
+                    return node.grid, node.kind, path, acc
                 child_grid, cell, value = sample_spawn(node.grid, rng)
                 if trace is not None:
                     trace.append(('C', cell, value, node.kind))
                 key = tuple(tuple(row) for row in child_grid)
                 child = node.child_index.get(key)
                 if child is None:
-                    if len(node.children) >= max_chance_width:
-                        # 渐进加宽上限：不再新增节点，直接对该局面 rollout（不破坏概率）
-                        return _MCTSNode(child_grid, 'P'), acc
+                    if len(node.children) >= chance_width(node):
+                        # 宽度上限：不新增节点、不构造无 parent 临时节点；
+                        # 直接对真实采样局面 rollout，并把 return 沿 root→…→本机会节点 回传。
+                        stats['width_limit_rollouts'] += 1
+                        return child_grid, 'P', path, acc
                     child = _MCTSNode(child_grid, 'P', node, None,
                                       untried=_ordered_dirs(child_grid, weights))
                     node.children.append(child)
@@ -776,38 +814,51 @@ def _mcts_decision(grid, simulations=200, time_limit=0.3, rollout_depth=16,
                 node = child
 
     root = _MCTSNode([row[:] for row in grid], 'P', untried=_ordered_dirs(grid, weights))
-    sims = 0
-    while sims < max(1, simulations) and (time.time() - start) <= time_limit:
-        leaf, acc = descend(root, 0.0)
-        value = rollout(leaf.grid, leaf.kind, acc)
-        node = leaf
-        while node is not None:
-            node.visits += 1
-            node.total_return += value
-            node = node.parent
-        sims += 1
+    total = max(1, simulations)
+    completed = 0
+    backpropagated = 0
+    while completed < total and (time.time() - start) <= time_limit:
+        leaf_grid, leaf_kind, path, acc = descend(root)
+        value = rollout(leaf_grid, leaf_kind, acc)
+        for n in path:                       # 沿显式路径回传，绝不丢弃 simulation
+            n.visits += 1
+            n.total_return += value
+        backpropagated += 1
+        completed += 1
 
     evaluations = {}
+    root_move_visits = {}
     best_dir, best_value = None, -float('inf')
     for child in root.children:
         if child.visits == 0:
             continue
         mean = child.total_return / child.visits
         evaluations[child.move] = mean
+        root_move_visits[child.move] = child.visits
         if mean > best_value:
             best_value, best_dir = mean, child.move
     for d in DIRECTIONS:
         evaluations.setdefault(d, None)
+        root_move_visits.setdefault(d, 0)
 
-    timed_out = sims < max(1, simulations)
+    timed_out = completed < total
     return _result('mcts', best_dir, evaluations, rollout_depth, stats['tree_nodes'], start,
                    timed_out=timed_out,
-                   extra={'simulations': sims, 'rollout_depth': rollout_depth,
+                   extra={'simulations': completed,
+                          'completed_simulations': completed,
+                          'backpropagated_simulations': backpropagated,
+                          'root_visits': root.visits,
+                          'root_move_visits': root_move_visits,
+                          'width_limit_rollouts': stats['width_limit_rollouts'],
+                          'rollout_depth': rollout_depth,
                           'chance_nodes': stats['chance_nodes'],
                           'chance_children': stats['chance_children'],
                           'reused_chance_children': stats['reused_children'],
                           'rollout_steps': stats['rollout_steps'],
-                          'max_chance_width': max_chance_width, 'uct_c': c})
+                          'max_chance_width': kmax,
+                          'progressive_widening': progressive,
+                          'cpw': cpw, 'alpha': alpha,
+                          'uct_c': c})
 
 
 def _ordered_dirs(grid, weights):
@@ -912,7 +963,10 @@ def solve(grid, strategy='expectimax', **options):
                 seed=int(options.get('seed', DEFAULT_SEED)),
                 c=float(options.get('c', 1.4)),
                 max_chance_width=int(options.get('max_chance_width', 8)),
-                trace=options.get('trace'))
+                trace=options.get('trace'),
+                progressive_widening=bool(options.get('progressive_widening', False)),
+                cpw=float(options.get('cpw', 1.0)),
+                alpha=float(options.get('alpha', 0.5)))
         if strategy == 'rl':
             return _rl_decision(grid, model_path=options.get('model_path'), weights=weights)
         return _error_result(strategy, '未知策略：%s' % strategy)

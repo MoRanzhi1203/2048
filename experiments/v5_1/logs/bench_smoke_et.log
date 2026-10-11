@@ -1,0 +1,68 @@
+﻿基准开始：策略=['heuristic', 'rollout', 'expectimax', 'mcts', 'rl'] 局数/策略=10 预算=equal_time 强度=normal seed_base=1000
+  [heuristic] seed=1000 score=10520 tile=1024 moves=600 avg=0.20ms
+  [heuristic] seed=1001 score=7800 tile=512 moves=518 avg=0.21ms
+  [heuristic] seed=1002 score=6448 tile=512 moves=455 avg=0.24ms
+  [heuristic] seed=1003 score=10428 tile=1024 moves=600 avg=0.23ms
+  [heuristic] seed=1004 score=6272 tile=512 moves=443 avg=0.20ms
+  [heuristic] seed=1005 score=7384 tile=512 moves=513 avg=0.24ms
+  [heuristic] seed=1006 score=3228 tile=256 moves=272 avg=0.25ms
+  [heuristic] seed=1007 score=10844 tile=1024 moves=600 avg=0.26ms
+  [heuristic] seed=1008 score=10376 tile=1024 moves=600 avg=0.25ms
+  [heuristic] seed=1009 score=10852 tile=1024 moves=600 avg=0.22ms
+  [rollout] seed=1000 score=10852 tile=1024 moves=600 avg=14.82ms
+  [rollout] seed=1001 score=10396 tile=1024 moves=600 avg=14.84ms
+  [rollout] seed=1002 score=10836 tile=1024 moves=600 avg=14.68ms
+  [rollout] seed=1003 score=10440 tile=1024 moves=600 avg=14.92ms
+  [rollout] seed=1004 score=10868 tile=1024 moves=600 avg=14.81ms
+  [rollout] seed=1005 score=10480 tile=1024 moves=600 avg=15.57ms
+  [rollout] seed=1006 score=10844 tile=1024 moves=600 avg=13.13ms
+  [rollout] seed=1007 score=10460 tile=1024 moves=600 avg=12.30ms
+  [rollout] seed=1008 score=10444 tile=1024 moves=600 avg=12.46ms
+  [rollout] seed=1009 score=10396 tile=1024 moves=600 avg=11.79ms
+  [expectimax] seed=1000 score=10484 tile=1024 moves=600 avg=34.97ms
+  [expectimax] seed=1001 score=10848 tile=1024 moves=600 avg=37.10ms
+  [expectimax] seed=1002 score=10924 tile=1024 moves=600 avg=37.16ms
+  [expectimax] seed=1003 score=10920 tile=1024 moves=600 avg=38.67ms
+  [expectimax] seed=1004 score=10916 tile=1024 moves=600 avg=32.14ms
+  [expectimax] seed=1005 score=10916 tile=1024 moves=600 avg=28.60ms
+  [expectimax] seed=1006 score=10468 tile=1024 moves=600 avg=32.44ms
+  [expectimax] seed=1007 score=10404 tile=1024 moves=600 avg=30.32ms
+  [expectimax] seed=1008 score=10608 tile=1024 moves=600 avg=32.28ms
+  [expectimax] seed=1009 score=10472 tile=1024 moves=600 avg=32.03ms
+  [mcts] seed=1000 score=7124 tile=512 moves=491 avg=50.49ms
+  [mcts] seed=1001 score=3440 tile=256 moves=286 avg=50.53ms
+  [mcts] seed=1002 score=7096 tile=512 moves=474 avg=50.54ms
+  [mcts] seed=1003 score=7452 tile=512 moves=515 avg=50.58ms
+  [mcts] seed=1004 score=7100 tile=512 moves=485 avg=50.58ms
+  [mcts] seed=1005 score=10408 tile=1024 moves=600 avg=50.55ms
+  [mcts] seed=1006 score=7572 tile=512 moves=515 avg=50.56ms
+  [mcts] seed=1007 score=10356 tile=1024 moves=600 avg=50.55ms
+  [mcts] seed=1008 score=7092 tile=512 moves=489 avg=50.53ms
+  [mcts] seed=1009 score=10560 tile=1024 moves=600 avg=50.52ms
+  [rl] seed=1000 score=988 tile=64 moves=117 avg=2.16ms
+  [rl] seed=1001 score=1636 tile=128 moves=172 avg=2.01ms
+  [rl] seed=1002 score=1052 tile=128 moves=113 avg=1.92ms
+  [rl] seed=1003 score=4008 tile=256 moves=322 avg=2.00ms
+  [rl] seed=1004 score=756 tile=64 moves=102 avg=2.07ms
+  [rl] seed=1005 score=1476 tile=128 moves=153 avg=1.97ms
+  [rl] seed=1006 score=1260 tile=128 moves=142 avg=2.05ms
+  [rl] seed=1007 score=1800 tile=128 moves=172 avg=2.02ms
+  [rl] seed=1008 score=764 tile=64 moves=103 avg=2.99ms
+  [rl] seed=1009 score=1224 tile=128 moves=133 avg=2.03ms
+
+=== 汇总（equal_time, 10 局/策略） ===
+  strategy         avg   median p10/p90      std      ci95    tile    avgMs   p95Ms   p99Ms simsAvg    err
+  expectimax   10696.0  10728.0 10404/10920   215.0 (10561.2, 10822.0)    1024  33.571  51.040  51.552       -      0
+  heuristic     8415.2   9088.0 3228/10844  2469.3 (6780.8, 9794.0)    1024   0.229   0.483   0.754       -      0
+  mcts          7820.0   7288.0 3440/10408  2051.2 (6482.8, 8955.2)    1024  50.542  51.439  52.002      89      0
+  rl            1496.4   1242.0 756/1800   899.5 (1052.4, 2102.0)     256   2.121   4.677   5.939       -      0
+  rollout      10601.6  10470.0 10396/10852   204.4 (10473.2, 10727.2)    1024  13.932  21.426  31.731       -      0
+
+  配对差值（相对 heuristic，同 seed）:
+    rollout     mean= +2186.4  ci95=[678.0, 3832.0]  n=10
+    expectimax  mean= +2280.8  ci95=[761.2, 3874.4]  n=10
+    mcts        mean=  -595.2  ci95=[-2252.8, 1170.8]  n=10
+    rl          mean= -6918.8  ci95=[-8356.8, -5404.4]  n=10
+
+原始数据：experiments\v5_1\results\benchmark_equal_time_10g_smoke_et_20261011_054006.json / experiments\v5_1\results\benchmark_equal_time_10g_smoke_et_20261011_054006.csv
+耗时 545.9s

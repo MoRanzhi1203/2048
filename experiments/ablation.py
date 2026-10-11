@@ -45,6 +45,7 @@ def suite_expectimax():
 
 def suite_mcts():
     # 统一 0.05s 时间预算（smoke 可承受）；次数/宽度为自变量。
+    # 说明：H1 已修复“宽度上限触发时丢弃回传”的错误，并新增渐进加宽 K(N)。
     base = {"time_limit": 0.05, "rollout_depth": 8}
     return "mcts", [
         ("sims=50", dict(base, simulations=50, max_chance_width=8, c=1.4)),
@@ -54,6 +55,10 @@ def suite_mcts():
         ("width=4", dict(base, simulations=200, max_chance_width=4, c=1.4)),
         ("c=0.5", dict(base, simulations=200, max_chance_width=8, c=0.5)),
         ("c=3.0", dict(base, simulations=200, max_chance_width=8, c=3.0)),
+        ("pw cpw=1.0 a=0.5", dict(base, simulations=200, max_chance_width=8,
+                                  progressive_widening=True, cpw=1.0, alpha=0.5)),
+        ("pw cpw=0.5 a=0.5", dict(base, simulations=200, max_chance_width=8,
+                                  progressive_widening=True, cpw=0.5, alpha=0.5)),
     ]
 
 
@@ -72,6 +77,7 @@ def suite_heuristic():
         ("-corner", {"weights": wm(corner=0.0)}),
         ("+snake(1.0)", {"weights": wm(snake=1.0)}),
         ("+danger(1.0)", {"weights": wm(danger=1.0)}),
+        ("+snake+danger", {"weights": wm(snake=1.0, danger=1.0)}),
     ]
 
 
@@ -95,10 +101,11 @@ SUITES = {"expectimax": suite_expectimax, "mcts": suite_mcts,
 
 
 # ---------------------------------------------------------------------
-def run_variant(strategy, name, kwargs, seeds):
+def run_variant(strategy, name, kwargs, seeds, max_moves=B.MAX_MOVES):
     rows = []
     for sd in seeds:
-        rows.append(B.play_game_with(strategy, sd, kwargs, preset=name, budget="ablation"))
+        rows.append(B.play_game_with(strategy, sd, kwargs, max_moves=max_moves,
+                                     preset=name, budget="ablation"))
     return rows
 
 
@@ -106,11 +113,17 @@ def main():
     ap = argparse.ArgumentParser(description="消融实验")
     ap.add_argument("--suite", choices=list(SUITES) + ["all"], default="all")
     ap.add_argument("--games", type=int, default=10)
+    ap.add_argument("--seed-base", type=int, default=2000)
+    ap.add_argument("--out-dir", default=B.RESULTS_DIR,
+                    help="结果目录（V5.1 用 experiments/v5_1/results）")
+    ap.add_argument("--max-moves", type=int, default=B.MAX_MOVES,
+                    help="每局最大步数上限（有界 horizon，用于控制实验耗时）")
     args = ap.parse_args()
 
     suites = list(SUITES) if args.suite == "all" else [args.suite]
-    seeds = [2000 + i for i in range(args.games)]
-    out = {"meta": B.env_meta(), "games": args.games, "seeds": seeds, "suites": {}}
+    seeds = [args.seed_base + i for i in range(args.games)]
+    out = {"meta": B.env_meta(), "games": args.games, "seeds": seeds,
+           "max_moves": args.max_moves, "suites": {}}
 
     for suite in suites:
         strategy, variants = SUITES[suite]()
@@ -119,7 +132,7 @@ def main():
         all_rows = []
         for name, kwargs in variants:
             t0 = time.time()
-            rows = run_variant(strategy, name, kwargs, seeds)
+            rows = run_variant(strategy, name, kwargs, seeds, args.max_moves)
             all_rows.extend(rows)
             st = B.summarize(rows)[strategy]
             print("  %-16s avg=%7.1f median=%6.1f std=%6.1f ci95=%-16s tile=%4d h512=%5.1f%% "
@@ -146,9 +159,9 @@ def main():
                 print("    %-16s mean=%+8.1f ci95=%s n=%d"
                       % (name, d["mean_diff"], d["ci95"], d["n"]))
 
-    os.makedirs(B.RESULTS_DIR, exist_ok=True)
+    os.makedirs(args.out_dir, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    base = os.path.join(B.RESULTS_DIR, "ablation_%s_%dg_%s" % (args.suite, args.games, stamp))
+    base = os.path.join(args.out_dir, "ablation_%s_%dg_%s" % (args.suite, args.games, stamp))
     with open(base + ".json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
     print("\n消融原始数据：%s.json" % base)

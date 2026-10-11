@@ -3,7 +3,7 @@
 """
 PyQt5 图形界面版 2048：算法求解版（第 5 版）
 
-配套博客《第 6 篇：经典算法求解 2048》。
+配套博客《第 5 篇：经典算法求解 2048》。
 
 设计要点（V5.1：左侧 GamePanel + 右侧可拖动/可折叠 Solver 工作台）：
     Model       -> 复用第 4 版 AnimatedGameCore（棋盘 / 合并 / 存档 / 撤销重做一行未改），
@@ -30,6 +30,7 @@ import datetime
 import json
 import os
 import sys
+import threading
 import time
 
 # ---- 复用第 4 版的界面与模型（v5 不改动它们） ----
@@ -467,16 +468,27 @@ def session_rows(session):
 # 后台求解线程：把“可能耗时”的搜索移出 UI 线程，界面始终可响应
 # =====================================================================
 class SolverWorker(QObject):
-    solved = pyqtSignal(dict)
-    failed = pyqtSignal(str)
+    """后台求解工作对象（H3：携带 job_id + 协作式取消）。
 
-    @pyqtSlot(list, dict)
-    def solve(self, grid, config):
+    - 求解前/后都检查取消令牌；已取消则**不返回任何结果**（协作式取消，绝不使用
+      QThread.terminate()）；
+    - 结果/失败信号都携带 job_id，供界面做“任务身份 + 棋盘快照”校验，丢弃过期结果。
+    """
+    solved = pyqtSignal(int, dict)
+    failed = pyqtSignal(int, str)
+
+    @pyqtSlot(int, list, dict, object)
+    def solve(self, job_id, grid, config, cancel_event):
+        if cancel_event is not None and cancel_event.is_set():
+            return
         try:
             result = solver.solve(grid, **config)
-            self.solved.emit(result)
-        except Exception as exc:                                      # noqa: BLE001
-            self.failed.emit("%s: %s" % (type(exc).__name__, exc))
+            if cancel_event is not None and cancel_event.is_set():
+                return                                        # 求解期间被取消：丢弃结果
+            self.solved.emit(job_id, result)
+        except Exception as exc:                              # noqa: BLE001
+            if cancel_event is None or not cancel_event.is_set():
+                self.failed.emit(job_id, "%s: %s" % (type(exc).__name__, exc))
 
 
 # =====================================================================
@@ -630,7 +642,8 @@ class SolverResultsDialog(QDialog):
 class SolverMainWindow(v4.MainWindow):
 
     # 主线程 -> 工作线程 的求解请求（跨线程自动排队）
-    solveRequested = pyqtSignal(list, dict)
+    # (job_id, grid 快照, config, 取消令牌)
+    solveRequested = pyqtSignal(int, list, dict, object)
 
     def __init__(self):
         super().__init__()
@@ -779,6 +792,11 @@ class SolverMainWindow(v4.MainWindow):
         self._pending_result = None
         self._sessions = self._load_sessions()
 
+        # 任务身份（H3）：每次「开始求解」自增；用于丢弃过期 worker 结果
+        self._job_id = 0
+        self._board_sig = None            # 发起求解时的棋盘快照签名
+        self._solver_cancel = None        # 当前任务的协作式取消令牌（threading.Event）
+
         # 窗口位置跟踪：仅在用户未手动拖动时自动居中 / 校正越界
         self._shown_once = False
         self._user_moved = False
@@ -787,6 +805,12 @@ class SolverMainWindow(v4.MainWindow):
         # 工作线程按需创建：只有真正求解时才启动，空闲/截图/退出时不存在运行中的线程
         self._solver_thread = None
         self._solver_worker = None
+        self._retired_threads = []        # 未能在预算内退出、待 finished 后回收的线程
+
+    @staticmethod
+    def _board_signature(grid):
+        """棋盘快照签名（用于校验结果对应的棋盘状态）。"""
+        return tuple(tuple(int(v) for v in row) for row in grid)
 
     def _ensure_worker(self):
         """惰性创建并启动后台求解线程（已运行则直接复用）。"""
@@ -800,22 +824,44 @@ class SolverMainWindow(v4.MainWindow):
         self.solveRequested.connect(self._solver_worker.solve)
         self._solver_thread.start()
 
-    def _shutdown_worker(self):
-        """停止并回收求解线程（幂等，可重复调用）。"""
+    def _shutdown_worker(self, wait_ms=3000):
+        """协作式停止并回收求解线程（幂等）。
+
+        H3 修复：先置取消令牌 → 断开请求 → quit()+wait()。
+        若线程未在预算内退出，**不丢弃引用**，转入退休列表，待 finished 信号到达后回收，
+        避免“worker 仍在运行却把引用置空”导致线程失控或对象被提前销毁。
+        绝不使用 QThread.terminate()。
+        """
         thread = self._solver_thread
+        worker = self._solver_worker
         if thread is None:
-            return
+            return True
+        if self._solver_cancel is not None:
+            self._solver_cancel.set()                        # 协作式取消：worker 主动放弃结果
         try:
-            self.solveRequested.disconnect(self._solver_worker.solve)
+            self.solveRequested.disconnect(worker.solve)
         except (TypeError, RuntimeError):
             pass
+        exited = True
         try:
             thread.quit()
-            thread.wait(1500)
+            exited = bool(thread.wait(wait_ms))
         except RuntimeError:
-            pass
+            exited = True
+        if not exited:
+            self._retire_thread(thread, worker)              # 保留引用 + 完成通知后回收
         self._solver_thread = None
         self._solver_worker = None
+        self._solver_cancel = None
+        return exited
+
+    def _retire_thread(self, thread, worker):
+        """把未及时退出的线程暂存，等其 finished 后回收（不丢弃引用）。"""
+        self._retired_threads.append((thread, worker))
+        thread.finished.connect(lambda: self._collect_retired(thread))
+
+    def _collect_retired(self, thread):
+        self._retired_threads = [(t, w) for (t, w) in self._retired_threads if t is not thread]
 
     # ---------------- 右侧 Solver 工作台（V5.1） ----------------
     def _build_solver_panel(self):
@@ -1349,6 +1395,8 @@ class SolverMainWindow(v4.MainWindow):
         self.solver_log.clear()
         self._solver_running = True
         self._pending_result = None
+        self._job_id += 1                     # 新任务身份：旧任务的在途结果将被丢弃
+        self._solver_cancel = threading.Event()
         self._update_solver_buttons()
         self._log_step("开始求解：策略=%s，%s，模式=%s"
                        % (solver.STRATEGIES[strategy],
@@ -1367,17 +1415,29 @@ class SolverMainWindow(v4.MainWindow):
             return
         grid = [row[:] for row in self.model.grid]
         self._ensure_worker()
+        if self._solver_cancel is None or self._solver_cancel.is_set():
+            self._solver_cancel = threading.Event()
+        self._board_sig = self._board_signature(grid)       # 记录本任务对应的棋盘快照
         self._solve_in_flight = True
         self.solver_progress.setRange(0, 0)          # 忙态（不确定进度）动画
         self._render_running_status(computing=True)
-        self.solveRequested.emit(grid, dict(self._solver_config))
+        self.solveRequested.emit(self._job_id, grid, dict(self._solver_config),
+                                 self._solver_cancel)
 
     # ---------------- 接收求解结果 ----------------
-    def _on_solver_result(self, result):
+    def _on_solver_result(self, job_id, result):
         self._solve_in_flight = False
         self.solver_progress.setRange(0, 100)
         self.solver_progress.setValue(0)
+        # H3 三重校验：任务在运行、结果属于当前任务、棋盘快照未被改动，否则丢弃过期结果
         if not self._solver_running:
+            return
+        if job_id != self._job_id:
+            self._log_step("已忽略过期求解结果（job_id=%s ≠ %s）。" % (job_id, self._job_id))
+            return
+        if self._board_sig is not None and \
+                self._board_signature(self.model.grid) != self._board_sig:
+            self._log_step("已忽略过期求解结果（棋盘在求解期间已变化）。")
             return
 
         if result.get("error"):
@@ -1411,11 +1471,11 @@ class SolverMainWindow(v4.MainWindow):
         # 自动连走：走这一步（复用 v4 的移动 + 动画路径）
         self._ai_apply(direction)
 
-    def _on_solver_failed(self, message):
+    def _on_solver_failed(self, job_id, message):
         self._solve_in_flight = False
         self.solver_progress.setRange(0, 100)
         self.solver_progress.setValue(0)
-        if not self._solver_running:
+        if not self._solver_running or job_id != self._job_id:
             return
         self._log_step("求解线程异常：%s" % message)
         self._set_status("求解线程异常：%s" % message,

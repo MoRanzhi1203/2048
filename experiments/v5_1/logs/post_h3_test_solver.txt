@@ -1,0 +1,124 @@
+﻿E:\anaconda3\python.exe : test_all_strategies_return_legal_move (__main__.SolverCoreTest.test_all_strategies_return_leg
+al_move) ... ok
+At line:15 char:3643
++ ... offscreen"; E:\anaconda3\python.exe v5_pyqt_2048_solver\test_solver.p ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (test_all_strate...al_move) ... ok:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+test_config_api (__main__.SolverCoreTest.test_config_api) ... ok
+test_evaluate_prefers_empty (__main__.SolverCoreTest.test_evaluate_prefers_empty) ... ok
+test_expectimax_pruning_deterministic_and_effective (__main__.SolverCoreTest.test_expectimax_pruning_deterministic_and_
+effective) ... ok
+test_expectimax_pruning_timeout_still_returns_move (__main__.SolverCoreTest.test_expectimax_pruning_timeout_still_retur
+ns_move) ... ok
+test_game_over_and_legal_moves (__main__.SolverCoreTest.test_game_over_and_legal_moves) ... ok
+test_mcts_deterministic_and_bounded (__main__.SolverCoreTest.test_mcts_deterministic_and_bounded) ... ok
+test_move_grid_directions (__main__.SolverCoreTest.test_move_grid_directions) ... ok
+test_move_grid_no_change (__main__.SolverCoreTest.test_move_grid_no_change) ... ok
+test_rl_with_model_returns_legal_move (__main__.SolverCoreTest.test_rl_with_model_returns_legal_move) ... ok
+test_rl_without_model_reports_error (__main__.SolverCoreTest.test_rl_without_model_reports_error) ... ok
+test_rollout_deterministic (__main__.SolverCoreTest.test_rollout_deterministic) ... ok
+test_slide_line_merge_rules (__main__.SolverCoreTest.test_slide_line_merge_rules) ... ok
+test_solve_deterministic (__main__.SolverCoreTest.test_solve_deterministic) ... ok
+test_solve_expectimax_returns_legal_move (__main__.SolverCoreTest.test_solve_expectimax_returns_legal_move) ... ok
+test_solve_game_over_grid (__main__.SolverCoreTest.test_solve_game_over_grid) ... ok
+test_solve_heuristic_returns_legal_move (__main__.SolverCoreTest.test_solve_heuristic_returns_legal_move) ... ok
+test_solve_invalid_grid_returns_error (__main__.SolverCoreTest.test_solve_invalid_grid_returns_error) ... ok
+test_solve_respects_time_limit (__main__.SolverCoreTest.test_solve_respects_time_limit) ... ok
+test_unknown_strategy_returns_error (__main__.SolverCoreTest.test_unknown_strategy_returns_error) ... ok
+test_adaptive_height_on_roomy_screen (__main__.SolverGuiTest.test_adaptive_height_on_roomy_screen)
+屏幕足够高时：游戏页高度取默认值（不超高）。 ... ok
+test_advanced_toggle (__main__.SolverGuiTest.test_advanced_toggle)
+UI-09：高级参数区可折叠，仅展示真实生效配置。 ... ok
+test_ai_button_inserted_before_new_game (__main__.SolverGuiTest.test_ai_button_inserted_before_new_game) ... ok
+test_ai_button_opens_panel_only_when_expanded (__main__.SolverGuiTest.test_ai_button_opens_panel_only_when_expanded)
+展开态「AI 求解」仍只负责打开/聚焦面板，不启动算法（启停交给「开始求解」）。 ... ok
+test_ai_button_reopens_panel_without_solving (__main__.SolverGuiTest.test_ai_button_reopens_panel_without_solving)
+折叠后点击左侧「AI 求解」只重新展开面板，不自动开始求解。 ... ok
+test_auto_solving_runs_and_records (__main__.SolverGuiTest.test_auto_solving_runs_and_records) ... ok
+test_both_entries_share_open_method (__main__.SolverGuiTest.test_both_entries_share_open_method)
+左侧「AI 求解」与右侧贴边把手行为一致：均打开面板、不启动算法。 ... ok
+test_centered_at_launch_when_fits (__main__.SolverGuiTest.test_centered_at_launch_when_fits)
+屏幕放得下时，启动窗口应居中于可用区域。 ... ok
+test_chevron_button_disabled_color (__main__.SolverGuiTest.test_chevron_button_disabled_color)
+Chevron 按钮 disabled 态使用浅灰箭头，启用后恢复常态色。 ... ok
+test_chevron_button_geometry_and_rendering (__main__.SolverGuiTest.test_chevron_button_geometry_and_rendering)
+折叠按钮 26×26 / 圆角 6 / 配色符合规范；箭头 QPainter 绘制且无绿色图标。 ... ok
+test_collapse_during_solve_keeps_running (__main__.SolverGuiTest.test_collapse_during_solve_keeps_running)
+T-05：求解中折叠不影响业务推进，展开后状态一致。 ... ok
+test_collapse_hides_solver_and_shrinks_window (__main__.SolverGuiTest.test_collapse_hides_solver_and_shrinks_window)
+G02/G03：折叠后完整隐藏右栏容器（splitter 右项=0，无分隔残留），整窗收窄。 ... ok
+test_collapsed_splitter_has_no_right_pane (__main__.SolverGuiTest.test_collapsed_splitter_has_no_right_pane)
+G08：折叠态右栏已整体隐藏，拖动分隔条不会出现右侧空白大栏。 ... ok
+test_default_two_column_layout (__main__.SolverGuiTest.test_default_two_column_layout)
+T-01/G01：默认左右并排；左为游戏区(holder)，右为求解工作台；底部不重复。 ... ok
+test_edge_handle_geometry_and_chevron (__main__.SolverGuiTest.test_edge_handle_geometry_and_chevron)
+把手 22×40、细线左箭头、无系统绿色图标；左侧圆角、右侧直边。 ... ok
+test_edge_handle_hide_while_solving_reopens (__main__.SolverGuiTest.test_edge_handle_hide_while_solving_reopens)
+运行中折叠：把手显示，点击后展开且不停止后台求解。 ... ok
+test_edge_handle_mounted_outside_solver_container (__main__.SolverGuiTest.test_edge_handle_mounted_outside_solver_conta
+iner)
+贴边把手挂载在主窗口上，不随 Solver 容器隐藏，且不进入主布局。 ... ok
+test_edge_handle_reopens_panel_without_solving (__main__.SolverGuiTest.test_edge_handle_reopens_panel_without_solving)
+点击贴边把手重新展开面板，恢复右栏宽度，不启动算法。 ... ok
+test_edge_handle_repositions_on_resize (__main__.SolverGuiTest.test_edge_handle_repositions_on_resize)
+折叠态改变窗口尺寸后，把手重新贴右缘且不遮挡棋盘/分数卡/底部按钮。 ... ok
+test_edge_handle_visibility_tracks_state (__main__.SolverGuiTest.test_edge_handle_visibility_tracks_state)
+贴边把手：展开态隐藏、折叠态显示，反复切换一致。 ... ok
+test_export_and_compare (__main__.SolverGuiTest.test_export_and_compare) ... ok
+test_game_buttons_within_board_width (__main__.SolverGuiTest.test_game_buttons_within_board_width)
+G04/G10：四个控制按钮在展开/折叠态都锚定于棋盘宽度内，不散到窗口两端。 ... ok
+test_header_collapse_icon_left_of_title (__main__.SolverGuiTest.test_header_collapse_icon_left_of_title)
+标题栏：Chevron 收起按钮位于标题左侧、紧凑左对齐，动作为向右收起。 ... ok
+test_hide_while_solving_via_ai_button_reopens (__main__.SolverGuiTest.test_hide_while_solving_via_ai_button_reopens)
+运行中隐藏不停止求解；用 AI 按钮重新展开后任务与状态连续。 ... ok
+test_manual_move_blocked_while_solving (__main__.SolverGuiTest.test_manual_move_blocked_while_solving) ... ok
+test_manual_move_still_works (__main__.SolverGuiTest.test_manual_move_still_works) ... ok
+test_maximized_collapse_keeps_window (__main__.SolverGuiTest.test_maximized_collapse_keeps_window)
+G09：最大化时隐藏/展开不强制改变窗口尺寸，仅切换右栏内容。 ... ok
+test_metrics_match_model (__main__.SolverGuiTest.test_metrics_match_model)
+T-11：状态指标与底层真实状态一致。 ... ok
+test_no_bottom_duplicate_solver (__main__.SolverGuiTest.test_no_bottom_duplicate_solver)
+T-02：求解日志唯一，且左游戏页内不再悬挂求解面板（无底部重复区）。 ... ok
+test_no_duplicate_widgets_or_connections_on_toggles (__main__.SolverGuiTest.test_no_duplicate_widgets_or_connections_on
+_toggles)
+连续 20 次折叠/展开：不重复创建 Solver 实例，也不重复连接入口信号。 ... ok
+test_original_widgets_same_as_v4 (__main__.SolverGuiTest.test_original_widgets_same_as_v4)
+原界面控件的位置/尺寸与第 4 版逐项一致（顶部锚定，不受加高影响）。 ... ok
+test_panel_title_named_ai_solver (__main__.SolverGuiTest.test_panel_title_named_ai_solver)
+右侧面板标题与左侧入口统一为「AI 求解」。 ... ok
+test_restore_geometry_and_width (__main__.SolverGuiTest.test_restore_geometry_and_width)
+G05：展开恢复折叠前的窗口宽度与右栏宽度（忽略屏幕夹取以验证纯逻辑）。 ... ok
+test_result_actions_present (__main__.SolverGuiTest.test_result_actions_present)
+结果操作（导出/查看/对比）位于右栏且可见可用。 ... ok
+test_single_step_suggestion (__main__.SolverGuiTest.test_single_step_suggestion) ... ok
+test_solver_collapse_and_expand (__main__.SolverGuiTest.test_solver_collapse_and_expand)
+T-04：折叠后整体隐藏且状态保留；重新展开后宽度/配置/日志一致。 ... ok
+test_solver_exception_is_contained (__main__.SolverGuiTest.test_solver_exception_is_contained) ... ok
+test_solver_gui_lifecycle (__main__.SolverGuiTest.test_solver_gui_lifecycle) ... ok
+test_solver_panel_right_of_game (__main__.SolverGuiTest.test_solver_panel_right_of_game)
+求解面板位于棋盘/按钮的右侧，而不是下方（UI-01）。 ... ok
+test_solver_panel_widgets_exist (__main__.SolverGuiTest.test_solver_panel_widgets_exist) ... ok
+test_splitter_user_resize (__main__.SolverGuiTest.test_splitter_user_resize)
+T-03：改分隔器尺寸后两栏边界合法，无控件重叠或异常消失。 ... ok
+test_splitter_width_restored_after_drag (__main__.SolverGuiTest.test_splitter_width_restored_after_drag)
+G07：展开态拖动分隔条后的右栏宽度，在折叠/展开后仍被恢复。 ... ok
+test_start_stop_single_trigger (__main__.SolverGuiTest.test_start_stop_single_trigger)
+T-07：开始/停止只触发一次；停止后无残留运行线程。 ... ok
+test_strategy_change_maps_to_config (__main__.SolverGuiTest.test_strategy_change_maps_to_config)
+T-08：切换算法/强度仍映射到原有 solver 配置，无参数偷换。 ... ok
+test_strategy_identity_maps_to_config (__main__.SolverGuiTest.test_strategy_identity_maps_to_config)
+下拉框 currentData 与五算法配置一一对应；强度可用性与 has_presets 一致。 ... ok
+test_toggle_20_no_drift (__main__.SolverGuiTest.test_toggle_20_no_drift)
+G06：连续折叠/展开 20 次无累计尺寸漂移。 ... ok
+test_user_moved_detection (__main__.SolverGuiTest.test_user_moved_detection)
+程序化移动不标记为“用户拖动”；真实 move() 才标记。 ... ok
+test_window_height_never_below_minimum (__main__.SolverGuiTest.test_window_height_never_below_minimum)
+屏幕过矮时窗口也不会低于最小高度（避免控件被压变形/重叠）。 ... ok
+test_window_sizes_by_page (__main__.SolverGuiTest.test_window_sizes_by_page) ... ok
+
+----------------------------------------------------------------------
+Ran 69 tests in 26.740s
+
+OK

@@ -123,9 +123,23 @@ def main():
                else "未检出")
 
         # ============ 3. 触发条件 / 迭代逻辑 / 量化标准 ============
-        trigger_ok = ("for gi in range(games)" in src) and ("net['W2'] += lr" in src)
-        record("3a. 自动优化触发条件（每局自对弈结束后触发一次参数更新）", trigger_ok,
-               "触发点：train() 主循环内、每个 episode 轨迹算完后立即更新")
+        # 3a. 真实行为断言：每局自对弈结束后触发且仅触发一次参数更新
+        trig = {"updates": 0}
+        orig_apply = rl.apply_update
+
+        def counted_apply(*a, **k):
+            trig["updates"] += 1
+            return orig_apply(*a, **k)
+
+        rl.apply_update = counted_apply
+        try:
+            rl.train(games=10, init=copy_net(base), progress=False, seed=4)
+        finally:
+            rl.apply_update = orig_apply
+        record("3a. 自动优化触发条件（每局自对弈结束后触发一次参数更新）",
+               trig["updates"] == 10,
+               "10 局自对弈触发参数更新次数=%d（期望=10）" % trig["updates"])
+
 
         # ============ 4. 连续训练提升（量化） ============
         eval_games = 60
@@ -171,14 +185,29 @@ def main():
                % (rnd_avg, rnd_tile, rl_best[0], rl_best[2],
                   100.0 * (rl_best[0] - rnd_avg) / max(1.0, rnd_avg)))
 
-        # 3d. 自动优化保障机制（早停 / 最优检查点 / 自适应超参 / 回放）
-        guard_keys = ("early_stop", "best_ckpt", "best_model", "patience",
-                      "replay", "optuna", "lr_schedule", "adaptive")
-        has_guard = any(k in src_low for k in guard_keys)
-        record("3d. 自动优化保障机制（早停/最优检查点/自适应超参/回放）", not has_guard,
-               "已确认未实现：训练按固定轮次推进，不按评估分数早停、不自动保留最优检查点、"
-               "超参与回放均缺失 → 长期连续训练不保证单调提升（见 3b 实测波动）"
-               if not has_guard else "源码出现相关关键字，需人工复核")
+        # 3d. 自动优化保障机制：早停 + 最优检查点（H2 已实现，改为真实行为断言）
+        guard_dir = tempfile.mkdtemp(prefix="rl_guard_")
+        try:
+            gnet, gstats = rl.train(games=30, init=copy_net(base), progress=False, seed=6,
+                                    eval_every=3, eval_games=5, eval_seed=12345, patience=1,
+                                    ckpt_prefix=os.path.join(guard_dir, "guard"))
+            has_history = len(gstats.get("history", [])) >= 1
+            best_written = os.path.exists(os.path.join(guard_dir, "guard.best.npz"))
+            latest_written = os.path.exists(os.path.join(guard_dir, "guard.latest.npz"))
+            diag = gstats.get("diagnostics", {})
+            record("3d. 自动优化保障机制（早停 / 最优检查点 / 训练诊断）",
+                   has_history and best_written and latest_written
+                   and gstats.get("best_eval") is not None
+                   and diag.get("grad_norm_avg") is not None,
+                   "验证历史=%d 次｜best/latest 检查点=已落盘｜早停=%s｜诊断(grad_norm=%.4f "
+                   "entropy=%.3f clip_ratio=%s)"
+                   % (len(gstats.get("history", [])), gstats.get("stopped_early"),
+                      diag.get("grad_norm_avg", float('nan')),
+                      diag.get("entropy_avg", float('nan')),
+                      diag.get("grad_clip_ratio")))
+        finally:
+            shutil.rmtree(guard_dir, ignore_errors=True)
+
 
         # ============ 5. 持续训练（断点续训）可行性 ============
         p1 = os.path.join(tmp, "ckpt1.npz")

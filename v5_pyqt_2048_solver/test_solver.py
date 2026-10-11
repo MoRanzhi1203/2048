@@ -263,6 +263,27 @@ class SolverGuiTest(unittest.TestCase):
         self.w.board_view.render(self.w.model.grid)
         self.w.refresh()
 
+    def _select_strategy(self, name):
+        """按 currentData 查找并选中策略（不再假设下拉框索引与 STRATEGY_ORDER 一致）。"""
+        combo = self.w.solver_strategy
+        for i in range(combo.count()):
+            if combo.itemData(i) == name:
+                combo.setCurrentIndex(i)
+                pump(self.app, 20)
+                self.assertEqual(combo.currentData(), name)
+                return i
+        raise AssertionError("策略下拉框缺少：%s" % name)
+
+    def _select_mode(self, name):
+        combo = self.w.solver_mode
+        for i in range(combo.count()):
+            if combo.itemData(i) == name:
+                combo.setCurrentIndex(i)
+                pump(self.app, 20)
+                self.assertEqual(combo.currentData(), name)
+                return i
+        raise AssertionError("模式下拉框缺少：%s" % name)
+
     # ---- V5.1 布局：左右双栏（UI-01/02/06/08） ----
     def test_window_sizes_by_page(self):
         # 游戏页：进入双栏，宽度应容纳“左游戏区 + 右求解区”，高度在合理范围内
@@ -578,7 +599,7 @@ class SolverGuiTest(unittest.TestCase):
     def test_single_step_suggestion(self):
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
         self.w.solver_mode.setCurrentIndex(1)          # 单步建议
-        self.w.solver_strategy.setCurrentIndex(0)      # 启发式
+        self._select_strategy("heuristic")             # 启发式
         self.w.on_solver_clicked()
         ok = wait_until(self.app, lambda: not self.w._solver_running and not self.w._solve_in_flight)
         self.assertTrue(ok)
@@ -590,7 +611,7 @@ class SolverGuiTest(unittest.TestCase):
     def test_auto_solving_runs_and_records(self):
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
         self.w.solver_mode.setCurrentIndex(0)          # 自动连走
-        self.w.solver_strategy.setCurrentIndex(1)      # Expectimax
+        self._select_strategy("expectimax")            # Expectimax
         self.w.solver_depth.setCurrentIndex(0)         # 快速
         sessions_before = len(self.w._sessions)
         self.w.on_solver_clicked()
@@ -608,7 +629,7 @@ class SolverGuiTest(unittest.TestCase):
     def test_export_and_compare(self):
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
         self.w.solver_mode.setCurrentIndex(1)
-        self.w.solver_strategy.setCurrentIndex(0)
+        self._select_strategy("heuristic")
         self.w.on_solver_clicked()
         wait_until(self.app, lambda: not self.w._solver_running)
         session = self.w._sessions[-1]
@@ -659,7 +680,7 @@ class SolverGuiTest(unittest.TestCase):
         self.w._clamp_to_screen = lambda g: g          # 忽略屏幕夹取以验证纯几何逻辑
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
         self.w.solver_mode.setCurrentIndex(1)
-        self.w.solver_strategy.setCurrentIndex(0)
+        self._select_strategy("heuristic")
         self.w.solver_depth.setCurrentIndex(1)
         self.w.on_solver_clicked()
         wait_until(self.app, lambda: not self.w._solver_running)
@@ -714,7 +735,7 @@ class SolverGuiTest(unittest.TestCase):
         """运行中隐藏不停止求解；用 AI 按钮重新展开后任务与状态连续。"""
         self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
         self.w.solver_mode.setCurrentIndex(0)          # 自动连走
-        self.w.solver_strategy.setCurrentIndex(2)      # MCTS
+        self._select_strategy("mcts")                  # MCTS
         self.w.solver_depth.setCurrentIndex(0)
         self.w.on_solver_clicked()
         self.assertTrue(wait_until(self.app, lambda: self.w._solver_running, timeout_ms=3000))
@@ -842,7 +863,7 @@ class SolverGuiTest(unittest.TestCase):
         """运行中折叠：把手显示，点击后展开且不停止后台求解。"""
         self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
         self.w.solver_mode.setCurrentIndex(0)
-        self.w.solver_strategy.setCurrentIndex(2)      # MCTS
+        self._select_strategy("mcts")                  # MCTS
         self.w.solver_depth.setCurrentIndex(0)
         self.w.on_solver_clicked()
         self.assertTrue(wait_until(self.app, lambda: self.w._solver_running, timeout_ms=3000))
@@ -907,7 +928,7 @@ class SolverGuiTest(unittest.TestCase):
         """T-05：求解中折叠不影响业务推进，展开后状态一致。"""
         self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
         self.w.solver_mode.setCurrentIndex(0)          # 自动连走
-        self.w.solver_strategy.setCurrentIndex(1)      # Expectimax
+        self._select_strategy("expectimax")            # Expectimax
         self.w.solver_depth.setCurrentIndex(0)         # 快速
         self.w.on_solver_clicked()
         self.assertTrue(wait_until(
@@ -931,7 +952,7 @@ class SolverGuiTest(unittest.TestCase):
         """T-07：开始/停止只触发一次；停止后无残留运行线程。"""
         self._set_grid([[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]])
         self.w.solver_mode.setCurrentIndex(0)          # 自动连走
-        self.w.solver_strategy.setCurrentIndex(2)      # MCTS（有搜索耗时）
+        self._select_strategy("mcts")                  # MCTS（有搜索耗时）
         before = len(self.w._sessions)
         self.w.on_solver_clicked()
         pump(self.app, 200)
@@ -981,6 +1002,95 @@ class SolverGuiTest(unittest.TestCase):
                                   self.w.solver_depth.currentData())
         self.assertEqual(cfg["strategy"], "mcts")
         self.assertIn("time_limit", cfg)
+
+    # ---- H3：五算法真实身份（currentData 查找，修正“索引 1=Expectimax”误判） ----
+    def test_strategy_identity_maps_to_config(self):
+        """下拉框 currentData 与五算法配置一一对应；强度可用性与 has_presets 一致。
+
+        历史用例用 setCurrentIndex(1) 当作 Expectimax、setCurrentIndex(2) 当作 MCTS，
+        实际索引与 STRATEGY_ORDER 不同（1=rollout、2=expectimax），本用例改为按
+        currentData 查找并对五算法身份做逐一校验。
+        """
+        self.assertEqual(self.w.solver_strategy.count(), len(solver.STRATEGY_ORDER))
+        for name in solver.STRATEGY_ORDER:
+            self._select_strategy(name)
+            self.assertEqual(self.w.solver_strategy.currentData(), name)
+            cfg = solver.build_config(self.w.solver_strategy.currentData(),
+                                      self.w.solver_depth.currentData())
+            self.assertEqual(cfg["strategy"], name)
+            self.assertEqual(self.w.solver_depth.isEnabled(), solver.has_presets(name))
+        # 显式纠正：Expectimax 有强度、RL 无强度
+        self._select_strategy("expectimax")
+        self.assertTrue(self.w.solver_depth.isEnabled())
+        self._select_strategy("rl")
+        self.assertFalse(self.w.solver_depth.isEnabled())
+
+    # ---- H3：求解任务生命周期（job_id / 协作取消 / 过期结果丢弃 / 快速重启 / 关闭） ----
+    def test_solver_gui_lifecycle(self):
+        grid = [[2, 2, 4, 8], [0, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 2]]
+        self._set_grid(grid)
+        self.w.solver_mode.setCurrentIndex(0)
+        self._select_strategy("mcts")
+
+        job0 = self.w._job_id
+        self.w.on_solver_clicked()
+        self.assertTrue(wait_until(self.app, lambda: self.w._solver_running, timeout_ms=3000))
+        self.assertGreater(self.w._job_id, job0)                     # 每次开始自增
+
+        # 停止：协作式取消（不用 terminate），线程被回收，且不再持有运行中的引用
+        self.w.on_solver_clicked()
+        ok = wait_until(self.app, lambda: not self.w._solver_running and
+                        not self.w._solve_in_flight)
+        self.assertTrue(ok)
+        self.assertTrue(self.w._solver_thread is None)
+        # 未退出线程必须保留有效引用（不得运行中直接置空）
+        for t, _wb in self.w._retired_threads:
+            self.assertFalse(t.isRunning() and not t.isFinished())
+
+        # 过期结果（旧 job_id）必须被丢弃，棋盘不变、有“已忽略”日志
+        self.w._solver_running = True
+        before_log = self.w.solver_log.count()
+        before_grid = [row[:] for row in self.w.model.grid]
+        self.w._on_solver_result(self.w._job_id - 1,
+                                 {"best_direction": "left", "best_name": "向左",
+                                  "evaluations": {"left": 1.0}, "elapsed_ms": 1.0})
+        self.assertEqual(self.w.model.grid, before_grid)
+        self.assertGreater(self.w.solver_log.count(), before_log)
+
+        # 棋盘快照校验：job_id 正确但棋盘已变 → 同样丢弃
+        before_log = self.w.solver_log.count()
+        self.w._job_id += 1
+        self.w._board_sig = self.w._board_signature([[2, 2, 0, 0]] * 4)   # 故意不匹配
+        self.w._on_solver_result(self.w._job_id,
+                                 {"best_direction": "left", "best_name": "向左",
+                                  "evaluations": {"left": 1.0}, "elapsed_ms": 1.0})
+        self.assertGreater(self.w.solver_log.count(), before_log)
+        self.w._solver_running = False
+        self.w._shutdown_worker()
+
+        # 快速重启：连续 start/stop/start 稳定，job_id 严格递增
+        self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        self.w.solver_mode.setCurrentIndex(0)
+        self._select_strategy("mcts")
+        ids = []
+        for _ in range(2):
+            self.w.on_solver_clicked()
+            self.assertTrue(wait_until(self.app, lambda: self.w._solver_running,
+                                       timeout_ms=3000))
+            ids.append(self.w._job_id)
+            self.w.on_solver_clicked()
+            wait_until(self.app, lambda: not self.w._solver_running)
+        self.assertEqual(ids, sorted(set(ids)))
+        self.assertLess(ids[0], ids[1])
+
+        # 运行中关闭窗口：不崩溃，且停止后线程被回收
+        self._set_grid([[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        self.w.on_solver_clicked()
+        wait_until(self.app, lambda: self.w._solver_running, timeout_ms=3000)
+        self.w.close()
+        pump(self.app, 200)
+        self.assertFalse(self.w._solver_running)
+
 
 
 def main():
