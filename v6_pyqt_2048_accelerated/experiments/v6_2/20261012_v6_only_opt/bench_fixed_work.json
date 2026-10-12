@@ -1,0 +1,41 @@
+{
+  "kind": "v6_2_fixed_work",
+  "repeats": 7,
+  "boards_sha256_match": true,
+  "n_heavy_boards": 12,
+  "env": {
+    "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+    "python_version": "3.12.3",
+    "platform": "Windows-10-10.0.19042-SP0",
+    "cpu_count": 16,
+    "thread_env": {
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "NUMBA_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    }
+  },
+  "backend_availability": {
+    "reference": {
+      "available": true,
+      "reason": "v5_pyqt_2048_solver/solver_2048.py (frozen reference)",
+      "kind": "python"
+    },
+    "numpy": {
+      "available": true,
+      "reason": "numpy 1.26.4",
+      "kind": "numpy"
+    },
+    "numba": {
+      "available": true,
+      "reason": "numba 0.60.0 (llvmlite 0.43.0)",
+      "kind": "numba"
+    },
+    "cpp": {
+      "available": true,
+      "reason": "bitboard_cpp C++20/pybind11",
+      "kind": "cpp"
+    }
+  },
+  "note": "同一子表内同一算法/工作量/事件流；native_full_tree = C++ 原生整树"
+}

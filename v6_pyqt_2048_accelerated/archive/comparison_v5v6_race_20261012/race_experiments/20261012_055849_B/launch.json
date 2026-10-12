@@ -1,0 +1,61 @@
+{
+  "session_id": "20261012_055849_B",
+  "session_dir": "E:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\race\\20261012_055849_B",
+  "mode": "B",
+  "seed": 2048,
+  "algorithm": {
+    "strategy": "expectimax",
+    "depth": 4,
+    "time_limit": 0.3
+  },
+  "v6_override": {},
+  "auto_exit": true,
+  "max_steps": 70,
+  "max_seconds": 150.0,
+  "started_at": "2026-10-12 05:58:53",
+  "pids": {
+    "v5": 46008,
+    "v6": 43296
+  },
+  "placement": {
+    "placed": true,
+    "work_area": [
+      0,
+      0,
+      1536,
+      824
+    ],
+    "left": {
+      "hwnd": 14685612,
+      "pid": 46008,
+      "x": 0,
+      "y": 0,
+      "w": 739,
+      "h": 614
+    },
+    "right": {
+      "hwnd": 20714542,
+      "pid": 43296,
+      "x": 797,
+      "y": 0,
+      "w": 739,
+      "h": 614
+    },
+    "overlap_px": -58,
+    "no_truncation": true,
+    "note": "窗口保持各自设计尺寸，不做缩放，避免截断标题栏/棋盘/按钮；overlap_px>0 表示屏幕偏窄时右侧略覆盖左侧。"
+  },
+  "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+  "process_exit": {
+    "v5": {
+      "pid": 46008,
+      "alive": false,
+      "detected_at": "2026-10-12 05:59:26"
+    },
+    "v6": {
+      "pid": 43296,
+      "alive": false,
+      "detected_at": "2026-10-12 05:59:32"
+    }
+  }
+}

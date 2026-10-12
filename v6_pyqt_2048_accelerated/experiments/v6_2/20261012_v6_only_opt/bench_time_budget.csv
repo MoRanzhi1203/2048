@@ -1,0 +1,13 @@
+algorithm,variant,budget_ms,median_elapsed_ms,median_stop_latency_ms,median_completed,legal_rate
+expectimax,python_kernel_cpp,20,21.445,1.445,3.0,1.0
+expectimax,native_full_tree,20,23.458,3.458,5.0,1.0
+mcts,python_events_cpp,20,444.587,424.587,60.0,1.0
+mcts,native_full_tree,20,21.76,1.76,4919.0,1.0
+expectimax,python_kernel_cpp,50,51.91,1.91,3.0,1.0
+expectimax,native_full_tree,50,52.391,2.391,5.0,1.0
+mcts,python_events_cpp,50,461.504,411.504,90.5,1.0
+mcts,native_full_tree,50,52.976,2.976,11375.5,1.0
+expectimax,python_kernel_cpp,100,101.577,1.577,4.0,1.0
+expectimax,native_full_tree,100,102.114,2.114,6.0,1.0
+mcts,python_events_cpp,100,506.606,406.606,231.0,1.0
+mcts,native_full_tree,100,103.549,3.549,23783.0,1.0

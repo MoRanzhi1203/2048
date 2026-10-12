@@ -7,3 +7,9 @@ game_history/
 
 # 第 5 版运行时生成的求解结果 / 导出文件（不入库）
 solver_results/
+
+# V6 诊断运行的原始产物（含临时对局存档，本地保留、不入库）
+v6_pyqt_2048_accelerated/diagnostics/runs/
+
+# 归档快照内的运行期对局存档（本地保留、不入库；脚本与摘要已入库）
+v6_pyqt_2048_accelerated/archive/**/history/

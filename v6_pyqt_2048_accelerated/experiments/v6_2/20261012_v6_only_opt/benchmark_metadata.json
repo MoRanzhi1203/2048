@@ -1,0 +1,53 @@
+{
+  "kind": "v6_2_benchmark_metadata",
+  "generated_at": "2026-10-12 06:22:59",
+  "boards_sha256": "538807f3030b0bc924a4294db46b4bad274492297f13d80ae135d099a65811e7",
+  "boards_sha256_expected": "538807f3030b0bc924a4294db46b4bad274492297f13d80ae135d099a65811e7",
+  "boards_sha256_match": true,
+  "env": {
+    "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+    "python_version": "3.12.3",
+    "platform": "Windows-10-10.0.19042-SP0",
+    "cpu_count": 16,
+    "thread_env": {
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "NUMBA_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    }
+  },
+  "backend_availability": {
+    "reference": {
+      "available": true,
+      "reason": "v5_pyqt_2048_solver/solver_2048.py (frozen reference)",
+      "kind": "python"
+    },
+    "numpy": {
+      "available": true,
+      "reason": "numpy 1.26.4",
+      "kind": "numpy"
+    },
+    "numba": {
+      "available": true,
+      "reason": "numba 0.60.0 (llvmlite 0.43.0)",
+      "kind": "numba"
+    },
+    "cpp": {
+      "available": true,
+      "reason": "bitboard_cpp C++20/pybind11",
+      "kind": "cpp"
+    }
+  },
+  "repeats": 7,
+  "pybind_roundtrips": {
+    "native_full_tree": "1 次/solve（整树在 C++ 内）",
+    "python_kernel_cpp": "每原语一次（move/evaluate/legal 级别，未逐次插桩）",
+    "native_rollout_batch": "1 次/方向（rollout_batch）"
+  },
+  "notes": [
+    "native Expectimax 仅精确语义（prune=False 或 sample_limit/prob_cutoff=0）；近似模式不参与本表",
+    "native MCTS 与 Python 事件镜像使用同一事件流 -> 逐步同源、动作一致率=1",
+    "native rollout 与 Python rollout 的 RNG 来源不同（事件流 vs random.Random），动作一致率如实报告",
+    "C++ 树内存未插桩（Python tracemalloc 仅覆盖 Python 侧分配）"
+  ]
+}

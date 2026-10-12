@@ -199,6 +199,9 @@ def _rollout_decision(backend, grid, rollouts=20, rollout_depth=16, weights=None
                    extra={'rollouts': rollouts, 'policy': policy, 'paired': bool(paired),
                           'epsilon': epsilon if policy == 'heuristic_biased' else None,
                           'native_rollout': bool(native),
+                          # 原生整段 rollout（rollout_batch）属于「native 原语批量化」，
+                          # 不等于 native 整树搜索，故单独标注，绝不冒充 native full-tree。
+                          'engine_used': 'native_rollout' if native else 'python_kernel',
                           'details': details})
 
 
@@ -845,7 +848,7 @@ def _run_strategy(be, grid, strategy, options, weights):
                 and _native_expectimax_applicable(options)):
             return _native_expectimax_decision(be, grid, options, weights)
         time_limit = max(0.001, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT))
-        return _expectimax_decision(
+        res = _expectimax_decision(
             be, grid, int(options.get('depth', 4)), time_limit, weights,
             prune=bool(options.get('prune', True)),
             sample_limit=options.get('sample_limit'),
@@ -854,11 +857,17 @@ def _run_strategy(be, grid, strategy, options, weights):
             move_order=bool(options.get('move_order', True)),
             seed=int(options.get('seed', DEFAULT_SEED)),
             score_weight=float(options.get('score_weight', 0.0)))
+        if native_search:
+            res['engine_used'] = 'python_kernel' if be.kind in ('numpy', 'numba', 'cpp') else 'reference'
+            res['native_skip_reason'] = (
+                'backend!=cpp' if getattr(be, 'kind', '') != 'cpp'
+                else 'approximate config (sample_limit/prob_cutoff) 不受 native 精确引擎支持')
+        return res
     if strategy == 'mcts':
         if native_search and getattr(be, 'kind', '') == 'cpp':
             return _native_mcts_decision(be, grid, options, weights)
         time_limit = max(0.001, min(float(options.get('time_limit', 0.3)), MAX_TIME_LIMIT))
-        return _mcts_decision(
+        res = _mcts_decision(
             be, grid,
             simulations=int(options.get('simulations', 200)),
             time_limit=time_limit,
@@ -871,6 +880,10 @@ def _run_strategy(be, grid, strategy, options, weights):
             progressive_widening=bool(options.get('progressive_widening', False)),
             cpw=float(options.get('cpw', 1.0)),
             alpha=float(options.get('alpha', 0.5)))
+        if native_search:
+            res['engine_used'] = 'python_kernel' if be.kind in ('numpy', 'numba', 'cpp') else 'reference'
+            res['native_skip_reason'] = 'backend!=cpp'
+        return res
     if strategy == 'rl':
         return _rl_decision(grid, model_path=options.get('model_path'), weights=weights)
     return _error_result(strategy, '未知策略：%s' % strategy)

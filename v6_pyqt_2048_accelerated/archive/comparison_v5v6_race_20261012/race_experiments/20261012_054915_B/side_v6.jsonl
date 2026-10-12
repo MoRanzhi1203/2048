@@ -1,0 +1,5 @@
+{"side":"v6","kind":"boot","t":"2026-10-12 05:49:29","wall":1791755369.1555953,"pid":34352,"mode":"B","seed":2048,"python":"E:\\anaconda3\\envs\\2048\\python.exe"}
+{"side":"v6","kind":"board_injected","t":"2026-10-12 05:49:32","wall":1791755372.208102,"board":[[0,0,0,0],[0,0,2,0],[0,2,0,0],[0,0,0,0]]}
+{"side":"v6","kind":"start","t":"2026-10-12 05:49:32","wall":1791755372.2122593,"mode":"B","algorithm":{"strategy":"expectimax","depth":4,"time_limit":0.3}}
+{"side":"v6","kind":"step","t":"2026-10-12 05:49:32","wall":1791755372.843296,"step":1,"direction":"right","score":null,"solver_ms":7.997,"wall_search_ms":161.903,"nodes":0,"depth_reached":4,"timed_out":false,"backend_used":"cpp","engine_used":"python_kernel","fallback_reason":null,"score_now":0,"max_tile":2,"wall_s":0.631}
+{"side":"v6","kind":"step","t":"2026-10-12 05:49:33","wall":1791755373.4212806,"step":2,"direction":"up","score":null,"solver_ms":7.001,"wall_search_ms":25.445,"nodes":0,"depth_reached":4,"timed_out":false,"backend_used":"cpp","engine_used":"python_kernel","fallback_reason":null,"score_now":4,"max_tile":4,"wall_s":1.209}

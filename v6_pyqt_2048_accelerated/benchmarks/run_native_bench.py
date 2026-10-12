@@ -80,6 +80,28 @@ def _py_peak_kb(fn):
     return peak / 1024.0
 
 
+def peak_working_set_mb():
+    """进程峰值工作集（Windows PSAPI），用于记录资源峰值。"""
+    try:
+        import ctypes
+
+        class PMC(ctypes.Structure):
+            _fields_ = [('cb', ctypes.c_ulong), ('PageFaultCount', ctypes.c_ulong),
+                        ('PeakWorkingSetSize', ctypes.c_size_t), ('WorkingSetSize', ctypes.c_size_t),
+                        ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                        ('PagefileUsage', ctypes.c_size_t), ('PeakPagefileUsage', ctypes.c_size_t)]
+        c = PMC()
+        c.cb = ctypes.sizeof(c)
+        ctypes.windll.psapi.GetProcessMemoryInfo(
+            ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb)
+        return round(c.PeakWorkingSetSize / 1024.0 / 1024.0, 1)
+    except Exception:                                       # noqa: BLE001
+        return None
+
+
 # =====================================================================
 # 变体：固定工作量
 # =====================================================================
@@ -169,6 +191,9 @@ def run_fixed_work(boards, out_dir):
                    'max_ms': round(st['max_ms'], 4),
                    'work_per_sec': round(work / (st['mean_ms'] / 1000.0), 2) if st['mean_ms'] > 0 else None,
                    'action_agreement_vs_ref': round(agree, 4) if agree is not None else 1.0,
+                   'engine_used': ','.join(sorted({str(p.get('engine_used')) for p in per})),
+                   'backend_used': ','.join(sorted({str(p.get('backend_used')) for p in per})),
+                   'peak_ws_mb': peak_working_set_mb(),
                    'py_peak_kb': round(_py_peak_kb(lambda: variant_dispatch(v, sub[:4], cfg)), 1),
                    'status': 'OK'}
             rows.append(row)

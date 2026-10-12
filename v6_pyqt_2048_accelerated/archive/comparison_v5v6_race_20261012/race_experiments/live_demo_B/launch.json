@@ -1,0 +1,49 @@
+{
+  "session_id": "live_demo_B",
+  "session_dir": "E:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\race\\live_demo_B",
+  "mode": "B",
+  "seed": 2048,
+  "algorithm": {
+    "strategy": "expectimax",
+    "depth": 4,
+    "time_limit": 0.3
+  },
+  "v6_override": {},
+  "auto_exit": false,
+  "max_steps": 200,
+  "max_seconds": 180.0,
+  "started_at": "2026-10-12 05:52:50",
+  "pids": {
+    "v5": 9300,
+    "v6": 13692
+  },
+  "placement": {
+    "placed": true,
+    "work_area": [
+      0,
+      0,
+      1536,
+      824
+    ],
+    "left": {
+      "hwnd": 7213268,
+      "pid": 9300,
+      "x": 0,
+      "y": 0,
+      "w": 739,
+      "h": 614
+    },
+    "right": {
+      "hwnd": 5183032,
+      "pid": 13692,
+      "x": 797,
+      "y": 0,
+      "w": 739,
+      "h": 614
+    },
+    "overlap_px": -58,
+    "no_truncation": true,
+    "note": "窗口保持各自设计尺寸，不做缩放，避免截断标题栏/棋盘/按钮；overlap_px>0 表示屏幕偏窄时右侧略覆盖左侧。"
+  },
+  "python": "E:\\anaconda3\\envs\\2048\\python.exe"
+}

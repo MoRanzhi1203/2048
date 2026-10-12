@@ -1,0 +1,30 @@
+{
+  "kind": "v6_only_opt_test_results",
+  "run_dir": "experiments/v6_2/20261012_v6_only_opt",
+  "environment": {"python": "E:\\anaconda3\\envs\\2048\\python.exe", "PYTHONNOUSERSITE": "1"},
+  "suites": [
+    {"name": "v6_unittest_discover", "command": "python -m unittest discover -s tests",
+     "cwd": "v6_pyqt_2048_accelerated", "tests": 62, "exit_code": 0, "result": "OK",
+     "log": "tests_v6.log", "duration_s": 25.327},
+    {"name": "v6_native_search", "command": "python -m unittest test_native_search",
+     "cwd": "v6_pyqt_2048_accelerated/tests", "tests": 18, "exit_code": 0, "result": "OK"},
+    {"name": "v5_regression", "command": "python -m unittest test_solver",
+     "cwd": "v5_pyqt_2048_solver", "tests": 95, "exit_code": 0, "result": "OK",
+     "log": "tests_v5.log", "duration_s": 75.199},
+    {"name": "cpp_standalone_self_test", "command": "bitboard_tests.exe",
+     "exit_code": 0, "result": "ALL TESTS PASSED",
+     "note": "本轮未修改 C++ 内核，沿用上一轮构建产物（solver_backends/bitboard_cpp/bitboard_cpp.cp312-win_amd64.pyd）"},
+    {"name": "p1_stability_probe", "command": "python diagnostics/qt_stability_probe.py --seconds 45..120 --step-delay-ms 0",
+     "exit_code": 0, "result": "98/113/190 步自动连走，raises=0，stale=0，retired=0，无崩溃",
+     "note": "0xC0000409 单程序复现 = FAIL（未复现）"},
+    {"name": "p1_cancel_stress", "command": "python diagnostics/cancel_stress.py --cycles 40 --hold-ms 300",
+     "exit_code": 0, "result": "40 轮求解中停止 + 热切换 + 求解中关窗，raises=0，retired=0，closed_ok=true"},
+    {"name": "p4_fair_benchmark", "command": "python benchmarks/run_native_bench.py --out-dir experiments/v6_2/20261012_v6_only_opt --repeats 7 --max-boards 12",
+     "exit_code": 0, "result": "见 bench_fixed_work.* / bench_time_budget.* / benchmark_metadata.json"}
+  ],
+  "failures": [
+    {"item": "0xC0000409 单程序根因复现", "status": "FAIL(未复现)",
+     "evidence": "diagnostics_summary.json + qt_crash_eventlog.txt",
+     "note": "崩溃事件仅出现在双 Qt 进程竞赛期间(05:45–05:57)；单程序诊断(06:10–06:19)无新增崩溃条目；无 dump，不宣称确定根因"}
+  ]
+}

@@ -618,6 +618,16 @@ def v5_required_text_widgets(w, scene):
     ):
         if wdg is not None:
             items.append((name, wdg))
+    # V6 专属：运行速度（三档）三档切换 + 标题文字必须在主面板可见
+    speed_panel = getattr(w, "v6_speed_panel", None)
+    if speed_panel is not None and scene not in ("start", "recover"):
+        lab = find_label(speed_panel, "运行速度")
+        if lab is not None:
+            items.append(("运行速度", lab))
+        for key in ("standard", "fast", "extreme"):
+            btn = (getattr(w, "v6_speed_buttons", {}) or {}).get(key)
+            if btn is not None:
+                items.append(("速度-" + key, btn))
     return items
 
 

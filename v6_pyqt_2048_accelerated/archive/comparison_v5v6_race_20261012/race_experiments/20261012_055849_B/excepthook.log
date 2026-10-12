@@ -1,0 +1,26 @@
+Traceback (most recent call last):
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\comparison\race_common.py", line 327, in _on_animation_finished
+    super()._on_animation_finished()
+  File "E:\PyQt5_demo\2048\v5_pyqt_2048_solver\v5_pyqt_2048_solver.py", line 2056, in _on_animation_finished
+    self._record_step()
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\comparison\race_common.py", line 333, in _record_step
+    self._race_on_step(res)
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\comparison\race_common.py", line 363, in _race_on_step
+    self._race_refresh_hud()
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\comparison\race_common.py", line 165, in _race_refresh_hud
+    self._race_write_hud()
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\comparison\race_common.py", line 180, in _race_write_hud
+    self.logger.hud_snapshot(
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\comparison\race_protocol.py", line 206, in hud_snapshot
+    write_json(self.hud, fields)
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\comparison\race_protocol.py", line 76, in write_json
+    _store.atomic_write_json(path, obj)
+  File "E:\PyQt5_demo\2048\safe_store.py", line 55, in atomic_write_json
+    atomic_write_text(path, json.dumps(obj, ensure_ascii=ensure_ascii, indent=indent))
+  File "E:\PyQt5_demo\2048\safe_store.py", line 51, in atomic_write_text
+    atomic_write_bytes(path, text.encode(encoding))
+  File "E:\PyQt5_demo\2048\safe_store.py", line 40, in atomic_write_bytes
+    os.replace(tmp, path)          # 同盘 rename，原子生效；旧文件不会被提前删除
+    ^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [WinError 5] 拒绝访问。: 'E:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\race\\20261012_055849_B\\.tmp_ee1ag2e_.part' -> 'E:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\race\\20261012_055849_B\\hud_v6.json'
+

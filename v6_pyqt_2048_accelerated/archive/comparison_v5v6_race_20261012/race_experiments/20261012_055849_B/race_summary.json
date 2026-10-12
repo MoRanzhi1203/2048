@@ -1,0 +1,115 @@
+{
+  "kind": "v5_v6_live_race_summary",
+  "session_id": "20261012_055849_B",
+  "mode": "B",
+  "mode_label": "B 自由竞速",
+  "seed": 2048,
+  "algorithm": {
+    "strategy": "expectimax",
+    "depth": 4,
+    "time_limit": 0.3
+  },
+  "v6_override": {},
+  "max_steps": 70,
+  "max_seconds": 150.0,
+  "same_initial_board": true,
+  "first_divergence": null,
+  "boards_identical_so_far": true,
+  "note": "双方初始棋盘一致；若 first_divergence 为 null 表示逐步方向一致、棋盘序列相同；一旦分叉，按各自合法空位映射随机事件，不再声称后续棋盘相同。",
+  "sides": {
+    "v5": {
+      "side": "v5",
+      "steps": 70,
+      "decisions": 70,
+      "initial_board": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "final_score": 800,
+      "final_max_tile": 128,
+      "last_direction": "right",
+      "avg_search_ms": 33.0039,
+      "p95_search_ms": 64.607,
+      "search_cum_ms": 2310.273,
+      "wall_s": 34.772,
+      "anim_cum_ms": 22301.837,
+      "sched_cum_ms": 10159.948,
+      "sims": 0,
+      "backend_used": "reference",
+      "engine_used": "reference",
+      "status": "paused",
+      "timed_out_count": 0,
+      "game_over": false
+    },
+    "v6": {
+      "side": "v6",
+      "steps": 32,
+      "decisions": 32,
+      "initial_board": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "final_score": 248,
+      "final_max_tile": 32,
+      "last_direction": "down",
+      "avg_search_ms": 12.4573,
+      "p95_search_ms": 22.714,
+      "search_cum_ms": 398.632,
+      "wall_s": 37.923,
+      "anim_cum_ms": 10107.399,
+      "sched_cum_ms": 27417.124,
+      "sims": 0,
+      "backend_used": "cpp",
+      "engine_used": "python_kernel",
+      "status": "running",
+      "timed_out_count": 0,
+      "game_over": false
+    }
+  },
+  "avg_search_ms_speed_ratio_v5_over_v6": 2.649,
+  "generated_at": "2026-10-12 05:59:32"
+}

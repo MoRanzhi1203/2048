@@ -35,6 +35,7 @@ os.environ.setdefault('2048_HISTORY_DIR', V6_HISTORY_ROOT)
 import solver_v6                                                 # noqa: E402
 import v5_pyqt_2048_solver as _v5gui                            # noqa: E402  (只读复用 GUI)
 import safe_store as _store                                     # noqa: E402
+from v6_speed import V6SpeedMixin                               # noqa: E402  (三档速度/分段计时)
 
 # 运行时适配：让 V5 GUI（原样复用）调用 V6 的求解调度（含计算后端）。不修改 V5 源码。
 _v5gui.solver = solver_v6
@@ -56,8 +57,8 @@ BACKEND_CHOICES = (
 )
 
 
-class V6MainWindow(_v5gui.SolverMainWindow):
-    """V5 双栏 GUI + V6 数据隔离 + 计算后端选择。"""
+class V6MainWindow(V6SpeedMixin, _v5gui.SolverMainWindow):
+    """V5 双栏 GUI + V6 数据隔离 + 计算后端选择 + 三档运行速度。"""
 
     def __init__(self):
         # 数据隔离：全部落在 V6 目录，绝不写 v1–v5
@@ -74,6 +75,7 @@ class V6MainWindow(_v5gui.SolverMainWindow):
         self._prune_inherited_history_dirs()    # 清理继承链遗留的空版本目录
         self.setWindowTitle(self._title_text())
         self._install_backend_selector()
+        self._v6_speed_init()                   # 三档速度 + 分段计时（含持久化）
 
     def _prune_inherited_history_dirs(self):
         """删除继承链（v3/v4/v5）在 V6 存档根下遗留的**空**目录，使其只保留 v6/。
