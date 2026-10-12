@@ -1,4 +1,7 @@
 {
-  "speed_tier": "extreme",
-  "updated_at": "2026-10-12 15:42:49"
+  "updated_at": "2026-10-12 19:27:01",
+  "run_mode": "background",
+  "run_mode_migrated_from": "extreme",
+  "run_mode_migration_reason": "旧值 'extreme' -> 'fast'（V2 映射表）",
+  "modes_version": 2
 }

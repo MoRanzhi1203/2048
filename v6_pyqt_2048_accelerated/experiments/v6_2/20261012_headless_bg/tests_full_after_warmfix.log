@@ -1,0 +1,21 @@
+﻿E:\anaconda3\envs\2048\python.exe : ...........................................F.........................s...........s.
+......
+At line:24 char:1
++ E:\anaconda3\envs\2048\python.exe -m unittest discover -s . 2>&1 | Te ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (.........................s.......:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+======================================================================
+FAIL: test_matches_python_event_mirror (test_native_search.NativeMctsTest.test_matches_python_event_mirror)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\tests\test_native_search.py", line 178, in test_matches_python_even
+t_mirror
+    self.assertEqual(nat.root_visits, mirror['root_visits'])
+AssertionError: 60 != 49
+
+----------------------------------------------------------------------
+Ran 89 tests in 102.184s
+
+FAILED (failures=1, skipped=2)

@@ -35,14 +35,56 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(_HERE)
 PREFS_PATH = os.path.join(_HERE, 'config', 'ui_prefs.json')
 
-TIERS = ('standard', 'fast', 'extreme')
-TIER_LABELS = (('标准', 'standard'), ('快速', 'fast'), ('极限', 'extreme'))
+MODES = ('standard', 'fast', 'background')
+MODE_LABELS = (('标准', 'standard'), ('快速', 'fast'), ('后台求解', 'background'))
 
-TIER_PARAMS = {
-    'standard': {'anim_off': False, 'step_delay_ms': 70, 'metrics_every': 1},
-    'fast':     {'anim_off': False, 'step_delay_ms': 10, 'metrics_every': 2},
-    'extreme':  {'anim_off': True,  'step_delay_ms': 0,  'metrics_every': 8},
+# 运行方式仅决定「动画 / 步间等待 / UI 调度 / 执行位置」，与算法、求解强度、求解模式完全独立。
+MODE_PARAMS = {
+    'standard':   {'anim_off': False, 'step_delay_ms': 70, 'metrics_every': 1},
+    'fast':       {'anim_off': True,  'step_delay_ms': 0,  'metrics_every': 8},
+    'background': {'anim_off': True,  'step_delay_ms': 0,  'metrics_every': 8},
 }
+
+PREFS_VERSION = 2                       # ui_prefs 模式版本（运行方式三档语义版本）
+_LEGACY_MODE_MAP = {                    # 旧 speed_tier -> 新 run_mode（一次性、幂等）
+    'standard': 'standard',
+    'extreme': 'fast',                  # 旧“极限性能”（无动画）＝新“快速”
+    'fast': 'standard',                 # 旧“快速演示”（带动画）语义不同 -> 安全回退 标准
+}
+
+
+def migrate_prefs(prefs):
+    """把历史 `speed_tier` 迁移为带版本的 `run_mode`（只迁移一次，幂等）。
+
+    返回 (prefs, changed, reason)。
+    """
+    prefs = dict(prefs or {})
+    changed = False
+    reason = None
+    version = int(prefs.get('modes_version') or 0)
+    if version < PREFS_VERSION:
+        old = prefs.get('speed_tier')
+        if old is None:
+            new, reason = 'standard', '缺少历史运行方式 -> standard'
+        elif old in _LEGACY_MODE_MAP:
+            new = _LEGACY_MODE_MAP[old]
+            reason = '旧值 %r -> %r（V%d 映射表）' % (old, new, PREFS_VERSION)
+        else:
+            new, reason = 'standard', '未知历史值 %r -> standard' % (old,)
+        prefs['run_mode'] = new
+        prefs['run_mode_migrated_from'] = old
+        prefs['run_mode_migration_reason'] = reason
+        prefs['modes_version'] = PREFS_VERSION
+        changed = True
+    elif prefs.get('run_mode') not in MODES:
+        prefs['run_mode'] = 'standard'
+        prefs['run_mode_migration_reason'] = '非法运行方式 -> standard'
+        changed = True
+    return prefs, changed, reason
+
+
+TIERS = MODES                           # 兼容别名（旧名保留，值域已更新）
+TIER_LABELS = MODE_LABELS
 
 _SEG_QSS = (
     'QPushButton { background:#3a332d; color:#e2d7c7; border:1px solid #5a5048;'
@@ -90,16 +132,47 @@ class V6SpeedMixin:
         import v5_pyqt_2048_solver as _v5gui
         self._v5gui = _v5gui
         prefs = load_prefs()
-        tier = prefs.get('speed_tier')
-        self._v6_speed = tier if tier in TIERS else 'standard'
+        prefs, changed, reason = migrate_prefs(prefs)
+        self._v6_migration = {'changed': bool(changed), 'reason': reason,
+                              'run_mode': prefs.get('run_mode')}
+        if changed:
+            prefs['updated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+            save_prefs(prefs)
+        mode = prefs.get('run_mode')
+        self._v6_speed = mode if mode in MODES else 'standard'
         self._v6_pending_tier = None
         self._v6_t = {'search_ms': 0.0, 'anim_ms': 0.0, 'wait_ms': 0.0, 'render_ms': 0.0,
                       'steps': 0, 'start': perf_counter(), 'req_t0': None, 'anim_t0': None,
                       'wait_t0': None, 'metrics_steps': 0}
         self._v6_render_accum = False
         self._v6_rename_solver_labels()      # 运行方式->求解强度；模式->求解模式（仅 V6 进程）
-        self._v6_install_speed_panel()       # 主面板「运行速度」三档切换 + 分段计时读数
+        self._v6_install_speed_panel()       # 主面板「运行方式」三档切换 + 分段计时读数
+        self._v6_bg_controller = None
+        try:
+            from v6_background import BackgroundController
+            ctl = BackgroundController(self, _v5gui)
+            lay = getattr(self, 'solver_panel', None)
+            panel = getattr(self, 'v6_speed_panel', None)
+            if lay is not None and panel is not None and lay.layout() is not None:
+                lay.layout().insertWidget(lay.layout().indexOf(panel) + 1, ctl.panel)
+            self._v6_bg_controller = ctl
+            ctl.recover_on_start()          # 启动期安全恢复：重连活动任务 / 释放过期所有权
+        except Exception:                                        # noqa: BLE001
+            self._v6_bg_controller = None
         self._v6_apply_tier(self._v6_speed, persist=False)
+
+    def closeEvent(self, event):
+        ctl = getattr(self, '_v6_bg_controller', None)
+        if ctl is not None and ctl.is_active():
+            ok = ctl.shutdown(timeout=6.0)
+            if not ok:
+                # 有界等待超时：保留检查点并如实提示（不盲目终止存储事务）
+                try:
+                    self._v5gui  # noqa: B018  (保持引用，避免误删导入)
+                    print('[v6] 后台求解未在期限内停止，已保留检查点', flush=True)
+                except Exception:                                # noqa: BLE001
+                    pass
+        super().closeEvent(event)
 
     # ---------------------------------------------------------- 标签改名（不改 V5 源码）
     def _v6_rename_solver_labels(self):
@@ -140,7 +213,7 @@ class V6SpeedMixin:
 
         head = QHBoxLayout()
         head.setSpacing(10)
-        lab = QLabel('运行速度')
+        lab = QLabel('运行方式')
         lab.setStyleSheet('color:#8f8175; font-size:12px;')
         lab.setFixedWidth(58)
         head.addWidget(lab, 0, Qt.AlignVCenter)
@@ -155,9 +228,9 @@ class V6SpeedMixin:
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet(_SEG_QSS)
-            btn.setToolTip({'standard': '标准：保留动画与原有步间停顿',
-                            'fast': '快速：保留动画，缩短步间等待',
-                            'extreme': '极限：关闭走子动画与人工等待（性能优先）'}[key])
+            btn.setToolTip({'standard': '标准：保留走子动画与原有步间停顿（本机 GUI 实时渲染）',
+                            'fast': '快速：关闭走子动画与人工等待，本机 GUI 立即落子',
+                            'background': '后台求解：独立计算进程接管当前这局（无 Qt 渲染），GUI 仅低频显示进度'}[key])
             btn.clicked.connect(lambda _checked, k=key: self._v6_on_speed_clicked(k))
             seg.addWidget(btn)
             self.v6_speed_group.addButton(btn)
@@ -212,20 +285,24 @@ class V6SpeedMixin:
             self._v6_apply_tier(key)
 
     def _v6_apply_tier(self, tier, persist=True):
-        if tier not in TIERS:
+        if tier not in MODES:
             tier = 'standard'
         self._v6_speed = tier
-        p = TIER_PARAMS[tier]
+        p = MODE_PARAMS[tier]
         self._v5gui.STEP_DELAY_MS = int(p['step_delay_ms'])   # 进程内生效，不改源码文件
         self._v6_anim_off = bool(p['anim_off'])
         self._v6_metrics_every = int(p['metrics_every'])
         if persist:
             prefs = load_prefs()
-            prefs['speed_tier'] = tier
+            prefs['run_mode'] = tier
+            prefs['modes_version'] = PREFS_VERSION
             prefs['updated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
             save_prefs(prefs)
         self._v6_sync_speed_buttons()
         self._v6_update_timing_label()
+        ctl = getattr(self, '_v6_bg_controller', None)
+        if ctl is not None:
+            ctl.on_mode_changed(tier)
 
     def _v6_apply_pending_tier(self):
         pending = self._v6_pending_tier

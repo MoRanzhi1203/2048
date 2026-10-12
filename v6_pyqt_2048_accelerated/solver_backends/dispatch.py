@@ -41,52 +41,70 @@ def _load_cpp():
     return _cpp_module
 
 
-def probe_backends() -> dict:
-    """探测四个后端的可用性，返回 {name: {available, reason, kind}}。"""
-    out = {}
+_PROBE_CACHE = {}
 
-    # reference
-    try:
-        from .reference import ReferenceBackend
-        b = ReferenceBackend()
-        ok, reason = b.available()
-        out['reference'] = {'available': bool(ok), 'reason': reason, 'kind': 'python'}
-    except Exception as e:                              # pragma: no cover
-        out['reference'] = {'available': False, 'reason': '%r' % (e,), 'kind': 'python'}
 
-    # numpy
-    try:
-        from .numpy_core import NumpyBackend
-        b = NumpyBackend()
-        ok, reason = b.available()
-        out['numpy'] = {'available': bool(ok), 'reason': reason, 'kind': 'numpy'}
-    except Exception as e:
-        out['numpy'] = {'available': False, 'reason': '%r' % (e,), 'kind': 'numpy'}
+def reset_probe_cache():
+    """清空探测缓存与 C++ 加载缓存（供测试/环境变化后重新探测）。"""
+    _PROBE_CACHE.clear()
+    global _cpp_module, _cpp_error
+    _cpp_module = None
+    _cpp_error = None
 
-    # numba
-    try:
-        from .numba_core import NumbaBackend
-        b = NumbaBackend()
-        ok, reason = b.available()
-        out['numba'] = {'available': bool(ok), 'reason': reason, 'kind': 'numba'}
-    except Exception as e:
-        out['numba'] = {'available': False, 'reason': '%r' % (e,), 'kind': 'numba'}
 
-    # cpp (built extension)
-    mod = _load_cpp()
-    if mod is None:
-        out['cpp'] = {'available': False,
-                      'reason': 'BUILD_BLOCKED: %s' % (_cpp_error or 'extension not built'),
-                      'kind': 'cpp'}
-    else:
+def _probe_one(name: str) -> dict:
+    """探测**单个**后端的可用性（只导入该后端所需依赖，避免无关冷导入）。"""
+    if name in _PROBE_CACHE:
+        return _PROBE_CACHE[name]
+    if name == 'reference':
         try:
-            ok, reason = mod.available()
-            out['cpp'] = {'available': bool(ok), 'reason': reason, 'kind': 'cpp'}
+            from .reference import ReferenceBackend
+            ok, reason = ReferenceBackend().available()
+            entry = {'available': bool(ok), 'reason': reason, 'kind': 'python'}
         except Exception as e:                          # pragma: no cover
-            out['cpp'] = {'available': False, 'reason': 'BUILD_BLOCKED: %r' % (e,),
-                          'kind': 'cpp'}
+            entry = {'available': False, 'reason': '%r' % (e,), 'kind': 'python'}
+    elif name == 'numpy':
+        try:
+            from .numpy_core import NumpyBackend
+            ok, reason = NumpyBackend().available()
+            entry = {'available': bool(ok), 'reason': reason, 'kind': 'numpy'}
+        except Exception as e:
+            entry = {'available': False, 'reason': '%r' % (e,), 'kind': 'numpy'}
+    elif name == 'numba':
+        try:
+            from .numba_core import NumbaBackend
+            ok, reason = NumbaBackend().available()
+            entry = {'available': bool(ok), 'reason': reason, 'kind': 'numba'}
+        except Exception as e:
+            entry = {'available': False, 'reason': '%r' % (e,), 'kind': 'numba'}
+    elif name == 'cpp':
+        mod = _load_cpp()
+        if mod is None:
+            entry = {'available': False,
+                     'reason': 'BUILD_BLOCKED: %s' % (_cpp_error or 'extension not built'),
+                     'kind': 'cpp'}
+        else:
+            try:
+                ok, reason = mod.available()
+                entry = {'available': bool(ok), 'reason': reason, 'kind': 'cpp'}
+            except Exception as e:                      # pragma: no cover
+                entry = {'available': False, 'reason': 'BUILD_BLOCKED: %r' % (e,), 'kind': 'cpp'}
+    else:
+        entry = {'available': False, 'reason': '未知后端：%s' % name, 'kind': name}
+    _PROBE_CACHE[name] = entry
+    return entry
 
-    return out
+
+def probe_backends(only=None) -> dict:
+    """探测后端可用性，返回 {name: {available, reason, kind}}。
+
+    ``only`` 指定时**只探测该后端**（并缓存），从而避免为 cpp/reference 路径冷导入
+    numpy/numba 等无关依赖 —— 这是后台 worker 首解卡顿的关键修复之一。
+    不传 ``only`` 时返回完整能力矩阵（GUI 展示用；结果同样按后端缓存）。
+    """
+    if only is not None:
+        return {only: _probe_one(only)}
+    return {n: _probe_one(n) for n in BACKEND_NAMES}
 
 
 def _read_default_backend() -> str:
@@ -106,9 +124,9 @@ def _read_default_backend() -> str:
 
 
 def create_backend(name: str):
-    """按名称创建后端实例；不可用抛 BackendUnavailable。"""
-    probe = probe_backends()
-    if name not in probe:
+    """按名称创建后端实例；不可用抛 BackendUnavailable（只探测该后端）。"""
+    probe = probe_backends(only=name)
+    if name not in BACKEND_NAMES:
         raise BackendUnavailable('未知后端：%s' % name)
     if not probe[name]['available']:
         raise BackendUnavailable('%s 不可用：%s' % (name, probe[name]['reason']))
@@ -132,10 +150,10 @@ def get_backend(requested: str = 'auto', allow_fallback: bool = True):
 
     requested: 'auto' | 'reference' | 'numpy' | 'numba' | 'cpp'
     """
-    probe = probe_backends()
     if requested in (None, 'auto'):
         requested = _read_default_backend()
-
+    # 只探测**被请求的后端**：cpp/reference 路径不再冷导入 numpy/numba
+    probe = probe_backends(only=requested)
     if requested == 'reference' or probe.get(requested, {}).get('available'):
         try:
             return create_backend(requested), requested, None
@@ -148,9 +166,11 @@ def get_backend(requested: str = 'auto', allow_fallback: bool = True):
 
     if not allow_fallback:
         raise BackendUnavailable(reason)
-    # 回退顺序：numba -> numpy -> reference（保留 numpy 依赖缺失时仍能回到 reference）
+    # 回退顺序：numba -> numpy -> reference（逐个按需探测，避免无关冷导入）
     for cand in ('numba', 'numpy', 'reference'):
-        if probe.get(cand, {}).get('available'):
+        if cand == requested:
+            continue
+        if probe_backends(only=cand).get(cand, {}).get('available'):
             try:
                 return create_backend(cand), cand, reason
             except Exception:                            # pragma: no cover

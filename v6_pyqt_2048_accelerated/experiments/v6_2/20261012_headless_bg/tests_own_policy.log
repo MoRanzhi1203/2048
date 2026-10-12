@@ -1,0 +1,19 @@
+﻿E:\anaconda3\envs\2048\python.exe : ...........E:\anaconda3\envs\2048\Lib\unittest\case.py:589: ResourceWarning: unclos
+ed file <_io.TextIOWrapper name=4 encoding='utf-8'>
+At line:18 char:1
++ E:\anaconda3\envs\2048\python.exe -m unittest test_v6_ownership test_ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (...........E:\a...coding='utf-8'>:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+E:\anaconda3\envs\2048\Lib\unittest\case.py:589: ResourceWarning: unclosed file <_io.TextIOWrapper name=5 encoding='utf
+-8'>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+........
+----------------------------------------------------------------------
+Ran 19 tests in 6.732s
+
+OK

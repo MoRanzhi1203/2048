@@ -225,6 +225,12 @@ MainWindow = V6MainWindow
 
 
 def main():
+    # 崩溃取证：捕获 Qt 致命消息（qFatal）+ 全线程栈，便于定位 Qt5Core 0xC0000409
+    try:
+        from diagnostics import qt_fatal_capture
+        qt_fatal_capture.install()
+    except Exception:                                            # noqa: BLE001
+        pass
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)

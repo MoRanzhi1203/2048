@@ -235,6 +235,9 @@ class FailureInjectionTest(unittest.TestCase):
         try:
             D._cpp_module = None
             D._cpp_error = 'BUILD_BLOCKED: simulated missing .pyd'
+            D.reset_probe_cache()          # 探测结果已按后端缓存：模拟环境变化后需显式失效
+            D._cpp_module = None
+            D._cpp_error = 'BUILD_BLOCKED: simulated missing .pyd'
             probe = D.probe_backends()
             self.assertFalse(probe['cpp']['available'])
             be, used, reason = D.get_backend('auto')
@@ -242,6 +245,7 @@ class FailureInjectionTest(unittest.TestCase):
             self.assertIsNotNone(reason)
         finally:
             D._cpp_module, D._cpp_error = saved_mod, saved_err
+            D.reset_probe_cache()
 
     def test_invalid_board_rejected(self):
         res = S.solve([[1, 2], [3, 4]], 'heuristic')

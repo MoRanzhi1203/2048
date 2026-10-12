@@ -1,0 +1,36 @@
+﻿E:\anaconda3\envs\2048\python.exe : FF
+At line:19 char:1
++ E:\anaconda3\envs\2048\python.exe -m unittest test_v6_headless.Worker ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FF:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+======================================================================
+FAIL: test_start_pause_resume_stop (test_v6_headless.WorkerE2ETest.test_start_pause_resume_stop)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\tests\test_v6_headless.py", line 219, in test_start_pause_resume_st
+op
+    self._read_until(proc, 'warmed', timeout=300, since=m0)
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\tests\test_v6_headless.py", line 197, in _read_until
+    raise AssertionError('等待 %s 超时（%.0fs）；已收类型=%s'
+AssertionError: 等待 warmed 超时（300s）；已收类型=['ready', 'ack', 'warming']
+
+======================================================================
+FAIL: test_worker_writes_and_releases_owner (test_v6_ownership.WorkerOwnershipLifecycleTest.test_worker_writes_and_rele
+ases_owner)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\tests\test_v6_ownership.py", line 204, in test_worker_writes_and_re
+leases_owner
+    wait_line(lambda ln: '"final"' in ln, 180, 'final')
+  File "E:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\tests\test_v6_ownership.py", line 180, in wait_line
+    raise AssertionError('等待 %s 超时（%.0fs）；stderr=%s；lines=%s'
+AssertionError: 等待 final 超时（180s）；stderr=；lines=['{"type": "ready", "pid": 34320, "seq": 1}', '{"type": "ack", "cmd": "
+start", "seq": 2}', '{"type": "warming", "game_id": "own", "note": "首次导入求解栈并按所选算法/后端预热（可能较慢）", "seq":', '{"type": "ack"
+, "cmd": "stop", "seq": 4}']
+
+----------------------------------------------------------------------
+Ran 2 tests in 480.646s
+
+FAILED (failures=2)

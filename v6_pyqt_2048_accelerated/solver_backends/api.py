@@ -43,9 +43,16 @@ def is_power_of_two(v: int) -> bool:
 
 
 def _cell_int(v):
-    """把单个单元格转换为 Python int；拒绝 bool / 浮点 / NaN / 负数 / 非整数。"""
+    """把单个单元格转换为 Python int；拒绝 bool / 浮点 / NaN / 负数 / 非整数。
+
+    性能关键：**纯 Python int / float 走快路径且不导入 numpy**。
+    仅当取值不是内置类型（可能来自 numpy 等）时才懒导入 numpy 做精确判定。
+    这消除了“普通 list[list[int]] 棋盘也会触发 numpy 冷导入”的启动卡顿。
+    """
     if isinstance(v, bool):
         raise InvalidBoardError('棋盘取值不允许布尔值：%r' % (v,))
+    if isinstance(v, int):
+        return v                                     # 最常见路径：不导入 numpy
     if isinstance(v, float):
         if v != v:                                    # NaN
             raise InvalidBoardError('棋盘取值不允许 NaN')
@@ -66,9 +73,7 @@ def _cell_int(v):
             return int(v)
     except ImportError:                                # pragma: no cover
         pass
-    if not isinstance(v, int):
-        raise InvalidBoardError('棋盘取值必须为 int，收到 %r' % (v,))
-    return v
+    raise InvalidBoardError('棋盘取值必须为 int，收到 %r' % (v,))
 
 
 def validate_board(board, size: int = 4):
