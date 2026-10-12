@@ -136,9 +136,9 @@ class CheckpointRestoreTest(unittest.TestCase):
 _IPC_E2E = os.environ.get('V6_RUN_IPC_E2E') == '1'
 
 
-@unittest.skipUnless(_IPC_E2E, '慢速 IPC E2E（需 V6_RUN_IPC_E2E=1）：worker 首解冷导入 '
-                               '(numpy/numba) 在全量负载下可 >300s，属环境级冷启动病理；'
-                               '已改为事件驱动等待，可单独运行取证')
+@unittest.skipUnless(_IPC_E2E, 'IPC E2E（需 V6_RUN_IPC_E2E=1）：会真实拉起 worker 子进程并读写'
+                               '暂存检查点，为保持默认门禁快速/确定性而默认跳过，可单独运行取证。'
+                               '（原首解冷启动卡死已修复：cpp 求解路径不再冷导入 numpy）')
 class WorkerOwnershipLifecycleTest(unittest.TestCase):
     def test_worker_writes_and_releases_owner(self):
         tmp = tempfile.mkdtemp(prefix='v6_worker_own_')

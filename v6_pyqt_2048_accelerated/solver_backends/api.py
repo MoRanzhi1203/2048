@@ -117,6 +117,40 @@ def board_key(board) -> tuple:
     return tuple(tuple(row) for row in board)
 
 
+# --------------------------------------------------------------- 权重 ---
+# 权重键顺序（与 V5 solver_2048.DEFAULT_WEIGHTS 同值同口径，也是 C++ / NumPy 内核的
+# 权重向量顺序：[empty, monotonicity, smoothness, merge, corner, snake, danger]）。
+WEIGHT_KEYS = ('empty', 'monotonicity', 'smoothness', 'merge', 'corner', 'snake', 'danger')
+
+# 兜底默认值：仅在 reference（V5 源码）不可用时使用；正常情况下以 V5 的默认值为准。
+_FALLBACK_WEIGHTS = {
+    'empty': 2.7, 'monotonicity': 1.0, 'smoothness': 0.10,
+    'merge': 1.0, 'corner': 0.30, 'snake': 0.0, 'danger': 0.0,
+}
+
+
+def _default_weights():
+    """返回 V5 默认权重（懒加载 reference，避免在 api 导入期引入 v5 源码）。"""
+    try:
+        from .reference import ReferenceBackend
+        return ReferenceBackend.DEFAULT_WEIGHTS
+    except Exception:                                  # pragma: no cover
+        return dict(_FALLBACK_WEIGHTS)
+
+
+def weight_list(weights=None):
+    """把权重映射转成按 ``WEIGHT_KEYS`` 排序的 float 列表（**不导入 numpy**）。
+
+    仅供需要跨 pybind11 边界传参的后端适配层（cpp）使用：它们把权重作为普通列表
+    传入原生 ``evaluate``/``rollout*``，无需 NumPy。这样可保证 cpp 求解路径**永不**
+    冷导入 numpy —— 这是后台 worker 预热卡死（首解卡住）的根因修复。
+    """
+    dflt = _default_weights()
+    if weights is None:
+        weights = dflt
+    return [float(weights.get(k, dflt.get(k, 0.0))) for k in WEIGHT_KEYS]
+
+
 class BackendBase:
     """后端协议的最小子集与默认（纯 Python）能力声明。
 

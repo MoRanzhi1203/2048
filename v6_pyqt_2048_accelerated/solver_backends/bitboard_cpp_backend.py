@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from .api import (BackendBase, BoardOverflowError, InvalidBoardError, DIRECTIONS,
-                  LIMIT_TILE)
+                  LIMIT_TILE, weight_list)
 
 
 def _flatten(board):
@@ -55,8 +55,7 @@ class CppBitboardBackend(BackendBase):
             raise BoardOverflowError(str(e))
 
     def evaluate(self, board, weights=None):
-        from .numpy_core import _weight_array
-        w = _weight_array(weights).tolist()
+        w = weight_list(weights)          # numpy-free：cpp 求解路径不冷导入 numpy
         try:
             return float(self.m.evaluate(_flatten(board), w))
         except self.m.BoardOverflowError as e:
@@ -107,8 +106,7 @@ class CppBitboardBackend(BackendBase):
     # ---- 原生整段 rollout（把完整 N 步模拟下沉到 C++，消费显式事件流） ----
     def rollout_events(self, board, gained, depth, cell_ev, value_ev, move_ev, weights=None):
         """单次 rollout：与 Python 事件流驱动 rollout_py 在同一事件流下逐位一致。"""
-        from .numpy_core import _weight_array
-        w = _weight_array(weights).tolist()
+        w = weight_list(weights)          # numpy-free：cpp 求解路径不冷导入 numpy
         try:
             return float(self.m.rollout_events(_flatten(board), int(gained), int(depth),
                                                cell_ev, value_ev, move_ev, w))
@@ -118,8 +116,7 @@ class CppBitboardBackend(BackendBase):
     def rollout_batch(self, board, gained, depth, n_rollouts,
                       cell_ev, value_ev, move_ev, weights=None):
         """一次 API 调用完成一组 rollout（共享事件流游标），降低跨边界调用次数。"""
-        from .numpy_core import _weight_array
-        w = _weight_array(weights).tolist()
+        w = weight_list(weights)          # numpy-free：cpp 求解路径不冷导入 numpy
         try:
             return [float(x) for x in self.m.rollout_batch(
                 _flatten(board), int(gained), int(depth), int(n_rollouts),

@@ -23,10 +23,12 @@ V6_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(V6_DIR)
 sys.path.insert(0, V6_DIR)
 sys.path.insert(0, os.path.join(V6_DIR, 'headless'))
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'v5_pyqt_2048_solver'))
 
 import core                                                          # noqa: E402
 import game_loop                                                     # noqa: E402
+import safe_store                                                    # noqa: E402
 
 PY = sys.executable
 BOARD = [[2, 4, 8, 16], [128, 512, 1024, 2048], [0, 32, 64, 256], [0, 0, 0, 0]]
@@ -161,9 +163,9 @@ class ModelEquivalenceTest(unittest.TestCase):
 _IPC_E2E = os.environ.get('V6_RUN_IPC_E2E') == '1'
 
 
-@unittest.skipUnless(_IPC_E2E, '慢速 IPC E2E（需 V6_RUN_IPC_E2E=1）：worker 首解冷导入 '
-                               '(numpy/numba) 在全量负载下可 >300s，属环境级冷启动病理，'
-                               '不宜作为默认门禁；已改为事件驱动等待，可单独运行取证')
+@unittest.skipUnless(_IPC_E2E, 'IPC E2E（需 V6_RUN_IPC_E2E=1）：会真实拉起 worker 子进程并读写'
+                               '暂存检查点，为保持默认门禁快速/确定性而默认跳过，可单独运行取证。'
+                               '（原首解冷启动卡死已修复：cpp 求解路径不再冷导入 numpy）')
 class WorkerE2ETest(unittest.TestCase):
     def _spawn(self):
         env = dict(os.environ, PYTHONNOUSERSITE='1')
@@ -203,7 +205,10 @@ class WorkerE2ETest(unittest.TestCase):
         staging = os.path.join(tmp, 'bg_checkpoint.json')
         proc = self._spawn()
         self._read_until(proc, 'ready')
-        snap = core.build_snapshot(BOARD, 0, 0, core.rng_state_to_json(random.getstate()),
+        # 用稀疏棋盘（仅两块低值方块）确保本局足够长，稳定覆盖 pause→resume→stop。
+        # 若用接近终局的满盘，AI 可能在两次周期回传之间就走到终局，导致协议流程无法覆盖。
+        e2e_board = [[2, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 2]]
+        snap = core.build_snapshot(e2e_board, 0, 0, core.rng_state_to_json(random.getstate()),
                                    'e2e', 0, 'expectimax', 'fast')
         snap_path = os.path.join(tmp, 'handoff_snapshot.json')
         with open(snap_path, 'w', encoding='utf-8') as f:
@@ -220,7 +225,15 @@ class WorkerE2ETest(unittest.TestCase):
         prog = self._read_until(proc, 'progress', timeout=180, since=m0)
         self.assertGreaterEqual(prog['step'], 1)
         self.assertTrue(os.path.exists(staging), '每步检查点未落盘')
-        ck = json.loads(open(staging, encoding='utf-8').read())
+        # Windows：worker 每步用 os.replace 原子覆盖检查点；读侧若与此竞争会瞬时
+        # PermissionError。读侧必须重试（不能长时间持有句柄），否则会与 worker 的原子写互相加锁。
+        ok, ck, err = False, None, None
+        for _ in range(50):
+            ok, ck, err = safe_store.read_json(staging)
+            if ok:
+                break
+            time.sleep(0.02)
+        self.assertTrue(ok, '检查点持续不可读：%s' % (err,))
         self.assertEqual(ck['game_id'], 'e2e')
         self.assertGreaterEqual(ck['revision'], 1)
         m1 = self._mark(proc)

@@ -53,8 +53,21 @@ class Checkpoint:
     def save(self, payload):
         payload = dict(payload)
         payload['saved_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
-        # safe_store.atomic_write_json 成功返回 None（失败会抛异常）；此处再做存在性校验
-        _store.atomic_write_json(self.path, payload)
+        # safe_store.atomic_write_json 成功返回 None（失败会抛异常）；此处再做存在性校验。
+        # Windows：`os.replace` 覆盖目标文件时，若目标正被其他句柄打开（GUI 重连读取检查点、
+        # 备份/病毒扫描等），会瞬时抛 PermissionError(WinError 5/32)。检查点按**每步**写入，
+        # 必须容忍这种瞬时锁：有界重试，且不改变原子语义（仍是 临时文件 -> fsync -> os.replace）。
+        last_exc = None
+        for attempt in range(25):
+            try:
+                _store.atomic_write_json(self.path, payload)
+                last_exc = None
+                break
+            except PermissionError as exc:                 # WinError 5/32 瞬时占用
+                last_exc = exc
+                time.sleep(0.02)
+        if last_exc is not None:
+            raise last_exc
         if not os.path.exists(self.path):
             raise IOError('检查点写入失败：%s' % self.path)
         return payload

@@ -12,13 +12,10 @@ from __future__ import annotations
 import numpy as np
 
 from .api import (BackendBase, BoardOverflowError, InvalidBoardError, DIRECTIONS,
-                  MAX_EXP, LIMIT_TILE)
+                  MAX_EXP, LIMIT_TILE, weight_list)
 
 # 方向 -> 索引（与 api.DIRECTIONS 顺序一致）
 _DIR_IDX = {d: i for i, d in enumerate(DIRECTIONS)}
-
-# 默认权重顺序（与 V5 DEFAULT_WEIGHTS 同值同口径）
-_WEIGHT_KEYS = ('empty', 'monotonicity', 'smoothness', 'merge', 'corner', 'snake', 'danger')
 
 
 def _build_left_tables():
@@ -200,17 +197,11 @@ class NumpyBackend(BackendBase):
 
 # --------------------------------------------------------------- 评估 ---
 def _weight_array(weights):
-    """把权重 dict 转成定长 float64 数组（缺省用 V5 默认值）。"""
-    try:
-        from .reference import ReferenceBackend
-        dflt = ReferenceBackend.DEFAULT_WEIGHTS
-    except Exception:                                  # pragma: no cover
-        dflt = {'empty': 2.7, 'monotonicity': 1.0, 'smoothness': 0.10,
-                'merge': 1.0, 'corner': 0.30, 'snake': 0.0, 'danger': 0.0}
-    if weights is None:
-        weights = dflt
-    return np.array([float(weights.get(k, dflt.get(k, 0.0))) for k in _WEIGHT_KEYS],
-                    dtype=np.float64)
+    """把权重 dict 转成定长 float64 数组（缺省用 V5 默认值）。
+
+    权重列表构造复用 ``api.weight_list``（numpy-free、单一来源）；此处仅做数组化。
+    """
+    return np.array(weight_list(weights), dtype=np.float64)
 
 
 def _log2_vals(vals):
