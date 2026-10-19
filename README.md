@@ -6,52 +6,52 @@
 
 ```
 2048/
-├── v1_console_2048/                  # 第 1 篇：纯控制台版
+├── v1_console_2048/                       # 第 1 篇：纯控制台版
 │   └── v1_console_2048.py
-├── v2_console_2048_with_history/     # 第 2 篇：带历史记录 + 续玩
+├── v2_console_2048_with_history/          # 第 2 篇：带历史记录 + 续玩
 │   ├── v2_console_2048_with_history.py
-│   └── game_history/                 # 对局存档（运行时生成）
-├── v3_pyqt_2048/                     # 第 3 篇：PyQt5 桌面版
-│   ├── v3_pyqt_2048_with_history.py  #   主程序（MVC + 撤销和重做 + 历史 + 启动页）
-│   ├── screenshots/                  #   启动页 / 游戏页整窗截图
-│   └── game_history/                 #   对局存档（运行时生成）
-├── v4_pyqt_2048_animated/            # 第 4 篇：PyQt5 动画版（复用第 3 篇 GameCore）
-│   ├── v4_pyqt_2048_animated.py      #   主程序（分层渲染 + 定时器插值动画）
-│   ├── screenshots/                  #   启动页 / 悬停与合并粒子 / 游戏页整窗截图
-│   └── game_history/                 #   对局存档（运行时生成）
-├── v5_pyqt_2048_solver/              # 第 5 篇：算法求解版（复用第 4 篇界面，增量扩展）
-│   ├── v5_pyqt_2048_solver.py        #   主程序（继承第 4 版 MainWindow + 左右双栏求解工作台）
-│   ├── solver_2048.py                #   求解算法核心（启发式/贪心模拟/Expectimax/MCTS/强化学习，含剪枝）
-│   ├── rl_2048.py                    #   强化学习：numpy 策略/价值网络 + 自对弈训练 / 独立门禁
-│   ├── rl_model.npz                  #   强化学习正式模型（candidate / .prev.npz 为候选与备份）
-│   ├── test_solver.py                #   测试用例（算法核心 5 类策略 + 界面集成 + 双栏/折叠/并发生命周期）
-│   ├── 功能说明.md                    #   第 5 版功能说明文档
-│   ├── screenshots/                  #   启动页 / 双栏游戏页 / 求解中 / 单步建议 / 折叠态 整窗截图
-│   ├── solver_results/               #   求解会话与导出文件（运行时生成；sessions.json 原子保存 + .bak 回滚）
-│   └── game_history/                 #   对局存档（运行时生成）
-├── experiments/                      # 算法基准 / 消融 / 验收证据（开发侧，不参与程序运行）
-│   ├── benchmark_algorithms.py       #   五算法公平基准（同 seed、环境/求解器 RNG 分离、CSV/JSON）
-│   ├── ablation.py                   #   启发式 / rollout / MCTS / Expectimax 消融
-│   ├── baseline_record.py            #   基线记录（模型哈希 / 环境）
-│   ├── baseline/                     #   V1 基线模型副本 + baseline.json
-│   ├── results/                      #   早期实验原始结果（历史）
-│   └── v5_1/                         #   V5.1 汇总与冻结证据（report / known_issues / test_matrix / final_checks / release_checks / runs）
-├── tools/capture_gui.py              # 统一 GUI 截图入口（见 docs/GUI_SCREENSHOT_STANDARD.md）
-├── docs/GUI_SCREENSHOT_STANDARD.md   # GUI 截图与视觉验收规范（强制）
-├── safe_store.py                     # 跨版本安全存档工具（原子写入/校验/备份/单实例锁，v2–v5 共用）
-├── ui_theme.py                       # 跨版本主题化弹窗组件（暖棕配色，v4/v5 共用）
-├── tests/                            # 跨版本 / 跨模块测试（unittest）
-│   ├── test_cross_version.py         #   v2–v5 异常退出存档恢复（真实 taskkill /F）
-│   ├── test_popups.py                #   v4/v5 主题化弹窗回归
-│   ├── test_mcts_chance.py           #   MCTS 回传不变量 / 渐进加宽 / spawn 分布
-│   ├── test_expectimax_reference.py  #   Expectimax 与独立穷举参考对照
-│   ├── test_rl_gradients.py          #   RL 梯度有限差分 / 价值头符号
-│   ├── test_rl_model_management.py   #   schema/legacy、holdout 门禁、检查点/回滚、推理缓存
-│   ├── test_rl_selftrain.py          #   自对弈训练行为验证
+│   └── game_history/                      # 对局存档（运行时生成）
+├── v3_pyqt_2048/                          # 第 3 篇：PyQt5 桌面版
+│   ├── v3_pyqt_2048_with_history.py       # 主程序（MVC + 撤销和重做 + 历史 + 启动页）
+│   ├── screenshots/                       # 启动页 / 游戏页整窗截图
+│   └── game_history/                      # 对局存档（运行时生成）
+├── v4_pyqt_2048_animated/                 # 第 4 篇：PyQt5 动画版（复用第 3 篇 GameCore）
+│   ├── v4_pyqt_2048_animated.py           # 主程序（分层渲染 + 定时器插值动画）
+│   ├── screenshots/                       # 启动页 / 悬停与合并粒子 / 游戏页整窗截图
+│   └── game_history/                      # 对局存档（运行时生成）
+├── v5_pyqt_2048_solver/                   # 第 5 篇：算法求解版（复用第 4 篇界面，增量扩展）
+│   ├── v5_pyqt_2048_solver.py             # 主程序（继承第 4 版 MainWindow + 左右双栏求解工作台）
+│   ├── solver_2048.py                     # 求解算法核心（启发式/贪心模拟/Expectimax/MCTS/强化学习，含剪枝）
+│   ├── rl_2048.py                         # 强化学习：numpy 策略/价值网络 + 自对弈训练 / 独立门禁
+│   ├── rl_model.npz                       # 强化学习正式模型（candidate / .prev.npz 为候选与备份）
+│   ├── test_solver.py                     # 测试用例（算法核心 5 类策略 + 界面集成 + 双栏/折叠/并发生命周期）
+│   ├── 功能说明.md                        # 第 5 版功能说明文档
+│   ├── screenshots/                       # 启动页 / 双栏游戏页 / 求解中 / 单步建议 / 折叠态 整窗截图
+│   ├── solver_results/                    # 求解会话与导出文件（运行时生成；sessions.json 原子保存 + .bak 回滚）
+│   └── game_history/                      # 对局存档（运行时生成）
+├── experiments/                           # 算法基准 / 消融 / 验收证据（开发侧，不参与程序运行）
+│   ├── benchmark_algorithms.py            # 五算法公平基准（同 seed、环境/求解器 RNG 分离、CSV/JSON）
+│   ├── ablation.py                        # 启发式 / rollout / MCTS / Expectimax 消融
+│   ├── baseline_record.py                 # 基线记录（模型哈希 / 环境）
+│   ├── baseline/                          # V1 基线模型副本 + baseline.json
+│   ├── results/                           # 早期实验原始结果（历史）
+│   └── v5_1/                              # V5.1 汇总与冻结证据（report / known_issues / test_matrix / final_checks / release_checks / runs）
+├── tools/capture_gui.py                   # 统一 GUI 截图入口（见 docs/GUI_SCREENSHOT_STANDARD.md）
+├── docs/GUI_SCREENSHOT_STANDARD.md        # GUI 截图与视觉验收规范（强制）
+├── safe_store.py                          # 跨版本安全存档工具（原子写入/校验/备份/单实例锁，v2–v5 共用）
+├── ui_theme.py                            # 跨版本主题化弹窗组件（暖棕配色，v4/v5 共用）
+├── tests/                                 # 跨版本 / 跨模块测试（unittest）
+│   ├── test_cross_version.py              # v2–v5 异常退出存档恢复（真实 taskkill /F）
+│   ├── test_popups.py                     # v4/v5 主题化弹窗回归
+│   ├── test_mcts_chance.py                # MCTS 回传不变量 / 渐进加宽 / spawn 分布
+│   ├── test_expectimax_reference.py       # Expectimax 与独立穷举参考对照
+│   ├── test_rl_gradients.py               # RL 梯度有限差分 / 价值头符号
+│   ├── test_rl_model_management.py        # schema/legacy、holdout 门禁、检查点/回滚、推理缓存
+│   ├── test_rl_selftrain.py               # 自对弈训练行为验证
 │   ├── test_algorithm_benchmark_smoke.py  # 五算法冒烟
-│   └── _driver.py                    #   测试驱动（子进程内构造各版本模型）
-├── AGENTS.md / .trae/rules/          # 项目级 Agent 规则（含截图强制规范）
-├── blog/                             # 系列博客（6 篇；第 5 篇分上/下）
+│   └── _driver.py                         # 测试驱动（子进程内构造各版本模型）
+├── AGENTS.md / .trae/rules/               # 项目级 Agent 规则（含截图强制规范）
+├── blog/                                  # 系列博客（6 篇；第 5 篇分上/下）
 │   ├── 第1篇 · Python 实现：从数学模型到完整控制台版《2048》游戏.md
 │   ├── 第2篇 · 如何实现带历史记录功能的控制台2048游戏.md
 │   ├── 第3篇 · 使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做.md
@@ -59,10 +59,10 @@
 │   ├── 第5篇（上）· 使用 PyQt5 实现 2048 算法求解版：五类搜索算法内核.md
 │   ├── 第5篇（下）· 使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互.md
 │   ├── 第6篇 · 使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准.md
-│   └── 目录.md                       #   系列总纲与里程碑
-├── ai_solver_2048.py                 # 求解器核心（Expectimax + 启发式评估，可自动对局）
-├── run_ai_2048.py                    # 求解器交互脚本（演示模式 / 批量测试）
-└── simple_ai_demo.py                 # 求解器简化演示（固定步数，无需交互）
+│   └── 目录.md                            # 系列总纲与里程碑
+├── ai_solver_2048.py                      # 求解器核心（Expectimax + 启发式评估，可自动对局）
+├── run_ai_2048.py                         # 求解器交互脚本（演示模式 / 批量测试）
+└── simple_ai_demo.py                      # 求解器简化演示（固定步数，无需交互）
 ```
 
 ## 版本对照
@@ -155,13 +155,15 @@ python simple_ai_demo.py
 - `exports/<id>.json` / `<id>.csv` —— 单次会话的结构化导出
 - `exports/comparison_*.csv` —— 多会话对比导出
 
-## 界面预览（桌面版 · 动画版）
+## 界面预览
+
+### 桌面版 · 动画版（第 4 版）
 
 | 启动页 | 合并粒子 | 游戏页 |
 | --- | --- | --- |
 | ![启动页](v4_pyqt_2048_animated/screenshots/full_start.png) | ![合并粒子](v4_pyqt_2048_animated/screenshots/full_merge.png) | ![游戏页](v4_pyqt_2048_animated/screenshots/full_game.png) |
 
-## 界面预览（第 5 版 · 算法求解版 V5.1 左右双栏）
+### 算法求解版（第 5 版 · V5.1 左右双栏）
 
 | 双栏游戏页（左游戏台 + 右求解工作台） | 求解中（实时状态） | 右栏折叠态（保留展开入口） |
 | --- | --- | --- |
@@ -206,13 +208,15 @@ python experiments/benchmark_algorithms.py --profile     # cProfile 热点分析
 
 ## 系列博客
 
-1. [Python 实现：从数学模型到完整控制台版《2048》游戏](blog/第1篇%20·%20Python%20实现：从数学模型到完整控制台版《2048》游戏.md)
-2. [如何实现带历史记录功能的控制台 2048 游戏](blog/第2篇%20·%20如何实现带历史记录功能的控制台2048游戏.md)
-3. [使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做](blog/第3篇%20·%20使用%20PyQt5%20实现%202048%20桌面版游戏：MVC%20架构与撤销和重做.md)
-4. [使用 PyQt5 实现 2048：平滑动画与性能优化](blog/第4篇%20·%20使用%20PyQt5%20实现%202048：平滑动画与性能优化.md)
-5. [使用 PyQt5 实现 2048 算法求解版（上）：五类搜索算法内核](blog/第5篇（上）·%20使用%20PyQt5%20实现%202048%20算法求解版：五类搜索算法内核.md)
-   - ［下篇］[使用 PyQt5 实现 2048 算法求解版（下）：双栏 AI 求解工作台与交互](blog/第5篇（下）·%20使用%20PyQt5%20实现%202048%20算法求解版：双栏%20AI%20求解工作台与交互.md)
-6. [使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准](blog/第6篇%20·%20使用%20PyQt5%20实现%202048%20高性能计算版：四类计算后端与公平基准.md)
+| 篇号 | 标题 |
+| :--- | :--- |
+| 第 1 篇 | [Python 实现：从数学模型到完整控制台版《2048》游戏](<blog/第1篇 · Python 实现：从数学模型到完整控制台版《2048》游戏.md>) |
+| 第 2 篇 | [如何实现带历史记录功能的控制台 2048 游戏](<blog/第2篇 · 如何实现带历史记录功能的控制台2048游戏.md>) |
+| 第 3 篇 | [使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做](<blog/第3篇 · 使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做.md>) |
+| 第 4 篇 | [使用 PyQt5 实现 2048：平滑动画与性能优化](<blog/第4篇 · 使用 PyQt5 实现 2048：平滑动画与性能优化.md>) |
+| 第 5 篇（上） | [使用 PyQt5 实现 2048 算法求解版：五类搜索算法内核](<blog/第5篇（上）· 使用 PyQt5 实现 2048 算法求解版：五类搜索算法内核.md>) |
+| 第 5 篇（下） | [使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互](<blog/第5篇（下）· 使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互.md>) |
+| 第 6 篇 | [使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准](<blog/第6篇 · 使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准.md>) |
 
 后续计划：本地 / 网络双人对战、用历史数据监督训练模型、扩大强化学习训练规模。
 

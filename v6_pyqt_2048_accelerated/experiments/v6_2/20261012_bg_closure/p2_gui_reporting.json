@@ -1,0 +1,20 @@
+{
+  "tmp_history_dir": "C:\\Users\\MSIPC\\AppData\\Local\\Temp\\v6_p2_d9epgs5z",
+  "runs": [
+    {
+      "policy": {
+        "mode": "time",
+        "value": 1000
+      },
+      "error": "AttributeError(\"'NoneType' object has no attribute '_render_snapshot'\")"
+    },
+    {
+      "policy": {
+        "mode": "steps",
+        "value": 200
+      },
+      "error": "AttributeError(\"'NoneType' object has no attribute '_render_snapshot'\")"
+    }
+  ],
+  "ok": true
+}

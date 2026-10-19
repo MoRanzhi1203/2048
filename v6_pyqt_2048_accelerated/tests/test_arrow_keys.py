@@ -53,6 +53,11 @@ class ArrowKeyV6Test(unittest.TestCase):
         cls.w.show()
         QApplication.setActiveWindow(cls.w)
         pump(cls.app, 200)
+        # 确定性：方向提示/流光用例必须运行在“标准”档（不受用户持久化 run_mode 影响）
+        try:
+            cls.w._v6_apply_tier('standard', persist=False)
+        except Exception:                                            # noqa: BLE001
+            pass
 
     @classmethod
     def tearDownClass(cls):

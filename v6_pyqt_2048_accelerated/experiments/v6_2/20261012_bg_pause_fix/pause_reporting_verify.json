@@ -1,0 +1,22 @@
+{
+  "running_reports": 5,
+  "running_intervals_ms": [
+    997.5,
+    1008.2,
+    1001.1,
+    1005.5
+  ],
+  "running_steps_first_last": [
+    106,
+    567
+  ],
+  "pause_requested_at": 11672.577,
+  "final_at": 11672.583,
+  "pause_to_final_ms": 6.0,
+  "progress_after_pause": 0,
+  "final_status": "stopped",
+  "final_steps": 669,
+  "final_reason": "stop",
+  "exited_code": 0,
+  "exit_code": 0
+}

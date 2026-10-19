@@ -145,8 +145,8 @@ def main():
                     continue
                 msg = state['commands'].pop(0)
                 cmd = msg.get('cmd')
-                if cmd == 'quit':
-                    return 0
+                if cmd in ('quit', 'stop'):
+                    return 0                     # 暂停常驻期收到 stop/quit：协作退出（不吞掉停止）
                 if cmd != 'start':
                     continue
                 snap = msg.get('snapshot')

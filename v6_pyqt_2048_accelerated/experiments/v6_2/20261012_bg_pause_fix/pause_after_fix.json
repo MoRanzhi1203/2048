@@ -1,0 +1,117 @@
+{
+  "target": 500,
+  "main_thread_id": 34088,
+  "phases": {
+    "PAUSE_REQUESTED": [
+      {
+        "t": 362027.6298,
+        "steps": 536
+      }
+    ],
+    "PAUSE_CALL_DONE_ms": [
+      {
+        "t": 362027.6301,
+        "ms": 0.3
+      }
+    ],
+    "GUI_FINAL_RECEIVED": [
+      {
+        "t": 362027.6999,
+        "revision": null,
+        "status": "stopped",
+        "steps": 543
+      }
+    ],
+    "GUI_ADOPT_START": [
+      {
+        "t": 362027.7,
+        "directions": 543
+      }
+    ],
+    "REPLAY_START": [
+      {
+        "t": 362027.7,
+        "directions": 543
+      }
+    ],
+    "REPLAY_END": [
+      {
+        "t": 362027.7581,
+        "ms": 58.1,
+        "directions": 543
+      }
+    ],
+    "GUI_ADOPT_END": [
+      {
+        "t": 362028.0153,
+        "ms": 315.3
+      }
+    ]
+  },
+  "controller": "<v6_background.BackgroundController object at 0x000002AA3AD4A060>",
+  "steps_at_pause": 536,
+  "revision_at_pause": 536,
+  "paused_state": "BG_PAUSED",
+  "pause_wall_ms": 407.7,
+  "writes_during_pause": {
+    "csv": 1,
+    "json": 3,
+    "csv_ms": 20.0,
+    "json_ms": 107.4
+  },
+  "heartbeat_max_gap_ms_after_pause": 340.0,
+  "heartbeat_max_gap_ms_before_pause": 63.8,
+  "history_rows": 1087,
+  "undo_depth": 543,
+  "controller_perf": {
+    "WORKER_ACK": [
+      {
+        "t": 362014.2031188,
+        "cmd": "start",
+        "seq": 2
+      },
+      {
+        "t": 362027.6995915,
+        "cmd": "pause",
+        "seq": 18
+      }
+    ],
+    "PAUSE_REQUESTED": [
+      {
+        "t": 362027.6300532,
+        "channel": "pipe",
+        "steps": 536
+      }
+    ],
+    "GUI_FINAL_RECEIVED": [
+      {
+        "t": 362027.6999464,
+        "status": "stopped",
+        "steps": 543,
+        "directions": 543
+      }
+    ],
+    "REPLAY_START": [
+      {
+        "t": 362027.6999638,
+        "directions": 543
+      }
+    ],
+    "REPLAY_END": [
+      {
+        "t": 362027.7581004,
+        "ms": 58.1,
+        "moves": 543,
+        "suppressed_io": 2586
+      }
+    ],
+    "SAVE_COMMIT": [
+      {
+        "t": 362028.0145691,
+        "ms": 256.4,
+        "history_rows": 1087,
+        "undo_depth": 543
+      }
+    ]
+  }
+}

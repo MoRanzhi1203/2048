@@ -1,0 +1,290 @@
+{
+  "events": [
+    {
+      "name": "START_CLICK",
+      "ms": 0.0
+    },
+    {
+      "name": "ready",
+      "ms": 249.2
+    },
+    {
+      "name": "ack",
+      "ms": 249.3
+    },
+    {
+      "name": "warming",
+      "ms": 249.3
+    },
+    {
+      "name": "warmed",
+      "ms": 249.5,
+      "warmup_ms": 31.3
+    },
+    {
+      "name": "progress",
+      "ms": 1370.3,
+      "revision": 41,
+      "steps": 41,
+      "score": 344,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 2372.0,
+      "revision": 78,
+      "steps": 78,
+      "score": 872,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 3375.5,
+      "revision": 115,
+      "steps": 115,
+      "score": 1228,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 4374.6,
+      "revision": 153,
+      "steps": 153,
+      "score": 2016,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 5375.7,
+      "revision": 190,
+      "steps": 190,
+      "score": 2436,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 6372.3,
+      "revision": 233,
+      "steps": 233,
+      "score": 2972,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 7375.4,
+      "revision": 270,
+      "steps": 270,
+      "score": 4336,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 8503.1,
+      "revision": 314,
+      "steps": 314,
+      "score": 4916,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 9497.5,
+      "revision": 361,
+      "steps": 361,
+      "score": 5568,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 10497.3,
+      "revision": 402,
+      "steps": 402,
+      "score": 6200,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 11494.7,
+      "revision": 450,
+      "steps": 450,
+      "score": 6916,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 12495.4,
+      "revision": 509,
+      "steps": 509,
+      "score": 7436,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 13492.7,
+      "revision": 555,
+      "steps": 555,
+      "score": 10084,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 14499.4,
+      "revision": 604,
+      "steps": 604,
+      "score": 10952,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 15492.4,
+      "revision": 648,
+      "steps": 648,
+      "score": 11600,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 16492.5,
+      "revision": 683,
+      "steps": 683,
+      "score": 11940,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 17495.3,
+      "revision": 727,
+      "steps": 727,
+      "score": 13324,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 18499.0,
+      "revision": 760,
+      "steps": 760,
+      "score": 13804,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "progress",
+      "ms": 19625.5,
+      "revision": 789,
+      "steps": 789,
+      "score": 14044,
+      "reason": "periodic_time"
+    },
+    {
+      "name": "ack",
+      "ms": 20120.7
+    },
+    {
+      "name": "final",
+      "ms": 20121.3,
+      "status": "stopped",
+      "steps": 814
+    },
+    {
+      "name": "exited",
+      "ms": 20450.0
+    }
+  ],
+  "renders": [
+    {
+      "ms": 1370.4,
+      "revision": 41,
+      "steps": 41
+    },
+    {
+      "ms": 2372.1,
+      "revision": 78,
+      "steps": 78
+    },
+    {
+      "ms": 3375.7,
+      "revision": 115,
+      "steps": 115
+    },
+    {
+      "ms": 4374.7,
+      "revision": 153,
+      "steps": 153
+    },
+    {
+      "ms": 5375.9,
+      "revision": 190,
+      "steps": 190
+    },
+    {
+      "ms": 6373.1,
+      "revision": 233,
+      "steps": 233
+    },
+    {
+      "ms": 7375.5,
+      "revision": 270,
+      "steps": 270
+    },
+    {
+      "ms": 8503.2,
+      "revision": 314,
+      "steps": 314
+    },
+    {
+      "ms": 9497.6,
+      "revision": 361,
+      "steps": 361
+    },
+    {
+      "ms": 10497.4,
+      "revision": 402,
+      "steps": 402
+    },
+    {
+      "ms": 11494.8,
+      "revision": 450,
+      "steps": 450
+    },
+    {
+      "ms": 12495.9,
+      "revision": 509,
+      "steps": 509
+    },
+    {
+      "ms": 13492.8,
+      "revision": 555,
+      "steps": 555
+    },
+    {
+      "ms": 14499.5,
+      "revision": 604,
+      "steps": 604
+    },
+    {
+      "ms": 15492.6,
+      "revision": 648,
+      "steps": 648
+    },
+    {
+      "ms": 16492.8,
+      "revision": 683,
+      "steps": 683
+    },
+    {
+      "ms": 17495.4,
+      "revision": 727,
+      "steps": 727
+    },
+    {
+      "ms": 18499.7,
+      "revision": 760,
+      "steps": 760
+    },
+    {
+      "ms": 19625.6,
+      "revision": 789,
+      "steps": 789
+    }
+  ],
+  "final_state": "GUI_IDLE",
+  "last_result_status": "stopped"
+}

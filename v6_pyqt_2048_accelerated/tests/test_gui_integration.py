@@ -58,6 +58,11 @@ class GuiIntegrationTest(unittest.TestCase):
         cls.solver_v6 = solver_v6
         cls.w = m.V6MainWindow()
         cls.w._grow_for_solver()
+        # 确定性：本类断言方向提示/流光等“标准档”行为，不受用户持久化 run_mode 影响
+        try:
+            cls.w._v6_apply_tier('standard', persist=False)
+        except Exception:                                            # noqa: BLE001
+            pass
 
     @classmethod
     def tearDownClass(cls):

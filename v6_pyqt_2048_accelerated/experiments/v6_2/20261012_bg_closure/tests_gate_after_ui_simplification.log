@@ -1,0 +1,11 @@
+﻿python.exe : ..............................................................................s...........s.......
+At line:15 char:3832
++ ... ted\tests"; & $py -m unittest discover -s . *> "$out\tests_gate_after ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (.........................s.......:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+----------------------------------------------------------------------
+Ran 98 tests in 40.102s
+
+OK (skipped=2)

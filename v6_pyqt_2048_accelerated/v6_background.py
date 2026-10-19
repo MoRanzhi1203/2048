@@ -56,46 +56,115 @@ _BTN_QSS = (
     'QPushButton:hover { background:#463d35; }'
     'QPushButton:disabled { color:#7a6f63; border-color:#453d36; }')
 
+# 结果回传周期：**固定内部常量**（单一来源，当前 500ms）。它不是搜索预算、不是步数终止条件，
+# 也不是 worker 重启间隔；后台求解在整局内持续，直到终局 / 用户暂停 / 停止 / 显式预算。
+REPORT_INTERVAL_MS = 500
+
+
+_DEFERRED_IO_METHODS = ('_write_history_file', 'save_game_state', 'save_best_score', 'update_index')
+
+
+class _DeferredModelIO:
+    """回放期抑制模型**逐笔**落盘，结束后由调用方**单次**提交。
+
+    仅延后磁盘 I/O；内存语义（grid/score/best_score/history_rows/history_count/undo_stack）
+    完全不变，正式存档安全级别不变（仍是一次原子写）。这是“暂停时 GUI 卡死”的根因修复：
+    原实现每一步都触发 record_move→全量重写 history.csv 且 save_game_state→json.dumps+fsync，
+    536 步即 1072 次 CSV + 1486 次 JSON 同步写，阻塞 Qt 主线程 ~111s。
+    """
+
+    def __init__(self, model):
+        self.model = model
+        self.saved = {}
+        self.calls = 0
+
+    def __enter__(self):
+        for name in _DEFERRED_IO_METHODS:
+            fn = getattr(self.model, name, None)
+            if fn is None:
+                continue
+            self.saved[name] = fn
+            setattr(self.model, name, self._noop)
+        return self
+
+    def _noop(self, *_a, **_k):
+        self.calls += 1
+        return None
+
+    def __exit__(self, *_exc):
+        for name, fn in self.saved.items():
+            try:
+                setattr(self.model, name, fn)
+            except Exception:                                        # noqa: BLE001
+                pass
+        return False
+
+
+def persist_official(model):
+    """校验通过后，**单次**提交正式历史 / 存档 / 最高分 / 索引（原子写）。"""
+    wrote = 0
+    for name in _DEFERRED_IO_METHODS:
+        fn = getattr(model, name, None)
+        if callable(fn):
+            try:
+                fn()
+                wrote += 1
+            except Exception:                                        # noqa: BLE001
+                pass
+    return wrote
+
+
+def replay_commit(model, directions, start_rng_state_json=None, cursor=0, base_grid=None,
+                  defer_persistence=True, stats=None):
+    """把 worker 的有效方向序列按**正常对局语义**回放到官方模型（Qt-free，可直接单测）。
+
+    等价性依据：`tests/test_v6_headless.ModelEquivalenceTest` 已证明 `core.apply_move`
+    与官方模型 `apply_move` 在相同起点 RNG 下逐位一致（棋盘 / 分数 / 生成方块 / RNG 消费）。
+    因此逐步回放可产出与正常对局完全相同的官方逐笔历史（history.csv）、撤销/重做栈、
+    game_state.json（原子写 + .bak 备份）与 index / best_score 持久化 —— 权威写入者
+    始终是官方模型（单一写者）。
+
+    ``defer_persistence=True``（默认）时，回放期间**不落盘**，仅内存构建历史/撤销；
+    调用方需在校验通过后调用 :func:`persist_official` 做**单次**提交。
+
+    :param start_rng_state_json: 首次回放用的**交接基准** RNG（None 表示 RNG 已就位）。
+    :param cursor: 已回放过的方向数（仅回放增量，避免重复提交）。
+    :param base_grid: 会话基准棋盘；若模型已偏离则拒绝回放（防并发写者）。
+    :param stats: 可选 dict，写入 ``moves`` / ``suppressed_io_calls`` 便于观测。
+    :returns: 新的 cursor
+    """
+    import random as _random
+    if base_grid is not None and [row[:] for row in model.grid] != [list(r) for r in base_grid]:
+        raise RuntimeError('模型棋盘在后台运行期间被改动，拒绝回放（保持单一写入者）')
+    if start_rng_state_json is not None:
+        _random.setstate(core.rng_state_from_json(start_rng_state_json))
+    delta = list(directions)[cursor:]
+    if stats is not None:
+        stats['moves'] = len(delta)
+    if defer_persistence:
+        with _DeferredModelIO(model) as io:
+            for d in delta:
+                model.apply_move(d)
+        if stats is not None:
+            stats['suppressed_io_calls'] = io.calls
+    else:
+        for d in delta:
+            model.apply_move(d)
+    return len(directions)
+
 
 class BackgroundPanel(QWidget):
-    """后台求解进度条 + 开始/暂停/继续/停止 + 「结果回传」策略（定时间/定步数，互斥）。"""
+    """后台求解生命周期控制（唯一一套）：开始 / 暂停 / 继续 / 停止。
+
+    结果回传周期固定为内部常量 ``REPORT_INTERVAL_MS``（1000ms）——不再暴露 N 步 / N 时间
+    选择器、间隔下拉框或报告进度条；进度并入既有求解状态区（``solver_status``）。
+    """
 
     def __init__(self, controller, parent=None):
         super().__init__(parent)
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(4)
-        self.label = QLabel('后台求解未启动')
-        self.label.setWordWrap(True)
-        self.label.setStyleSheet(
-            'background:#2b2622; color:#f3ead9; border:1px solid #5a5048; border-radius:6px;'
-            ' padding:5px 8px; font-family:Consolas,Menlo,monospace; font-size:11px;')
-        box.addWidget(self.label)
-
-        # ---- 结果回传（与算法/强度/求解模式完全独立；N 绝不是终止预算）----
-        title = QLabel('结果回传')
-        title.setStyleSheet('color:#8f8175; font-size:12px;')
-        box.addWidget(title)
-        seg = QHBoxLayout()
-        seg.setSpacing(4)
-        self.btn_time = QPushButton('定时间')
-        self.btn_steps = QPushButton('定步数')
-        for b in (self.btn_time, self.btn_steps):
-            b.setCheckable(True)
-            b.setCursor(Qt.PointingHandCursor)
-            b.setStyleSheet(
-                'QPushButton { background:#3a332d; color:#e2d7c7; border:1px solid #5a5048;'
-                ' border-radius:4px; padding:4px 10px; font-size:11px; }'
-                'QPushButton:checked { background:#c9a227; color:#241d15; font-weight:bold; }')
-            seg.addWidget(b)
-        box.addLayout(seg)
-        self.report_combo = QComboBox()
-        box.addWidget(self.report_combo)
-        hint = QLabel('后台持续求解；达到回传间隔后将已完成的最新棋盘显示在左侧。暂停、停止及结束立即同步。')
-        hint.setWordWrap(True)
-        hint.setStyleSheet('color:#8f8175; font-size:11px;')
-        box.addWidget(hint)
-
         row = QHBoxLayout()
         row.setSpacing(6)
         self.btn_start = QPushButton('开始')
@@ -112,80 +181,11 @@ class BackgroundPanel(QWidget):
         self.btn_pause.clicked.connect(controller.pause)
         self.btn_resume.clicked.connect(controller.resume)
         self.btn_stop.clicked.connect(controller.stop)
-        self.btn_time.clicked.connect(lambda: self._set_mode('time', persist=True))
-        self.btn_steps.clicked.connect(lambda: self._set_mode('steps', persist=True))
-        self.report_combo.currentIndexChanged.connect(lambda _i: self._on_value_changed())
-        self._mode = 'time'
-        self._set_mode('time', persist=False)
         self._sync_buttons(_EMPTY)
 
-    TIME_PRESETS = (500, 1000, 2000, 5000)
-    STEP_PRESETS = (50, 100, 200, 500, 1000)
-
-    def _set_mode(self, mode, persist=True):
-        self._mode = 'steps' if mode == 'steps' else 'time'
-        presets = self.STEP_PRESETS if self._mode == 'steps' else self.TIME_PRESETS
-        self.report_combo.blockSignals(True)
-        self.report_combo.clear()
-        for v in presets:
-            self.report_combo.addItem(('%d 步' % v) if self._mode == 'steps' else ('%d ms' % v), v)
-        self.report_combo.setCurrentIndex(presets.index(200 if self._mode == 'steps' else 1000))
-        self.report_combo.blockSignals(False)
-        self.btn_time.setChecked(self._mode == 'time')
-        self.btn_steps.setChecked(self._mode == 'steps')
-        if persist:
-            self._save_prefs()
-
-    def _on_value_changed(self):
-        self._save_prefs()
-
     def report_policy(self):
-        v = self.report_combo.currentData()
-        if self._mode == 'steps':
-            return {'mode': 'steps', 'steps': max(1, int(v or 200))}
-        return {'mode': 'time', 'ms': max(50, int(v or 1000))}
-
-    def _save_prefs(self):
-        try:
-            import v6_speed as _s
-            prefs = _s.load_prefs()
-            prefs['report_mode'] = self._mode
-            prefs['report_value'] = int(self.report_combo.currentData() or 0)
-            prefs['report_prefs_version'] = 1
-            _s.save_prefs(prefs)
-        except Exception:                                            # noqa: BLE001
-            pass
-
-    def load_prefs(self):
-        """带版本的幂等加载：缺省 定时间 1000ms；非法值回退默认。"""
-        try:
-            import v6_speed as _s
-            prefs = _s.load_prefs()
-            mode = prefs.get('report_mode')
-            value = prefs.get('report_value')
-            if int(prefs.get('report_prefs_version') or 0) < 1:
-                # 首次迁移：沿用旧的后台进度节流参数（0.45s/20 步）→ 规范化为 定时间 500ms
-                mode, value = 'time', 500
-                prefs['report_mode'], prefs['report_value'] = mode, value
-                prefs['report_prefs_version'] = 1
-                _s.save_prefs(prefs)
-            if mode not in ('time', 'steps'):
-                mode, value = 'time', 1000
-            allowed = self.STEP_PRESETS if mode == 'steps' else self.TIME_PRESETS
-            if value not in allowed:
-                value = 200 if mode == 'steps' else 1000
-            self._mode = mode
-            presets = allowed
-            self.report_combo.blockSignals(True)
-            self.report_combo.clear()
-            for v in presets:
-                self.report_combo.addItem(('%d 步' % v) if mode == 'steps' else ('%d ms' % v), v)
-            self.report_combo.setCurrentIndex(presets.index(value))
-            self.report_combo.blockSignals(False)
-            self.btn_time.setChecked(mode == 'time')
-            self.btn_steps.setChecked(mode == 'steps')
-        except Exception:                                            # noqa: BLE001
-            pass
+        """固定 1000ms 结果回传（单一来源；不向用户暴露任何间隔选择）。"""
+        return {'mode': 'time', 'ms': REPORT_INTERVAL_MS}
 
     def _sync_buttons(self, state):
         running = state in ('HANDOFF_PREPARE', 'BG_RUNNING')
@@ -211,13 +211,17 @@ class BackgroundController(QObject):
         self._staging_dir = os.path.join(V6_DIR, 'game_history', 'background')
         self._last_result = None
         self._rendered_revision = -1
+        # 正式历史回放（Headless ↔ 官方存档等价）：交接基准 RNG + 会话方向游标/基准棋盘
+        self._handoff_rng_json = None
+        self._fresh_handoff = False
+        self._session_cursor = 0
+        self._session_base_grid = None
+        # P1 单调时钟分段埋点（GUI 侧）+ 终态保护
+        self._perf = {}
+        self._final_seen = False
         self._last_render_step = 0
         self._last_render_t = time.perf_counter()
         self.panel = BackgroundPanel(self)
-        try:
-            self.panel.load_prefs()
-        except Exception:                                            # noqa: BLE001
-            pass
         self._drain = QTimer(self)
         self._drain.timeout.connect(self._on_drain)
         self._drain.start(120)
@@ -235,12 +239,37 @@ class BackgroundController(QObject):
         return True
 
     def _show(self, text, kind='info'):
-        self.panel.label.setText(text)
+        """把后台状态写入**既有求解状态区**（不再新增独立状态栏/黑条）。"""
+        lbl = getattr(self.win, 'solver_status', None)
+        if lbl is not None:
+            try:
+                lbl.setText(text)
+                return
+            except Exception:                                        # noqa: BLE001
+                pass
+
+    def _mark(self, name, **extra):
+        """单调时钟（perf_counter）分段埋点；供 P1 取证与收口报告使用。"""
+        try:
+            self._perf.setdefault(name, []).append(dict(t=time.perf_counter(), **extra))
+        except Exception:                                            # noqa: BLE001
+            pass
+
+    def pause_perf(self):
+        """返回 GUI 侧分段埋点字典（只读用途）。"""
+        return self._perf
 
     # ------------------------------------------------------------ 模式
     def on_mode_changed(self, mode):
         want_bg = mode == 'background'
         self.panel.setVisible(want_bg)
+        # 后台模式隐藏“求解忙态进度条”（回传间隔无百分比含义，避免无意义进度条）
+        prog = getattr(self.win, 'solver_progress', None)
+        if prog is not None:
+            try:
+                prog.setVisible(not want_bg)
+            except Exception:                                        # noqa: BLE001
+                pass
         cta = getattr(self.win, 'solver_start_btn', None)
         if cta is not None:
             cta.setEnabled(not want_bg)
@@ -303,6 +332,9 @@ class BackgroundController(QObject):
             self.win.solver_strategy.currentData(),
             self.win.solver_depth.currentData(),
             self.win.solver_mode.currentData())
+        # 交接基准：正式历史回放必须从此处的棋盘 + 全局 RNG 逐步重放（等价于正常对局）。
+        self._handoff_rng_json = snap['rng_state']
+        self._fresh_handoff = True
         return snap
 
     def _lock_path(self):
@@ -314,6 +346,19 @@ class BackgroundController(QObject):
         except Exception:                                             # noqa: BLE001
             return '?'
 
+    def _reset_session_tracking(self):
+        """新会话开始：重置**跨会话**的展示/采纳 revision 跟踪与终态标记。
+
+        修复：此前未重置，导致“第二次开始后台求解”时新会话 revision 从 0 起，
+        却被上一会话的高位 `_rendered_revision/_adopted_revision` 当作过期帧全部丢弃，
+        表现为“开始后长时间前盘无数据，随后突然闪过几帧”。
+        """
+        self._rendered_revision = -1
+        self._adopted_revision = -1
+        self._last_render_step = 0
+        self._last_render_t = time.perf_counter()
+        self._final_seen = False
+
     def _spawn_worker(self, snap):
         os.makedirs(self._staging_dir, exist_ok=True)
         self._session_seq += 1
@@ -324,6 +369,9 @@ class BackgroundController(QObject):
                                              '%s_checkpoint.json' % snap['game_id'])
         with open(self._snapshot_path, 'w', encoding='utf-8') as f:
             f.write(core.snapshot_to_json(snap))
+        self._session_cursor = 0
+        self._session_base_grid = [row[:] for row in self.win.model.grid]
+        self._reset_session_tracking()
         return self._launch_worker()
 
     def _spawn_worker_from(self, snapshot_path):
@@ -338,6 +386,9 @@ class BackgroundController(QObject):
         self._game_id = base
         self._snapshot_path = snapshot_path
         self._checkpoint_path = os.path.join(self._staging_dir, '%s_checkpoint.json' % base)
+        self._session_cursor = 0
+        self._session_base_grid = [row[:] for row in self.win.model.grid]
+        self._reset_session_tracking()
         return self._launch_worker()
 
     def _limits(self):
@@ -403,6 +454,7 @@ class BackgroundController(QObject):
     def pause(self):
         if self._transition('BG_PAUSING'):
             how = self._signal('pause')
+            self._mark('PAUSE_REQUESTED', channel=how, steps=self._last_render_step)
             self._show('正在请求暂停（下一步边界生效，通道=%s）…' % how)
 
     def stop(self):
@@ -443,6 +495,21 @@ class BackgroundController(QObject):
             self._show('过期所有权释放被拒绝：%s' % rel.get('reason'))
         return st
 
+    def _handoff_rng_for(self, game_id):
+        """从暂存目录的交接快照读取基准 RNG（崩溃恢复回放用，找不到返回 None）。"""
+        try:
+            names = ['%s_handoff.json' % game_id] if game_id else []
+            names += [fn for fn in os.listdir(self._staging_dir)
+                      if fn.endswith('_handoff.json') and (not game_id or fn.startswith(game_id))]
+            for fn in names:
+                c = os.path.join(self._staging_dir, fn)
+                if os.path.exists(c):
+                    with open(c, 'r', encoding='utf-8') as f:
+                        return json.load(f).get('rng_state')
+        except Exception:                                              # noqa: BLE001
+            return None
+        return None
+
     def _restore_from_checkpoint(self, ck):
         if not ck:
             return '未找到可用检查点，棋盘保持当前状态。'
@@ -450,6 +517,19 @@ class BackgroundController(QObject):
         try:
             snap = core.snapshot_from_json(data['snapshot']) if isinstance(
                 data.get('snapshot'), str) else core.validate_snapshot(data.get('snapshot'))
+            directions = data.get('directions')
+            base_rng = self._handoff_rng_for(data.get('game_id')) if directions else None
+            if directions and base_rng:
+                # 崩溃恢复：从交接基准 RNG + 模型当前（=最后官方存档）状态逐步回放，
+                # 生成与正常对局一致的官方历史/撤销栈，而非仅覆盖棋盘。
+                self._handoff_rng_json = base_rng
+                self._fresh_handoff = True
+                self._session_cursor = 0
+                self._session_base_grid = [row[:] for row in self.win.model.grid]
+                self._adopt(snap, directions)
+                return ('已按最新有效检查点**回放**恢复官方存档：步 %s，分数 %s，rev %s（%s）'
+                        % (data.get('steps'), snap.get('score'), snap.get('revision'),
+                           os.path.basename(path)))
             self._adopt(snap)
             return ('已按最新有效检查点恢复棋盘：步 %s，分数 %s，rev %s（%s）'
                     % (data.get('steps'), snap.get('score'), snap.get('revision'),
@@ -576,6 +656,11 @@ class BackgroundController(QObject):
                 os.remove(self._lock_path())    # 兼容清理：旧版遗留锁文件
         except OSError:
             pass
+        try:
+            self._mark('OWNER_RELEASED',
+                       state=own.owner_status(self._staging_dir).get('state'))
+        except Exception:                                            # noqa: BLE001
+            pass
         self.proc = None
         self.state = _EMPTY
         if self.panel is not None:
@@ -583,6 +668,11 @@ class BackgroundController(QObject):
 
     # ------------------------------------------------------------ 消息
     def _on_drain(self):
+        """排空消息队列：控制/终态按序处理，**progress 仅保留 revision 最新的一帧**。
+
+        这样每次排空只刷新一次左侧棋盘，避免“一次涌入多帧时连续闪过好几批步长切片”。
+        """
+        latest = None
         while True:
             try:
                 line = self._q.get_nowait()
@@ -594,7 +684,14 @@ class BackgroundController(QObject):
                 msg = json.loads(line)
             except ValueError:
                 continue
-            self._on_msg(msg)
+            if msg.get('type') == 'progress':
+                rev = int(msg.get('revision', -1))
+                if latest is None or rev > int(latest.get('revision', -1)):
+                    latest = msg
+                continue
+            self._on_msg(msg)          # final / exited / error / warmed 等按序处理
+        if latest is not None:
+            self._on_msg(latest)       # 每批只渲染最新已提交帧
 
     def _on_msg(self, msg):
         kind = msg.get('type')
@@ -605,14 +702,27 @@ class BackgroundController(QObject):
             self._show('后台求解预热完成（%.0f ms），开始求解…' % (msg.get('warmup_ms') or 0))
             return
         if kind == 'ack':
+            self._mark('WORKER_ACK', cmd=msg.get('cmd'), seq=msg.get('seq'))
             return
         if kind == 'exited':
             self._worker_exit_code = msg.get('code')
+            self._mark('WORKER_EXITED', code=msg.get('code'))
             st = own.owner_status(self._staging_dir)
             self._show('后台进程已退出：exit=%s；所有权状态=%s'
                        % (msg.get('code'), st.get('state')))
+            # 暂停/停止期 worker 协作退出：收敛状态机（不能停在 BG_STOPPING/BG_PAUSED）
+            if self.state in ('BG_PAUSED', 'BG_PAUSING', 'BG_STOPPING'):
+                self._finish_to_idle('后台求解已结束（worker 已退出 exit=%s）' % msg.get('code'))
+            elif self.state == 'BG_RUNNING':
+                self._transition('BG_ERROR')
+                self._cleanup_worker()
+                self._show('后台进程意外退出：exit=%s' % msg.get('code'))
             return
         if kind == 'progress':
+            if self._final_seen:
+                return                                                # 终态后忽略迟到进度
+            if self.state in ('BG_PAUSING', 'BG_STOPPING'):
+                return                                                # 已请求暂停/停止：等 FINAL 强制同步
             if msg.get('game_id') != getattr(self, '_game_id', None):
                 return                                                # 过期消息：丢弃
             rev = int(msg.get('revision', -1))
@@ -629,8 +739,12 @@ class BackgroundController(QObject):
                    msg.get('backend_used'), msg.get('engine_used'),
                    msg.get('report_reason'), ck.get('steps'), ck.get('revision')))
         elif kind == 'final':
+            self._final_seen = True
             self._last_result = msg
-            self._adopt(msg.get('snapshot'))
+            self._mark('GUI_FINAL_RECEIVED', status=msg.get('status'),
+                       steps=msg.get('total_committed_moves'),
+                       directions=len(msg.get('directions') or []))
+            self._adopt(msg.get('snapshot'), msg.get('directions'))
             status = msg.get('status')
             if status == 'stopped' and self.state in ('BG_PAUSING', 'BG_STOPPING'):
                 if self.state == 'BG_PAUSING':
@@ -669,10 +783,50 @@ class BackgroundController(QObject):
         self._cleanup_worker()
         self._show(text)
 
-    def _adopt(self, snap):
-        """把后台最终/暂停快照采纳为 GUI 权威棋盘（含精确 RNG 状态）。"""
+    def _replay_commit(self, directions):
+        """把 worker 方向序列回放到官方模型（**仅内存**构建历史/撤销，不逐笔落盘）。"""
+        start_rng = self._handoff_rng_json if self._fresh_handoff else None
+        stats = {}
+        self._mark('REPLAY_START', directions=len(directions))
+        t0 = time.perf_counter()
+        self._session_cursor = replay_commit(
+            self.win.model, directions, start_rng_state_json=start_rng,
+            cursor=self._session_cursor, base_grid=self._session_base_grid, stats=stats)
+        self._mark('REPLAY_END', ms=round((time.perf_counter() - t0) * 1000.0, 1),
+                   moves=stats.get('moves'), suppressed_io=stats.get('suppressed_io_calls'))
+        self._fresh_handoff = False
+
+    def _adopt(self, snap, directions=None):
+        """把后台最终/暂停快照采纳为 GUI 权威状态。
+
+        优先走**正式历史回放**（生成官方逐笔历史 / 撤销栈 / 持久化，与正常对局等价）；
+        回放不可用或校验不一致时，退回只读网格采纳并显式告警（后台保持 EXPERIMENTAL）。
+        """
         if not snap:
             return
+        if directions:
+            try:
+                self._replay_commit(directions)
+                model = self.win.model
+                if ([row[:] for row in model.grid] == [list(r) for r in snap['board']]
+                        and int(model.score) == int(snap['score'])):
+                    # RNG 已随回放推进到与 worker 一致；无需再 setstate。
+                    if hasattr(model, 'game_over'):
+                        model.game_over = bool(snap.get('game_over'))
+                    t_s = time.perf_counter()
+                    persist_official(model)      # 单次原子提交（历史/存档/最高分/索引）
+                    self._mark('SAVE_COMMIT',
+                               ms=round((time.perf_counter() - t_s) * 1000.0, 1),
+                               history_rows=len(getattr(model, 'history_rows', [])),
+                               undo_depth=len(getattr(model, 'undo_stack', [])))
+                    self.win.refresh()           # 单次棋盘刷新（GUI 主线程短时状态采纳）
+                    self._adopted_revision = int(snap.get('revision', -1))
+                    return
+                self._show('警告：正式历史回放结果与后台快照不一致，已退回只读采纳'
+                           '（后台仍为实验性，勿用于正式存档）。')
+            except Exception as exc:                                  # noqa: BLE001
+                self._show('警告：正式历史回放失败（%s），已退回只读采纳（后台仍为实验性）。'
+                           % exc)
         try:
             import random
             self.win.model.grid = [row[:] for row in snap['board']]

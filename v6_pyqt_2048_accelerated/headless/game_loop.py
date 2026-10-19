@@ -44,11 +44,19 @@ _STATUS_ERROR = 'error'
 
 
 class Checkpoint:
-    """当前对局的后台检查点（隔离暂存目录，原子写 + 校验和）。"""
+    """当前对局的后台检查点（隔离暂存目录，原子写 + 校验和 + Windows 瞬时锁有界重试）。"""
+
+    MAX_RETRIES = 25          # 单次保存最多尝试次数
+    RETRY_SLEEP_S = 0.02      # 每次瞬时锁重试的间隔（秒）
 
     def __init__(self, staging_path):
         self.path = staging_path
         os.makedirs(os.path.dirname(os.path.abspath(staging_path)), exist_ok=True)
+        # 瞬时锁重试统计：供性能分段与失败上报观测，不改变原子语义。
+        self.retries = 0            # 累计瞬时锁重试次数（跨多次 save）
+        self.retry_ms = 0.0         # 累计重试等待耗时（ms）
+        self.max_retries_seen = 0   # 单次 save 的最大重试次数
+        self.failures = 0           # 重试耗尽、最终失败次数
 
     def save(self, payload):
         payload = dict(payload)
@@ -57,20 +65,35 @@ class Checkpoint:
         # Windows：`os.replace` 覆盖目标文件时，若目标正被其他句柄打开（GUI 重连读取检查点、
         # 备份/病毒扫描等），会瞬时抛 PermissionError(WinError 5/32)。检查点按**每步**写入，
         # 必须容忍这种瞬时锁：有界重试，且不改变原子语义（仍是 临时文件 -> fsync -> os.replace）。
+        t0 = perf_counter()
+        attempt = 0
         last_exc = None
-        for attempt in range(25):
+        while attempt < self.MAX_RETRIES:
             try:
                 _store.atomic_write_json(self.path, payload)
                 last_exc = None
                 break
             except PermissionError as exc:                 # WinError 5/32 瞬时占用
                 last_exc = exc
-                time.sleep(0.02)
+                attempt += 1
+                time.sleep(self.RETRY_SLEEP_S)
+        waited_ms = (perf_counter() - t0) * 1000.0
+        if attempt:
+            self.retries += attempt
+            self.retry_ms += waited_ms
+            self.max_retries_seen = max(self.max_retries_seen, attempt)
         if last_exc is not None:
-            raise last_exc
+            self.failures += 1
+            # 明确失败上报：次数 + 实际耗时 + 底层异常（不静默吞掉）。
+            raise IOError('检查点写入失败：%d 次尝试仍被占用（实际等待 %.1f ms）：%s'
+                          % (attempt, waited_ms, last_exc))
         if not os.path.exists(self.path):
             raise IOError('检查点写入失败：%s' % self.path)
         return payload
+
+    def stats(self):
+        return {'retries': self.retries, 'retry_ms': round(self.retry_ms, 3),
+                'max_retries_seen': self.max_retries_seen, 'failures': self.failures}
 
     def load(self):
         ok, data, err = _store.read_json(self.path)
@@ -113,8 +136,13 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
         'steps': limits.get('progress_every_steps', 25)}
     _last_report = perf_counter()
     _last_delivered = 0
+    # 时间策略：首步完成后**立即回传一帧**，缩短“开始后长时间无数据”的空窗；
+    # 之后恢复固定 1000ms 节奏。步数策略保持严格整数倍语义不变。
+    _bootstrap = report_policy.get('mode') == 'time'
 
     def _report_due(now):
+        if _bootstrap:
+            return True
         mode = report_policy.get('mode')
         if mode == 'steps':
             n = max(1, int(report_policy.get('steps') or 200))
@@ -132,6 +160,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
     engine_used = None
     reason = None
     steps = 0
+    directions = []                    # 本会话已提交的有效方向序列（供正式历史回放）
     last_ckpt = None
     status = _STATUS_RUNNING
     error = None
@@ -203,6 +232,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
             perf['apply_logic_ms'] += (perf_counter() - t_app0) * 1000.0
             steps += 1
             revision += 1
+            directions.append(direction)
 
             if checkpoint is not None:
                 t_s0 = perf_counter()
@@ -214,7 +244,8 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
                 checkpoint.save({'schema': core.SNAPSHOT_SCHEMA, 'status': 'running',
                                  'steps': steps, 'snapshot': text,
                                  'game_id': snap['game_id'], 'revision': revision,
-                                 'direction': direction, 'spawn': res['spawn'],
+                                 'direction': direction, 'directions': list(directions),
+                                 'spawn': res['spawn'],
                                  'spawn_pos': res['spawn_pos']})
                 t_s2 = perf_counter()
                 perf['serialize_ms'] += (t_s1 - t_s0) * 1000.0
@@ -226,8 +257,17 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
 
             now = perf_counter()
             if progress_cb is not None and _report_due(now):
+                # 关键：暂停/停止请求可能在本步搜索期间到达。此时**不得再发周期回传**，
+                # 直接进入终态并强制 FINAL 同步——避免“点击暂停后仍触发 1000ms 回传”。
+                if cancel is not None and cancel():
+                    status = _STATUS_STOPPED
+                    break
+                if pause is not None and pause():
+                    status = _STATUS_PAUSED
+                    break
                 _last_report = now
                 _last_delivered = steps
+                _bootstrap = False
                 wake = perf_counter()
                 keep = progress_cb({
                     'protocol_version': 2, 'type': 'progress',
@@ -257,6 +297,12 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
     if status == _STATUS_RUNNING:
         status = _STATUS_COMPLETED
     perf['wall_total_ms'] = (perf_counter() - t_session) * 1000.0
+    ckpt_stats = checkpoint.stats() if checkpoint is not None else None
+    if ckpt_stats is not None:
+        # 持久化分段：把 Windows 瞬时锁重试的**真实等待耗时**单列，避免被误当作正常写入。
+        perf['checkpoint_retry_ms'] = ckpt_stats['retry_ms']
+        perf['checkpoint_retry_count'] = ckpt_stats['retries']
+        perf['checkpoint_failures'] = ckpt_stats['failures']
     final_snapshot = core.build_snapshot(
         board, score, best, core.rng_state_to_json(rng.getstate()), snap['game_id'],
         revision, snap['algorithm'], snap['strength'], snap['solver_mode'],
@@ -271,8 +317,10 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
         'total_committed_moves': steps,
         'reason': error,
         'snapshot': final_snapshot,
+        'directions': directions,
         'steps': steps,
         'perf': {k: round(v, 3) for k, v in perf.items()},
+        'checkpoint_stats': ckpt_stats,
         'backend_used': backend_used,
         'engine_used': engine_used,
         'fallback_reason': reason,

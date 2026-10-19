@@ -39,13 +39,18 @@ MODES = ('standard', 'fast', 'background')
 MODE_LABELS = (('标准', 'standard'), ('快速', 'fast'), ('后台求解', 'background'))
 
 # 运行方式仅决定「动画 / 步间等待 / UI 调度 / 执行位置」，与算法、求解强度、求解模式完全独立。
+# particles_off：在**分配/计时调度之前**抑制合并粒子发射（fast/background）；
+# flow：方向提示 B 层（内向流光）是否启用动态时钟（background 为静态，不跑流光计时器）。
 MODE_PARAMS = {
-    'standard':   {'anim_off': False, 'step_delay_ms': 70, 'metrics_every': 1},
-    'fast':       {'anim_off': True,  'step_delay_ms': 0,  'metrics_every': 8},
-    'background': {'anim_off': True,  'step_delay_ms': 0,  'metrics_every': 8},
+    'standard':   {'anim_off': False, 'step_delay_ms': 70, 'metrics_every': 1,
+                   'particles_off': False, 'flow': True},
+    'fast':       {'anim_off': True,  'step_delay_ms': 0,  'metrics_every': 8,
+                   'particles_off': True,  'flow': True},
+    'background': {'anim_off': True,  'step_delay_ms': 0,  'metrics_every': 8,
+                   'particles_off': True,  'flow': False},
 }
 
-PREFS_VERSION = 2                       # ui_prefs 模式版本（运行方式三档语义版本）
+PREFS_VERSION = 3                       # ui_prefs 模式版本（运行方式三档 + 固定 1000ms 回传）
 _LEGACY_MODE_MAP = {                    # 旧 speed_tier -> 新 run_mode（一次性、幂等）
     'standard': 'standard',
     'extreme': 'fast',                  # 旧“极限性能”（无动画）＝新“快速”
@@ -79,6 +84,19 @@ def migrate_prefs(prefs):
     elif prefs.get('run_mode') not in MODES:
         prefs['run_mode'] = 'standard'
         prefs['run_mode_migration_reason'] = '非法运行方式 -> standard'
+        changed = True
+    # 结果回传：迁移为**固定内部周期**（单一来源；当前 500ms）。移除 N 步 / N 时间选择器
+    # 遗留的旧偏好，防止过期 UI 偏好静默复活旧策略；与运行方式偏好互不影响。v3：500ms。
+    if int(prefs.get('report_prefs_version') or 0) < 3:
+        prefs.pop('report_mode', None)
+        prefs.pop('report_value', None)
+        try:
+            from v6_background import REPORT_INTERVAL_MS as _ri
+        except Exception:                                            # noqa: BLE001
+            _ri = 500
+        prefs['report_interval_ms'] = int(_ri)
+        prefs['report_prefs_version'] = 3
+        prefs['report_migration_reason'] = ('报告策略固定为 %dms（移除 N 步/N 时间配置）' % int(_ri))
         changed = True
     return prefs, changed, reason
 
@@ -292,6 +310,8 @@ class V6SpeedMixin:
         self._v5gui.STEP_DELAY_MS = int(p['step_delay_ms'])   # 进程内生效，不改源码文件
         self._v6_anim_off = bool(p['anim_off'])
         self._v6_metrics_every = int(p['metrics_every'])
+        self._v6_particles_off = bool(p.get('particles_off', False))
+        self._v6_flow = bool(p.get('flow', True))
         if persist:
             prefs = load_prefs()
             prefs['run_mode'] = tier
@@ -300,9 +320,59 @@ class V6SpeedMixin:
             save_prefs(prefs)
         self._v6_sync_speed_buttons()
         self._v6_update_timing_label()
+        self._v6_apply_effects()
         ctl = getattr(self, '_v6_bg_controller', None)
         if ctl is not None:
             ctl.on_mode_changed(tier)
+
+    def _v6_apply_effects(self):
+        """按运行方式应用**粒子 / 方向光**策略（仅 V6 运行时控制，不改 V4/V5 源码）。
+
+        - standard：合并粒子开 + 方向光 A/B 动态；
+        - fast：合并粒子**在分配前**抑制（零发射）+ 方向光 A/B 动态保留；
+        - background：合并粒子抑制 + 方向光 B 关闭（静态 A，不跑流光计时器）。
+        """
+        bv = getattr(self, 'board_view', None)
+        layer = getattr(bv, '_particle_layer', None)
+        off = bool(getattr(self, '_v6_particles_off', False))
+        if layer is not None:
+            for name in ('emit_from', 'emit_zones_from'):
+                cur = getattr(layer, name, None)
+                if cur is None:
+                    continue
+                if off:
+                    if getattr(cur, '_v6_noop', False):
+                        continue
+                    setattr(layer, '_v6_orig_' + name, cur)
+
+                    def _noop(*_a, **_k):
+                        return None
+                    _noop._v6_noop = True
+                    setattr(layer, name, _noop)
+                else:
+                    orig = getattr(layer, '_v6_orig_' + name, None)
+                    if orig is not None:
+                        setattr(layer, name, orig)
+            if off:                                   # 清理已存在的粒子对象，避免残留
+                eng = getattr(layer, 'engine', None)
+                if eng is not None and hasattr(eng, 'clear'):
+                    try:
+                        eng.clear()
+                    except Exception:                                # noqa: BLE001
+                        pass
+        ov = getattr(self, '_hint_overlay', None)
+        if ov is not None:
+            try:
+                ov.set_flow_enabled(bool(getattr(self, '_v6_flow', True)))
+            except Exception:                                        # noqa: BLE001
+                pass
+            if not getattr(self, '_v6_flow', True):
+                # 后台：不做持续流光，也不展示可能过期的“下一步建议”（避免误导）
+                try:
+                    ov.set_direction(None)
+                    self._hint_direction = None
+                except Exception:                                    # noqa: BLE001
+                    pass
 
     def _v6_apply_pending_tier(self):
         pending = self._v6_pending_tier

@@ -132,6 +132,68 @@ class ReportPolicyTest(unittest.TestCase):
         self.assertEqual(walls, sorted(walls), '报告墙钟应单调')
         self.assertLess(time.perf_counter() - t0, 30)
 
+    def test_time_policy_reports_first_step_bootstrap(self):
+        """时间策略：首步完成即回传一帧（缩短开始后的空窗），随后恢复 1000ms 节奏。"""
+        res, reports = self._run({'report_policy': {'mode': 'time', 'ms': 1000},
+                                  'max_total_steps': 1, 'time_budget_s': None})
+        self.assertGreaterEqual(len(reports), 1, '首步应立即回传，而非等待满 1000ms')
+        self.assertEqual(reports[0]['report_reason'], 'periodic_time')
+
+    def test_no_periodic_report_after_pause_requested_mid_solve(self):
+        """暂停请求在搜索期间到达：完成当前原子步后不得再发周期回传，只由 FINAL 同步。"""
+        flag = {'pause': False}
+        calls = {'n': 0}
+        orig_solve = solver_v6.solve
+
+        def solve_flipping(board, strategy, **kw):
+            calls['n'] += 1
+            if calls['n'] >= 3:                 # 第 3 步搜索期间收到暂停请求
+                flag['pause'] = True
+            return orig_solve(board, strategy, **kw)
+
+        solver_v6.solve = solve_flipping
+        try:
+            reports = []
+            res = game_loop.run_session(
+                self._snap('rp_pause_mid'),
+                {'report_policy': {'mode': 'steps', 'steps': 1},
+                 'max_total_steps': None, 'time_budget_s': None},
+                progress_cb=lambda p: reports.append(p) or True,
+                solver_backend='cpp', pause=lambda: flag['pause'])
+        finally:
+            solver_v6.solve = orig_solve
+        self.assertEqual([r['step'] for r in reports], [1, 2],
+                         '暂停请求后不得再发周期回传（应仅由 FINAL 同步）')
+        self.assertEqual(res['status'], 'paused')
+        self.assertEqual(res['steps'], 3, '应完成当前原子步后停在步边界')
+
+    def test_no_periodic_report_after_stop_requested_mid_solve(self):
+        """停止请求在搜索期间到达：同样不得再发周期回传，只由 FINAL 同步。"""
+        flag = {'stop': False}
+        calls = {'n': 0}
+        orig_solve = solver_v6.solve
+
+        def solve_flipping(board, strategy, **kw):
+            calls['n'] += 1
+            if calls['n'] >= 3:
+                flag['stop'] = True
+            return orig_solve(board, strategy, **kw)
+
+        solver_v6.solve = solve_flipping
+        try:
+            reports = []
+            res = game_loop.run_session(
+                self._snap('rp_stop_mid'),
+                {'report_policy': {'mode': 'steps', 'steps': 1},
+                 'max_total_steps': None, 'time_budget_s': None},
+                progress_cb=lambda p: reports.append(p) or True,
+                solver_backend='cpp', cancel=lambda: flag['stop'])
+        finally:
+            solver_v6.solve = orig_solve
+        self.assertEqual([r['step'] for r in reports], [1, 2])
+        self.assertEqual(res['status'], 'stopped')
+        self.assertEqual(res['steps'], 3)
+
     def test_real_game_ends_naturally_before_200(self):
         """回归说明：真实规则下可能在 200 步前自然终局，这属于正常终局而非回传截断。"""
         _unpatch()

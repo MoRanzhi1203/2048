@@ -116,6 +116,65 @@ class HeadlessCoreTest(unittest.TestCase):
         self.assertEqual(r['steps'], 0)
 
 
+class CheckpointRetryTest(unittest.TestCase):
+    """P0：Windows 瞬时锁（PermissionError）有界重试的成功路径与失败上报 / 实际耗时记录。"""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix='v6_ckpt_retry_')
+        self.path = os.path.join(self.dir, 'ck.json')
+        self._orig = game_loop._store.atomic_write_json
+
+    def tearDown(self):
+        game_loop._store.atomic_write_json = self._orig
+
+    def test_bounded_retry_records_attempts_and_time(self):
+        calls = {'n': 0}
+        orig = self._orig
+
+        def flaky(path, payload):
+            calls['n'] += 1
+            if calls['n'] <= 3:
+                raise PermissionError('WinError 32 瞬时占用')
+            return orig(path, payload)
+
+        game_loop._store.atomic_write_json = flaky
+        ck = game_loop.Checkpoint(self.path)
+        ck.RETRY_SLEEP_S = 0.001
+        ck.save({'ok': 1})
+        self.assertEqual(calls['n'], 4, '应为 3 次瞬时锁失败 + 第 4 次成功')
+        st = ck.stats()
+        self.assertEqual(st['retries'], 3)
+        self.assertGreater(st['retry_ms'], 0.0, '必须记录重试的实际等待耗时')
+        self.assertEqual(st['failures'], 0)
+        self.assertTrue(os.path.exists(self.path))
+
+    def test_exhaustion_reports_failure_with_context(self):
+        def always_locked(path, payload):
+            raise PermissionError('WinError 5 持续占用')
+
+        game_loop._store.atomic_write_json = always_locked
+        ck = game_loop.Checkpoint(self.path)
+        ck.MAX_RETRIES = 4
+        ck.RETRY_SLEEP_S = 0.001
+        with self.assertRaises(IOError) as cm:
+            ck.save({'ok': 1})
+        msg = str(cm.exception)
+        self.assertIn('4 次', msg, '失败必须显式上报尝试次数')
+        self.assertIn('ms', msg, '失败必须显式上报实际耗时')
+        self.assertEqual(ck.stats()['failures'], 1)
+        self.assertEqual(ck.stats()['retries'], 4)
+
+    def test_run_session_surfaces_checkpoint_stats(self):
+        st = core.rng_state_to_json(random.getstate())
+        snap = core.build_snapshot(BOARD, 0, 0, st, 'g', 0, 'expectimax', 'fast')
+        ck = game_loop.Checkpoint(os.path.join(self.dir, 'run_ck.json'))
+        r = game_loop.run_session(snap, {'max_total_steps': 3}, checkpoint=ck)
+        self.assertEqual(r['steps'], 3)
+        self.assertIsNotNone(r['checkpoint_stats'])
+        self.assertIn('checkpoint_retry_ms', r['perf'])
+        self.assertEqual(r['perf']['checkpoint_retry_count'], 0)
+
+
 class ModelEquivalenceTest(unittest.TestCase):
     """与真实 V6 GUI 继承链的模型逐步等价（需 Qt，但作为独立校验）。"""
 
@@ -158,6 +217,233 @@ class ModelEquivalenceTest(unittest.TestCase):
         self.assertEqual(core.rng_state_to_json(rng.getstate()),
                          core.rng_state_to_json(model_final_state), 'RNG 消费不一致')
         win.close()
+
+
+class BackgroundHistoryEquivalenceTest(unittest.TestCase):
+    """P1 / G4：后台方向序列回放后，官方逐笔历史 / 撤销重做 / RNG / 持久化与正常对局等价。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.mkdtemp(prefix='v6_bg_hist_')
+        os.environ['2048_HISTORY_DIR'] = cls._tmp
+        from PyQt5.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def tearDownClass(cls):
+        os.environ.pop('2048_HISTORY_DIR', None)
+
+    def setUp(self):
+        import v6_pyqt_2048_accelerated as M
+        self.win = M.V6MainWindow()
+        self.model = self.win.model
+        self.model.start_new_game()               # 建立“当前官方对局”（含 history.csv）
+        self.model.grid = [row[:] for row in BOARD]
+        self.model.score = 0
+        self._base_rows = len(self.model.history_rows)
+        self._base_best = int(getattr(self.model, 'best_score', 0))
+
+    def tearDown(self):
+        try:
+            self.win.close()
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def test_replay_reproduces_official_history_and_undo(self):
+        import v6_background as bg
+        steps = 12
+        random.seed(20261012)
+        handoff_rng = random.getstate()
+        snap = core.build_snapshot([row[:] for row in BOARD], 0, 0,
+                                   core.rng_state_to_json(handoff_rng), 'g', 0,
+                                   'expectimax', 'fast')
+        r = game_loop.run_session(snap, {'max_total_steps': steps})
+        dirs = r['directions']
+        final = r['snapshot']
+        self.assertEqual(len(dirs), steps)
+
+        # 按正常对局语义回放（单一写入者＝官方模型）；回放期不落盘，校验后单次提交
+        bg.replay_commit(self.model, dirs,
+                         start_rng_state_json=core.rng_state_to_json(handoff_rng),
+                         cursor=0, base_grid=BOARD)
+        bg.persist_official(self.model)
+
+        # 棋盘 / 分数 / 最高分 / 完整 RNG 与后台快照一致
+        self.assertEqual([row[:] for row in self.model.grid], final['board'])
+        self.assertEqual(self.model.score, final['score'])
+        self.assertEqual(self.model.best_score, max(self._base_best, final['score']))
+        self.assertEqual(core.rng_state_to_json(random.getstate()), final['rng_state'])
+
+        # 官方逐笔历史：每步 2 行（方向 + 添加新方块）
+        self.assertEqual(len(self.model.history_rows), self._base_rows + 2 * steps)
+        self.assertEqual(self.model.history_count, len(self.model.history_rows))
+
+        # 撤销 / 重做栈与正常对局一致
+        self.assertEqual(len(self.model.undo_stack), steps)
+        self.assertTrue(self.model.can_undo())
+        self.assertTrue(self.model.undo())
+        self.assertTrue(self.model.can_redo())
+        self.assertTrue(self.model.redo())
+        self.assertEqual([row[:] for row in self.model.grid], final['board'])
+
+        # 正式持久化（原子写）：game_state.json 内容 = 最终官方状态
+        gdir = os.path.join(self.model.history_dir, self.model.game_id)
+        st_path = os.path.join(gdir, 'game_state.json')
+        self.assertTrue(os.path.exists(st_path))
+        ok, state, err = safe_store.read_json(st_path)
+        self.assertTrue(ok, 'game_state.json 不可读：%s' % err)
+        self.assertEqual(state['grid'], final['board'])
+        self.assertEqual(state['score'], final['score'])
+        self.assertTrue(os.path.exists(os.path.join(gdir, 'history.csv')))
+
+    def test_background_controller_is_wired(self):
+        """后台控制器必须在真实 V6 窗口中可用；回传固定 1000ms，且无 N 步/N 时间控件。"""
+        ctl = getattr(self.win, '_v6_bg_controller', None)
+        self.assertIsNotNone(ctl, 'V6 后台控制器未接线：后台求解在真实 GUI 中将不可用')
+        panel = getattr(ctl, 'panel', None)
+        self.assertIsNotNone(panel, '后台生命周期面板未创建')
+        for name in ('btn_start', 'btn_pause', 'btn_resume', 'btn_stop'):
+            self.assertTrue(hasattr(panel, name), '缺少后台生命周期按钮 %s' % name)
+        for gone in ('btn_time', 'btn_steps', 'report_combo', '_set_mode', 'load_prefs', 'label'):
+            self.assertFalse(hasattr(panel, gone), '报告配置控件未删除：%s' % gone)
+        self.assertEqual(panel.report_policy(), {'mode': 'time', 'ms': 500},
+                         '结果回传必须固定为内部 500ms')
+
+    def test_mode_effects_policy(self):
+        """P4：standard 粒子开；fast/background 粒子在发射前抑制；background 方向光静态。"""
+        import v6_speed as sp
+        win = self.win
+        layer = getattr(win.board_view, '_particle_layer', None)
+        self.assertIsNotNone(layer, '棋盘缺少粒子绘制层')
+        ov = getattr(win, '_hint_overlay', None)
+        self.assertIsNotNone(ov, '缺少方向提示层')
+
+        self.assertFalse(sp.MODE_PARAMS['standard']['particles_off'])
+        self.assertTrue(sp.MODE_PARAMS['fast']['particles_off'])
+        self.assertTrue(sp.MODE_PARAMS['background']['particles_off'])
+        self.assertTrue(sp.MODE_PARAMS['fast']['flow'])
+        self.assertFalse(sp.MODE_PARAMS['background']['flow'])
+
+        win._v6_apply_tier('standard', persist=False)
+        self.assertFalse(getattr(layer.emit_zones_from, '_v6_noop', False))
+        self.assertTrue(ov.flow_enabled)
+
+        win._v6_apply_tier('fast', persist=False)
+        self.assertTrue(getattr(layer.emit_zones_from, '_v6_noop', False), 'fast 粒子未抑制')
+        self.assertTrue(getattr(layer.emit_from, '_v6_noop', False))
+        self.assertTrue(ov.flow_enabled, 'fast 必须保留动态方向光')
+
+        win._v6_apply_tier('background', persist=False)
+        self.assertTrue(getattr(layer.emit_zones_from, '_v6_noop', False))
+        self.assertFalse(ov.flow_enabled, 'background 方向光必须静态（停流光计时器）')
+
+        win._v6_apply_tier('standard', persist=False)      # 复原，避免影响其他用例
+
+    def test_drain_coalesces_progress_to_newest(self):
+        """一次排空只渲染最新一帧（避免连续闪过好几批步长切片）。"""
+        ctl = self.win._v6_bg_controller
+        rendered = []
+        orig = ctl._render_snapshot
+        ctl._render_snapshot = lambda m: rendered.append(m.get('revision'))
+        try:
+            ctl._reset_session_tracking()
+            ctl._game_id = 'sess'
+            ctl.state = 'BG_RUNNING'
+            for rev in (1, 2, 3, 4, 5):
+                ctl._q.put(json.dumps({'type': 'progress', 'game_id': 'sess', 'revision': rev,
+                                       'total_committed_moves': rev, 'board': [[0] * 4] * 4,
+                                       'score': 0}))
+            ctl._q.put(json.dumps({'type': 'progress', 'game_id': 'sess', 'revision': 9,
+                                   'total_committed_moves': 9, 'board': [[0] * 4] * 4,
+                                   'score': 0}))
+            ctl._on_drain()
+        finally:
+            ctl._render_snapshot = orig
+            ctl.state = 'GUI_IDLE'
+            ctl._game_id = None
+        self.assertEqual(rendered, [9], '同一批排空只应渲染最新一帧')
+
+    def test_new_session_resets_revision_tracking(self):
+        """跨会话 revision 跟踪必须重置（否则第二次开始前盘会把新帧当过期帧丢弃）。"""
+        ctl = self.win._v6_bg_controller
+        ctl._rendered_revision = 500
+        ctl._adopted_revision = 600
+        ctl._last_render_step = 77
+        ctl._final_seen = True
+        ctl._reset_session_tracking()
+        self.assertEqual(ctl._rendered_revision, -1)
+        self.assertEqual(ctl._adopted_revision, -1)
+        self.assertEqual(ctl._last_render_step, 0)
+        self.assertFalse(ctl._final_seen)
+
+    def test_replay_defers_disk_writes_until_single_commit(self):
+        """P0 根因回归：回放期间不得逐笔落盘（曾致 Qt 主线程暂停卡死 ~111s）。"""
+        import v6_background as bg
+        import safe_store
+        steps = 20
+        board = [row[:] for row in BOARD]
+        random.seed(4242)
+        rng = random.getstate()
+        snap = core.build_snapshot(board, 0, 0, core.rng_state_to_json(rng), 'g', 0,
+                                   'expectimax', 'fast')
+        r = game_loop.run_session(snap, {'max_total_steps': steps})
+        writes = {'csv': 0, 'json': 0}
+        oc, oj = safe_store.atomic_write_csv, safe_store.atomic_write_json
+
+        def _c(*a, **k):
+            writes['csv'] += 1
+            return oc(*a, **k)
+
+        def _j(*a, **k):
+            writes['json'] += 1
+            return oj(*a, **k)
+
+        safe_store.atomic_write_csv, safe_store.atomic_write_json = _c, _j
+        try:
+            stats = {}
+            bg.replay_commit(self.model, r['directions'],
+                             start_rng_state_json=core.rng_state_to_json(rng),
+                             cursor=0, base_grid=board, stats=stats)
+            self.assertEqual(writes['csv'], 0, '回放期间不得逐笔写 history.csv')
+            self.assertEqual(writes['json'], 0, '回放期间不得逐笔写存档 JSON')
+            self.assertGreater(stats.get('suppressed_io_calls', 0), 0,
+                               '应统计到被抑制的逐笔落盘调用')
+            bg.persist_official(self.model)              # 校验后单次提交
+            self.assertGreaterEqual(writes['csv'], 1)
+            self.assertGreaterEqual(writes['json'], 1)
+        finally:
+            safe_store.atomic_write_csv, safe_store.atomic_write_json = oc, oj
+
+    def test_replay_refuses_when_model_mutated(self):
+        import v6_background as bg
+        board_before = [row[:] for row in self.model.grid]
+        # 模拟后台运行期间模型被并发写者改动：必须拒绝回放（保持单一写入者）
+        bg.replay_commit(self.model, ['left'], base_grid=board_before)   # 合法
+        with self.assertRaises(RuntimeError):
+            bg.replay_commit(self.model, ['left'], base_grid=board_before)  # 已偏离基准
+
+
+class ReportPrefsMigrationTest(unittest.TestCase):
+    """P2：旧报告偏好（N 步 / N 时间）必须迁移为固定内部周期（当前 500ms），幂等且不影响其它偏好。"""
+
+    def test_legacy_report_policy_migrates_to_fixed_interval(self):
+        import v6_speed as sp
+        prefs = {'report_mode': 'steps', 'report_value': 200,
+                 'run_mode': 'fast', 'modes_version': sp.PREFS_VERSION}
+        out, changed, _reason = sp.migrate_prefs(prefs)
+        self.assertTrue(changed)
+        self.assertEqual(out.get('report_interval_ms'), 500)
+        self.assertNotIn('report_mode', out, '旧 N 步策略未被移除')
+        self.assertNotIn('report_value', out)
+        self.assertEqual(out.get('run_mode'), 'fast', '不应改动无关偏好（运行方式）')
+
+    def test_migration_is_idempotent(self):
+        import v6_speed as sp
+        prefs = {'report_prefs_version': 3, 'report_interval_ms': 500,
+                 'run_mode': 'standard', 'modes_version': sp.PREFS_VERSION}
+        out, changed, _reason = sp.migrate_prefs(dict(prefs))
+        self.assertFalse(changed, '已迁移的偏好不应再次触发迁移')
+        self.assertEqual(out.get('report_interval_ms'), 500)
 
 
 _IPC_E2E = os.environ.get('V6_RUN_IPC_E2E') == '1'
@@ -271,6 +557,47 @@ class WorkerE2ETest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(tmp, 'owner.json')),
                          '进程退出后所有权未释放')
         os.environ.pop('2048_HISTORY_DIR', None)
+
+
+    def test_stop_while_paused_exits_worker(self):
+        """P3 回归：暂停后常驻 worker 必须响应 stop 并协作退出（此前会被忽略）。"""
+        import ownership as own
+        tmp = tempfile.mkdtemp(prefix='v6_paused_stop_')
+        staging = os.path.join(tmp, 'bg_checkpoint.json')
+        proc = self._spawn()
+        self._read_until(proc, 'ready')
+        snap = core.build_snapshot([[2, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 2]], 0, 0,
+                                   core.rng_state_to_json(random.getstate()), 'ps', 0,
+                                   'expectimax', 'fast')
+        sp = os.path.join(tmp, 'snap.json')
+        with open(sp, 'w', encoding='utf-8') as f:
+            f.write(core.snapshot_to_json(snap))
+        m0 = self._mark(proc)
+        proc.stdin.write(json.dumps({'cmd': 'start', 'snapshot_path': sp,
+                                     'limits': {'max_total_steps': None, 'max_seconds': None,
+                                                'report_policy': {'mode': 'time', 'ms': 300}},
+                                     'backend': 'cpp', 'staging': staging,
+                                     'ownership': tmp}) + '\n')
+        proc.stdin.flush()
+        self._read_until(proc, 'warmed', timeout=300, since=m0)
+        self._read_until(proc, 'progress', timeout=120, since=m0)
+        m1 = self._mark(proc)
+        proc.stdin.write(json.dumps({'cmd': 'pause'}) + '\n')
+        proc.stdin.flush()
+        paused = self._read_until(proc, 'final', timeout=120, since=m1)
+        self.assertIn(paused['status'], ('paused', 'stopped'))
+        proc.stdin.write(json.dumps({'cmd': 'stop'}) + '\n')
+        proc.stdin.flush()
+        t0 = time.time()
+        while time.time() - t0 < 60 and proc.poll() is None:
+            time.sleep(0.05)
+        proc.wait(timeout=30)
+        self.assertEqual(proc.returncode, 0, '暂停常驻期 stop 未使 worker 退出')
+        for _ in range(100):
+            if own.owner_status(tmp)['state'] != 'alive':
+                break
+            time.sleep(0.02)
+        self.assertNotEqual(own.owner_status(tmp)['state'], 'alive', '退出后所有权未释放')
 
 
 if __name__ == '__main__':

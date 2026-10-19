@@ -1,7 +1,10 @@
 {
-  "updated_at": "2026-10-12 19:27:01",
+  "updated_at": "2026-10-19 23:32:39",
   "run_mode": "background",
-  "run_mode_migrated_from": "extreme",
-  "run_mode_migration_reason": "旧值 'extreme' -> 'fast'（V2 映射表）",
-  "modes_version": 2
+  "run_mode_migrated_from": null,
+  "run_mode_migration_reason": "缺少历史运行方式 -> standard",
+  "modes_version": 3,
+  "report_prefs_version": 3,
+  "report_interval_ms": 500,
+  "report_migration_reason": "报告策略固定为 500ms（移除 N 步/N 时间配置）"
 }
