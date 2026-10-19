@@ -1,0 +1,1955 @@
+[
+  {
+    "ascii": "01_console_math",
+    "source_name": "第1篇 · Python 实现：从数学模型到完整控制台版《2048》游戏.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第1篇 · Python 实现：从数学模型到完整控制台版《2048》游戏.md",
+    "sha256": "235eb61e81b7bc82261066d27116e2a6e503fb502be458f44c922e9c7ff4e7b6",
+    "size": 18645,
+    "lines": 714,
+    "bytes_utf8": 18645,
+    "headings_count": 38,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第1篇 · Python 实现：从数学模型到完整控制台版《2048》游戏"
+      },
+      {
+        "line": 23,
+        "level": 2,
+        "text": "1 模块 1：状态表示与初始化"
+      },
+      {
+        "line": 25,
+        "level": 3,
+        "text": "1.1 模块 1 - 数学模型"
+      },
+      {
+        "line": 27,
+        "level": 4,
+        "text": "1.1.1 状态矩阵定义"
+      },
+      {
+        "line": 47,
+        "level": 4,
+        "text": "1.1.2 游戏全局状态"
+      },
+      {
+        "line": 60,
+        "level": 4,
+        "text": "1.1.3 随机生成新方块"
+      },
+      {
+        "line": 81,
+        "level": 3,
+        "text": "1.2 模块 1 - 代码实现"
+      },
+      {
+        "line": 118,
+        "level": 3,
+        "text": "1.3 模块 1 - 逻辑说明"
+      },
+      {
+        "line": 132,
+        "level": 3,
+        "text": "1.4 初始状态可视化示例"
+      },
+      {
+        "line": 149,
+        "level": 2,
+        "text": "2 模块 2：方块移动与合并"
+      },
+      {
+        "line": 151,
+        "level": 3,
+        "text": "2.1 模块 2 - 数学模型"
+      },
+      {
+        "line": 153,
+        "level": 4,
+        "text": "2.1.1 单行压缩与合并"
+      },
+      {
+        "line": 177,
+        "level": 4,
+        "text": "2.1.2 四个方向的移动矩阵"
+      },
+      {
+        "line": 201,
+        "level": 3,
+        "text": "2.2 模块 2 - 代码实现"
+      },
+      {
+        "line": 260,
+        "level": 3,
+        "text": "2.3 模块 2 - 逻辑说明"
+      },
+      {
+        "line": 268,
+        "level": 3,
+        "text": "2.4 示意矩阵变化"
+      },
+      {
+        "line": 294,
+        "level": 2,
+        "text": "3 模块 3：胜负判断与游戏结束检测"
+      },
+      {
+        "line": 296,
+        "level": 3,
+        "text": "3.1 模块 3 - 数学模型"
+      },
+      {
+        "line": 298,
+        "level": 4,
+        "text": "3.1.1 胜利条件"
+      },
+      {
+        "line": 310,
+        "level": 4,
+        "text": "3.1.2 游戏结束条件"
+      },
+      {
+        "line": 330,
+        "level": 4,
+        "text": "3.1.3 重置游戏"
+      },
+      {
+        "line": 350,
+        "level": 3,
+        "text": "3.2 模块 3 - 代码实现"
+      },
+      {
+        "line": 394,
+        "level": 3,
+        "text": "3.3 模块 3 - 逻辑说明"
+      },
+      {
+        "line": 412,
+        "level": 2,
+        "text": "4 模块 4：控制台显示与用户界面"
+      },
+      {
+        "line": 414,
+        "level": 3,
+        "text": "4.1 模块 4 - 数学模型"
+      },
+      {
+        "line": 416,
+        "level": 4,
+        "text": "4.1.1 棋盘显示矩阵"
+      },
+      {
+        "line": 433,
+        "level": 4,
+        "text": "4.1.2 操作与状态提示"
+      },
+      {
+        "line": 463,
+        "level": 3,
+        "text": "4.2 模块 4 - 代码实现"
+      },
+      {
+        "line": 496,
+        "level": 3,
+        "text": "4.3 模块 4 - 逻辑说明"
+      },
+      {
+        "line": 513,
+        "level": 3,
+        "text": "4.4 界面设计"
+      },
+      {
+        "line": 542,
+        "level": 2,
+        "text": "5 模块 5：主循环与用户交互"
+      },
+      {
+        "line": 544,
+        "level": 3,
+        "text": "5.1 游戏主循环"
+      },
+      {
+        "line": 566,
+        "level": 3,
+        "text": "5.2 模块 5 - 代码实现"
+      },
+      {
+        "line": 612,
+        "level": 3,
+        "text": "5.3 模块 5 - 逻辑说明"
+      },
+      {
+        "line": 623,
+        "level": 2,
+        "text": "6 模块 6：程序入口与启动"
+      },
+      {
+        "line": 625,
+        "level": 3,
+        "text": "6.1 模块 6 - 代码实现"
+      },
+      {
+        "line": 679,
+        "level": 3,
+        "text": "6.2 模块 6 - 逻辑说明"
+      },
+      {
+        "line": 689,
+        "level": 2,
+        "text": "7 小结"
+      }
+    ],
+    "fences_count": 8,
+    "fence_langs": [
+      "python",
+      "txt"
+    ],
+    "fences": [
+      {
+        "line": 13,
+        "lang": "python",
+        "end_line": 17
+      },
+      {
+        "line": 86,
+        "lang": "python",
+        "end_line": 114
+      },
+      {
+        "line": 203,
+        "lang": "python",
+        "end_line": 256
+      },
+      {
+        "line": 352,
+        "lang": "python",
+        "end_line": 390
+      },
+      {
+        "line": 465,
+        "lang": "python",
+        "end_line": 492
+      },
+      {
+        "line": 515,
+        "lang": "txt",
+        "end_line": 536
+      },
+      {
+        "line": 568,
+        "lang": "python",
+        "end_line": 608
+      },
+      {
+        "line": 629,
+        "lang": "python",
+        "end_line": 675
+      }
+    ],
+    "math_blocks": 36,
+    "inline_math": 12,
+    "images_count": 0,
+    "images": [],
+    "links_count": 1,
+    "links": [
+      {
+        "text": "第 2 篇 · 如何实现带历史记录功能的控制台2048游戏",
+        "target": "第2篇%20·%20如何实现带历史记录功能的控制台2048游戏.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "02_history_recovery",
+    "source_name": "第2篇 · 如何实现带历史记录功能的控制台2048游戏.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第2篇 · 如何实现带历史记录功能的控制台2048游戏.md",
+    "sha256": "7cd06d6ff0966e56e9a0c0d48f9cc9339110d6a8f5af59e677d37783156a024d",
+    "size": 19469,
+    "lines": 501,
+    "bytes_utf8": 19469,
+    "headings_count": 8,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第2篇 · 如何实现带历史记录功能的控制台2048游戏"
+      },
+      {
+        "line": 15,
+        "level": 2,
+        "text": "1 游戏历史记录管理"
+      },
+      {
+        "line": 140,
+        "level": 2,
+        "text": "2 游戏状态保存与加载"
+      },
+      {
+        "line": 222,
+        "level": 2,
+        "text": "3 游戏历史记录查看与管理"
+      },
+      {
+        "line": 282,
+        "level": 2,
+        "text": "4 游戏退出与数据更新"
+      },
+      {
+        "line": 347,
+        "level": 2,
+        "text": "5 启动续玩与主循环"
+      },
+      {
+        "line": 427,
+        "level": 2,
+        "text": "6 示例文件内容"
+      },
+      {
+        "line": 492,
+        "level": 2,
+        "text": "7 小结"
+      }
+    ],
+    "fences_count": 5,
+    "fence_langs": [
+      "python"
+    ],
+    "fences": [
+      {
+        "line": 27,
+        "lang": "python",
+        "end_line": 132
+      },
+      {
+        "line": 151,
+        "lang": "python",
+        "end_line": 216
+      },
+      {
+        "line": 234,
+        "lang": "python",
+        "end_line": 276
+      },
+      {
+        "line": 293,
+        "lang": "python",
+        "end_line": 341
+      },
+      {
+        "line": 353,
+        "lang": "python",
+        "end_line": 421
+      }
+    ],
+    "math_blocks": 0,
+    "inline_math": 0,
+    "images_count": 0,
+    "images": [],
+    "links_count": 1,
+    "links": [
+      {
+        "text": "第 1 篇 · Python 实现：从数学模型到完整控制台版《2048》游戏",
+        "target": "第1篇%20·%20Python%20实现：从数学模型到完整控制台版《2048》游戏.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "03_pyqt_mvc_undo",
+    "source_name": "第3篇 · 使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第3篇 · 使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做.md",
+    "sha256": "29e8c1e7987647c0ee91eca0636b21ce0f03e32bab7e87ef0c5e4e629e35f034",
+    "size": 21604,
+    "lines": 481,
+    "bytes_utf8": 21604,
+    "headings_count": 29,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第3篇 · 使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做"
+      },
+      {
+        "line": 11,
+        "level": 2,
+        "text": "1 为什么需要 MVC"
+      },
+      {
+        "line": 27,
+        "level": 2,
+        "text": "2 Model：与原版无异的游戏核心"
+      },
+      {
+        "line": 31,
+        "level": 3,
+        "text": "2.1 关键点"
+      },
+      {
+        "line": 37,
+        "level": 3,
+        "text": "2.2 代码实现（合并核心）"
+      },
+      {
+        "line": 63,
+        "level": 3,
+        "text": "2.3 方向抽象"
+      },
+      {
+        "line": 88,
+        "level": 2,
+        "text": "3 View：用 QGridLayout + QLabel 绘制棋盘"
+      },
+      {
+        "line": 92,
+        "level": 3,
+        "text": "3.1 关键点"
+      },
+      {
+        "line": 98,
+        "level": 3,
+        "text": "3.2 代码实现（方块渲染）"
+      },
+      {
+        "line": 190,
+        "level": 3,
+        "text": "3.3 界面效果"
+      },
+      {
+        "line": 211,
+        "level": 2,
+        "text": "4 Controller：键盘事件与按钮"
+      },
+      {
+        "line": 215,
+        "level": 3,
+        "text": "4.1 关键点"
+      },
+      {
+        "line": 221,
+        "level": 3,
+        "text": "4.2 键盘事件"
+      },
+      {
+        "line": 256,
+        "level": 3,
+        "text": "4.3 状态刷新"
+      },
+      {
+        "line": 291,
+        "level": 2,
+        "text": "5 撤销和重做：基于状态快照栈"
+      },
+      {
+        "line": 295,
+        "level": 3,
+        "text": "5.1 关键点"
+      },
+      {
+        "line": 302,
+        "level": 3,
+        "text": "5.2 代码实现"
+      },
+      {
+        "line": 362,
+        "level": 2,
+        "text": "6 与历史记录功能打通"
+      },
+      {
+        "line": 364,
+        "level": 3,
+        "text": "6.1 启动页设计"
+      },
+      {
+        "line": 376,
+        "level": 2,
+        "text": "7 界面视觉规范与高 DPI 适配"
+      },
+      {
+        "line": 380,
+        "level": 3,
+        "text": "7.1 把样式收敛成常量"
+      },
+      {
+        "line": 394,
+        "level": 3,
+        "text": "7.2 两个页面的布局与尺寸"
+      },
+      {
+        "line": 401,
+        "level": 3,
+        "text": "7.3 键盘可达：又踩了一次\"方向键失效\""
+      },
+      {
+        "line": 424,
+        "level": 3,
+        "text": "7.4 高 DPI 适配"
+      },
+      {
+        "line": 435,
+        "level": 3,
+        "text": "7.5 界面截图"
+      },
+      {
+        "line": 445,
+        "level": 2,
+        "text": "8 运行说明"
+      },
+      {
+        "line": 447,
+        "level": 3,
+        "text": "8.1 环境依赖"
+      },
+      {
+        "line": 453,
+        "level": 3,
+        "text": "8.2 运行与操作"
+      },
+      {
+        "line": 466,
+        "level": 2,
+        "text": "9 小结"
+      }
+    ],
+    "fences_count": 14,
+    "fence_langs": [
+      "bash",
+      "css",
+      "python",
+      "txt"
+    ],
+    "fences": [
+      {
+        "line": 39,
+        "lang": "python",
+        "end_line": 61
+      },
+      {
+        "line": 67,
+        "lang": "python",
+        "end_line": 84
+      },
+      {
+        "line": 100,
+        "lang": "python",
+        "end_line": 152
+      },
+      {
+        "line": 156,
+        "lang": "python",
+        "end_line": 186
+      },
+      {
+        "line": 192,
+        "lang": "txt",
+        "end_line": 207
+      },
+      {
+        "line": 223,
+        "lang": "python",
+        "end_line": 247
+      },
+      {
+        "line": 260,
+        "lang": "python",
+        "end_line": 285
+      },
+      {
+        "line": 304,
+        "lang": "python",
+        "end_line": 353
+      },
+      {
+        "line": 384,
+        "lang": "python",
+        "end_line": 392
+      },
+      {
+        "line": 408,
+        "lang": "css",
+        "end_line": 411
+      },
+      {
+        "line": 413,
+        "lang": "python",
+        "end_line": 422
+      },
+      {
+        "line": 428,
+        "lang": "python",
+        "end_line": 431
+      },
+      {
+        "line": 449,
+        "lang": "bash",
+        "end_line": 451
+      },
+      {
+        "line": 455,
+        "lang": "bash",
+        "end_line": 457
+      }
+    ],
+    "math_blocks": 0,
+    "inline_math": 0,
+    "images_count": 2,
+    "images": [
+      {
+        "alt": "启动页",
+        "target": "../v3_pyqt_2048/screenshots/full_start.png",
+        "local": "e:\\PyQt5_demo\\2048\\v3_pyqt_2048\\screenshots\\full_start.png",
+        "exists": true
+      },
+      {
+        "alt": "游戏页",
+        "target": "../v3_pyqt_2048/screenshots/full_game.png",
+        "local": "e:\\PyQt5_demo\\2048\\v3_pyqt_2048\\screenshots\\full_game.png",
+        "exists": true
+      }
+    ],
+    "links_count": 2,
+    "links": [
+      {
+        "text": "第 2 篇 · 如何实现带历史记录功能的控制台2048游戏",
+        "target": "第2篇%20·%20如何实现带历史记录功能的控制台2048游戏.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 4 篇 · 使用 PyQt5 实现 2048：平滑动画与性能优化",
+        "target": "第4篇%20·%20使用%20PyQt5%20实现%202048：平滑动画与性能优化.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "04_animation_render",
+    "source_name": "第4篇 · 使用 PyQt5 实现 2048：平滑动画与性能优化.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第4篇 · 使用 PyQt5 实现 2048：平滑动画与性能优化.md",
+    "sha256": "26373fbd07d279e5b44d63af667c955acdc764e3e9c021991d707b378d2436e7",
+    "size": 16301,
+    "lines": 358,
+    "bytes_utf8": 16301,
+    "headings_count": 13,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第4篇 · 使用 PyQt5 实现 2048：平滑动画与性能优化"
+      },
+      {
+        "line": 11,
+        "level": 2,
+        "text": "1 总思路：Model 不动，换掉 View"
+      },
+      {
+        "line": 30,
+        "level": 2,
+        "text": "2 Model：只补\"过渡信息\""
+      },
+      {
+        "line": 34,
+        "level": 3,
+        "text": "2.1 逐行合并时输出\"去向\""
+      },
+      {
+        "line": 67,
+        "level": 3,
+        "text": "2.2 覆盖 `_slide`：行内下标 → 棋盘坐标"
+      },
+      {
+        "line": 124,
+        "level": 2,
+        "text": "3 View：分层渲染 + 逐帧插值"
+      },
+      {
+        "line": 128,
+        "level": 3,
+        "text": "3.1 静态背景层：只画一次，缓存成 pixmap"
+      },
+      {
+        "line": 151,
+        "level": 3,
+        "text": "3.2 动画层：滑行 → 合并/新生"
+      },
+      {
+        "line": 223,
+        "level": 2,
+        "text": "4 Controller：输入节流与收尾"
+      },
+      {
+        "line": 301,
+        "level": 2,
+        "text": "5 性能要点"
+      },
+      {
+        "line": 313,
+        "level": 2,
+        "text": "6 运行与操作"
+      },
+      {
+        "line": 329,
+        "level": 2,
+        "text": "7 效果"
+      },
+      {
+        "line": 347,
+        "level": 2,
+        "text": "8 小结"
+      }
+    ],
+    "fences_count": 14,
+    "fence_langs": [
+      "bash",
+      "python"
+    ],
+    "fences": [
+      {
+        "line": 36,
+        "lang": "python",
+        "end_line": 63
+      },
+      {
+        "line": 71,
+        "lang": "python",
+        "end_line": 103
+      },
+      {
+        "line": 107,
+        "lang": "python",
+        "end_line": 118
+      },
+      {
+        "line": 132,
+        "lang": "python",
+        "end_line": 147
+      },
+      {
+        "line": 158,
+        "lang": "python",
+        "end_line": 185
+      },
+      {
+        "line": 189,
+        "lang": "python",
+        "end_line": 195
+      },
+      {
+        "line": 199,
+        "lang": "python",
+        "end_line": 204
+      },
+      {
+        "line": 208,
+        "lang": "python",
+        "end_line": 217
+      },
+      {
+        "line": 227,
+        "lang": "python",
+        "end_line": 239
+      },
+      {
+        "line": 245,
+        "lang": "python",
+        "end_line": 256
+      },
+      {
+        "line": 260,
+        "lang": "python",
+        "end_line": 275
+      },
+      {
+        "line": 277,
+        "lang": "python",
+        "end_line": 286
+      },
+      {
+        "line": 290,
+        "lang": "python",
+        "end_line": 297
+      },
+      {
+        "line": 315,
+        "lang": "bash",
+        "end_line": 318
+      }
+    ],
+    "math_blocks": 0,
+    "inline_math": 0,
+    "images_count": 3,
+    "images": [
+      {
+        "alt": "启动页",
+        "target": "../v4_pyqt_2048_animated/screenshots/full_start.png",
+        "local": "e:\\PyQt5_demo\\2048\\v4_pyqt_2048_animated\\screenshots\\full_start.png",
+        "exists": true
+      },
+      {
+        "alt": "合并粒子",
+        "target": "../v4_pyqt_2048_animated/screenshots/full_merge.png",
+        "local": "e:\\PyQt5_demo\\2048\\v4_pyqt_2048_animated\\screenshots\\full_merge.png",
+        "exists": true
+      },
+      {
+        "alt": "游戏页",
+        "target": "../v4_pyqt_2048_animated/screenshots/full_game.png",
+        "local": "e:\\PyQt5_demo\\2048\\v4_pyqt_2048_animated\\screenshots\\full_game.png",
+        "exists": true
+      }
+    ],
+    "links_count": 1,
+    "links": [
+      {
+        "text": "第 3 篇 · 使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做",
+        "target": "第3篇%20·%20使用%20PyQt5%20实现%202048%20桌面版游戏：MVC%20架构与撤销和重做.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "05a_solver_algorithms",
+    "source_name": "第5篇（上）· 使用 PyQt5 实现 2048 算法求解版：五类搜索算法内核.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第5篇（上）· 使用 PyQt5 实现 2048 算法求解版：五类搜索算法内核.md",
+    "sha256": "423be681a5d3277eff06c0a24c58a2306e52e18a75f23e70e37fe9f0d2ccc3d9",
+    "size": 33848,
+    "lines": 624,
+    "bytes_utf8": 33848,
+    "headings_count": 22,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第5篇（上）· 使用 PyQt5 实现 2048 算法求解版：五类搜索算法内核"
+      },
+      {
+        "line": 11,
+        "level": 2,
+        "text": "1 问题形式化"
+      },
+      {
+        "line": 13,
+        "level": 3,
+        "text": "1.1 状态、动作与转移"
+      },
+      {
+        "line": 35,
+        "level": 3,
+        "text": "1.2 即时奖励与终止"
+      },
+      {
+        "line": 43,
+        "level": 3,
+        "text": "1.3 符号约定"
+      },
+      {
+        "line": 69,
+        "level": 2,
+        "text": "2 系统结构与棋盘机制"
+      },
+      {
+        "line": 71,
+        "level": 3,
+        "text": "2.1 分层结构与纯逻辑约束"
+      },
+      {
+        "line": 103,
+        "level": 3,
+        "text": "2.2 移动与合并算子"
+      },
+      {
+        "line": 132,
+        "level": 2,
+        "text": "3 启发式评估函数"
+      },
+      {
+        "line": 134,
+        "level": 3,
+        "text": "3.1 线性评估模型"
+      },
+      {
+        "line": 166,
+        "level": 3,
+        "text": "3.2 各特征的定义"
+      },
+      {
+        "line": 203,
+        "level": 3,
+        "text": "3.3 实现与对应"
+      },
+      {
+        "line": 303,
+        "level": 2,
+        "text": "4 五类求解策略"
+      },
+      {
+        "line": 317,
+        "level": 3,
+        "text": "4.1 启发式：单步贪心"
+      },
+      {
+        "line": 350,
+        "level": 3,
+        "text": "4.2 贪心模拟：rollout"
+      },
+      {
+        "line": 413,
+        "level": 3,
+        "text": "4.3 Expectimax：对随机出块求期望"
+      },
+      {
+        "line": 480,
+        "level": 3,
+        "text": "4.4 MCTS：树结构与渐进加宽"
+      },
+      {
+        "line": 542,
+        "level": 3,
+        "text": "4.5 强化学习：策略梯度"
+      },
+      {
+        "line": 599,
+        "level": 2,
+        "text": "5 正确性与工程边界"
+      },
+      {
+        "line": 601,
+        "level": 3,
+        "text": "5.1 验证方法"
+      },
+      {
+        "line": 605,
+        "level": 3,
+        "text": "5.2 可复现性、异常兜底与时间预算"
+      },
+      {
+        "line": 617,
+        "level": 2,
+        "text": "6 小结"
+      }
+    ],
+    "fences_count": 19,
+    "fence_langs": [
+      "",
+      "python"
+    ],
+    "fences": [
+      {
+        "line": 75,
+        "lang": "",
+        "end_line": 84
+      },
+      {
+        "line": 97,
+        "lang": "python",
+        "end_line": 101
+      },
+      {
+        "line": 107,
+        "lang": "python",
+        "end_line": 126
+      },
+      {
+        "line": 142,
+        "lang": "python",
+        "end_line": 152
+      },
+      {
+        "line": 207,
+        "lang": "python",
+        "end_line": 221
+      },
+      {
+        "line": 225,
+        "lang": "python",
+        "end_line": 249
+      },
+      {
+        "line": 253,
+        "lang": "python",
+        "end_line": 268
+      },
+      {
+        "line": 272,
+        "lang": "python",
+        "end_line": 299
+      },
+      {
+        "line": 329,
+        "lang": "python",
+        "end_line": 344
+      },
+      {
+        "line": 362,
+        "lang": "python",
+        "end_line": 389
+      },
+      {
+        "line": 395,
+        "lang": "python",
+        "end_line": 407
+      },
+      {
+        "line": 429,
+        "lang": "python",
+        "end_line": 435
+      },
+      {
+        "line": 439,
+        "lang": "python",
+        "end_line": 455
+      },
+      {
+        "line": 459,
+        "lang": "python",
+        "end_line": 464
+      },
+      {
+        "line": 496,
+        "lang": "python",
+        "end_line": 510
+      },
+      {
+        "line": 514,
+        "lang": "python",
+        "end_line": 522
+      },
+      {
+        "line": 526,
+        "lang": "python",
+        "end_line": 532
+      },
+      {
+        "line": 560,
+        "lang": "python",
+        "end_line": 577
+      },
+      {
+        "line": 581,
+        "lang": "python",
+        "end_line": 591
+      }
+    ],
+    "math_blocks": 19,
+    "inline_math": 157,
+    "images_count": 0,
+    "images": [],
+    "links_count": 2,
+    "links": [
+      {
+        "text": "第 4 篇 · 使用 PyQt5 实现 2048：平滑动画与性能优化",
+        "target": "第4篇%20·%20使用%20PyQt5%20实现%202048：平滑动画与性能优化.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 5 篇（下）· 使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互",
+        "target": "第5篇（下）·%20使用%20PyQt5%20实现%202048%20算法求解版：双栏%20AI%20求解工作台与交互.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "05b_ai_workbench",
+    "source_name": "第5篇（下）· 使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第5篇（下）· 使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互.md",
+    "sha256": "0238cc7217c40853d56813c466e6c1477582338aad2b2807f9d4b8dfbc6f412b",
+    "size": 36544,
+    "lines": 557,
+    "bytes_utf8": 36544,
+    "headings_count": 19,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第5篇（下）· 使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互"
+      },
+      {
+        "line": 15,
+        "level": 2,
+        "text": "1 并发模型与线程生命周期"
+      },
+      {
+        "line": 100,
+        "level": 2,
+        "text": "2 V5.1 界面：左右双栏「AI 求解工作台」"
+      },
+      {
+        "line": 151,
+        "level": 2,
+        "text": "3 折叠与贴边把手"
+      },
+      {
+        "line": 227,
+        "level": 2,
+        "text": "4 交互与工作流"
+      },
+      {
+        "line": 229,
+        "level": 3,
+        "text": "4.1 方向键的统一路由"
+      },
+      {
+        "line": 268,
+        "level": 3,
+        "text": "4.2 单步建议的常驻跟随"
+      },
+      {
+        "line": 296,
+        "level": 3,
+        "text": "4.3 求解进行中的算法热切换"
+      },
+      {
+        "line": 323,
+        "level": 2,
+        "text": "5 AI 方向提示：原生边框内的「内嵌明暗轮廓」+ 三通道流光"
+      },
+      {
+        "line": 327,
+        "level": 3,
+        "text": "5.1 需求与几何约束"
+      },
+      {
+        "line": 351,
+        "level": 3,
+        "text": "5.2 第一代方案：沿边暖白与背景的低对比"
+      },
+      {
+        "line": 363,
+        "level": 3,
+        "text": "5.3 第二代方案：三段式内嵌明暗轮廓"
+      },
+      {
+        "line": 388,
+        "level": 3,
+        "text": "5.4 光栅化约束：DestinationIn 与抗锯齿裁剪不可同时使用"
+      },
+      {
+        "line": 409,
+        "level": 3,
+        "text": "5.5 流光层：三通道、短梭形与朝目标边汇聚"
+      },
+      {
+        "line": 423,
+        "level": 3,
+        "text": "5.6 自动连走方向提示"
+      },
+      {
+        "line": 429,
+        "level": 2,
+        "text": "6 测试与验收"
+      },
+      {
+        "line": 491,
+        "level": 2,
+        "text": "7 性能与复杂度"
+      },
+      {
+        "line": 528,
+        "level": 2,
+        "text": "8 小结"
+      },
+      {
+        "line": 545,
+        "level": 2,
+        "text": "附：整窗截图"
+      }
+    ],
+    "fences_count": 21,
+    "fence_langs": [
+      "",
+      "bash",
+      "python"
+    ],
+    "fences": [
+      {
+        "line": 42,
+        "lang": "python",
+        "end_line": 59
+      },
+      {
+        "line": 63,
+        "lang": "python",
+        "end_line": 80
+      },
+      {
+        "line": 88,
+        "lang": "python",
+        "end_line": 96
+      },
+      {
+        "line": 104,
+        "lang": "",
+        "end_line": 119
+      },
+      {
+        "line": 129,
+        "lang": "python",
+        "end_line": 145
+      },
+      {
+        "line": 159,
+        "lang": "python",
+        "end_line": 187
+      },
+      {
+        "line": 191,
+        "lang": "python",
+        "end_line": 195
+      },
+      {
+        "line": 201,
+        "lang": "python",
+        "end_line": 221
+      },
+      {
+        "line": 235,
+        "lang": "python",
+        "end_line": 243
+      },
+      {
+        "line": 247,
+        "lang": "python",
+        "end_line": 264
+      },
+      {
+        "line": 272,
+        "lang": "python",
+        "end_line": 283
+      },
+      {
+        "line": 287,
+        "lang": "python",
+        "end_line": 292
+      },
+      {
+        "line": 300,
+        "lang": "python",
+        "end_line": 315
+      },
+      {
+        "line": 337,
+        "lang": "python",
+        "end_line": 349
+      },
+      {
+        "line": 375,
+        "lang": "python",
+        "end_line": 384
+      },
+      {
+        "line": 394,
+        "lang": "python",
+        "end_line": 405
+      },
+      {
+        "line": 413,
+        "lang": "python",
+        "end_line": 419
+      },
+      {
+        "line": 445,
+        "lang": "bash",
+        "end_line": 451
+      },
+      {
+        "line": 467,
+        "lang": "python",
+        "end_line": 478
+      },
+      {
+        "line": 482,
+        "lang": "bash",
+        "end_line": 485
+      },
+      {
+        "line": 507,
+        "lang": "python",
+        "end_line": 522
+      }
+    ],
+    "math_blocks": 3,
+    "inline_math": 42,
+    "images_count": 6,
+    "images": [
+      {
+        "alt": "开始页",
+        "target": "../v5_pyqt_2048_solver/screenshots/full_start.png",
+        "local": "e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\screenshots\\full_start.png",
+        "exists": true
+      },
+      {
+        "alt": "游戏页（展开态：左侧游戏台 + 右侧 AI 求解工作台）",
+        "target": "../v5_pyqt_2048_solver/screenshots/full_solver.png",
+        "local": "e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\screenshots\\full_solver.png",
+        "exists": true
+      },
+      {
+        "alt": "折叠态（整体隐藏右栏，右侧贴边半胶囊把手）",
+        "target": "../v5_pyqt_2048_solver/screenshots/full_collapsed.png",
+        "local": "e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\screenshots\\full_collapsed.png",
+        "exists": true
+      },
+      {
+        "alt": "单步建议（棋盘原生边框内的「内嵌明暗轮廓」方向提示）",
+        "target": "../v5_pyqt_2048_solver/screenshots/full_suggest.png",
+        "local": "e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\screenshots\\full_suggest.png",
+        "exists": true
+      },
+      {
+        "alt": "自动连走（同样高亮本步方向）",
+        "target": "../v5_pyqt_2048_solver/screenshots/full_auto.png",
+        "local": "e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\screenshots\\full_auto.png",
+        "exists": true
+      },
+      {
+        "alt": "结果对比",
+        "target": "../v5_pyqt_2048_solver/screenshots/full_results.png",
+        "local": "e:\\PyQt5_demo\\2048\\v5_pyqt_2048_solver\\screenshots\\full_results.png",
+        "exists": true
+      }
+    ],
+    "links_count": 2,
+    "links": [
+      {
+        "text": "第 5 篇（上）· 使用 PyQt5 实现 2048 算法求解版：五类搜索算法内核",
+        "target": "第5篇（上）·%20使用%20PyQt5%20实现%202048%20算法求解版：五类搜索算法内核.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 6 篇（上）· 使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准",
+        "target": "第6篇（上）·%20使用%20PyQt5%20实现%202048%20高性能计算版：四类计算后端与公平基准.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "06a_backends_benchmarks",
+    "source_name": "第6篇（上）· 使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第6篇（上）· 使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准.md",
+    "sha256": "f3070baf4692039c219568b164628c3ac4ebb15590dad002d121af0954271713",
+    "size": 20055,
+    "lines": 323,
+    "bytes_utf8": 20055,
+    "headings_count": 17,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第6篇（上）· 使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准"
+      },
+      {
+        "line": 23,
+        "level": 2,
+        "text": "1 为什么需要 V6：V5 的瓶颈在哪"
+      },
+      {
+        "line": 43,
+        "level": 2,
+        "text": "2 架构：一个调度器 + 四个后端"
+      },
+      {
+        "line": 74,
+        "level": 2,
+        "text": "3 统一后端协议：同一个棋盘，四种内部表示"
+      },
+      {
+        "line": 96,
+        "level": 2,
+        "text": "4 位棋盘：4-bit 指数编码与\"溢出必须显式拒绝\""
+      },
+      {
+        "line": 117,
+        "level": 2,
+        "text": "5 选择与回退：不静默换算法"
+      },
+      {
+        "line": 141,
+        "level": 2,
+        "text": "6 等价性：逐位一致"
+      },
+      {
+        "line": 164,
+        "level": 2,
+        "text": "7 公平基准：把\"同工作量\"和\"同墙钟\"分开"
+      },
+      {
+        "line": 173,
+        "level": 3,
+        "text": "7.1 内核微基准（median 每单位耗时，µs，越小越好）"
+      },
+      {
+        "line": 197,
+        "level": 3,
+        "text": "7.2 同工作量搜索（median 每决策耗时）"
+      },
+      {
+        "line": 208,
+        "level": 3,
+        "text": "7.3 同墙钟预算小样本（工程回归，不作为显著性结论）"
+      },
+      {
+        "line": 226,
+        "level": 3,
+        "text": "7.4 一个可选的原生 rollout"
+      },
+      {
+        "line": 232,
+        "level": 2,
+        "text": "8 默认后端：用证据选 `cpp`"
+      },
+      {
+        "line": 246,
+        "level": 2,
+        "text": "9 GUI 与数据：怎么在不动 V5 的前提下换心脏"
+      },
+      {
+        "line": 265,
+        "level": 2,
+        "text": "10 门禁与验收边界"
+      },
+      {
+        "line": 292,
+        "level": 2,
+        "text": "11 小结"
+      },
+      {
+        "line": 309,
+        "level": 2,
+        "text": "附：整窗截图"
+      }
+    ],
+    "fences_count": 6,
+    "fence_langs": [
+      "",
+      "python"
+    ],
+    "fences": [
+      {
+        "line": 45,
+        "lang": "",
+        "end_line": 61
+      },
+      {
+        "line": 80,
+        "lang": "python",
+        "end_line": 86
+      },
+      {
+        "line": 104,
+        "lang": "python",
+        "end_line": 111
+      },
+      {
+        "line": 121,
+        "lang": "python",
+        "end_line": 124
+      },
+      {
+        "line": 132,
+        "lang": "python",
+        "end_line": 137
+      },
+      {
+        "line": 250,
+        "lang": "python",
+        "end_line": 254
+      }
+    ],
+    "math_blocks": 0,
+    "inline_math": 0,
+    "images_count": 5,
+    "images": [
+      {
+        "alt": "开始页",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_start.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_start.png",
+        "exists": true
+      },
+      {
+        "alt": "游戏页（展开态：左游戏台 + 右 AI 求解工作台）",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_solver.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_solver.png",
+        "exists": true
+      },
+      {
+        "alt": "折叠态（贴边半胶囊把手）",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_collapsed.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_collapsed.png",
+        "exists": true
+      },
+      {
+        "alt": "单步建议（原生边框内的方向提示）",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_suggest.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_suggest.png",
+        "exists": true
+      },
+      {
+        "alt": "自动连走（同样高亮本步方向）",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_auto.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_auto.png",
+        "exists": true
+      }
+    ],
+    "links_count": 2,
+    "links": [
+      {
+        "text": "第 5 篇（下）· 使用 PyQt5 实现 2048 算法求解版：双栏 AI 求解工作台与交互",
+        "target": "第5篇（下）·%20使用%20PyQt5%20实现%202048%20算法求解版：双栏%20AI%20求解工作台与交互.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 6 篇（中）· 使用 PyQt5 实现 2048 高性能计算版：无头后台求解与三档运行模式",
+        "target": "第6篇（中）·%20使用%20PyQt5%20实现%202048%20高性能计算版：无头后台求解与三档运行模式.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "06b_headless_process",
+    "source_name": "第6篇（中）· 使用 PyQt5 实现 2048 高性能计算版：无头后台求解与三档运行模式.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第6篇（中）· 使用 PyQt5 实现 2048 高性能计算版：无头后台求解与三档运行模式.md",
+    "sha256": "4c299fc6e5b164c58d11fee28a3d40920cce795e5c2a0edb8c7fa07e2ae76ef3",
+    "size": 19309,
+    "lines": 366,
+    "bytes_utf8": 19309,
+    "headings_count": 15,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第6篇（中）· 使用 PyQt5 实现 2048 高性能计算版：无头后台求解与三档运行模式"
+      },
+      {
+        "line": 15,
+        "level": 2,
+        "text": "1 为什么把求解搬出 GUI"
+      },
+      {
+        "line": 33,
+        "level": 2,
+        "text": "2 三档运行方式：先定语义，再谈实现"
+      },
+      {
+        "line": 63,
+        "level": 2,
+        "text": "3 无头核心：不导入任何 Qt"
+      },
+      {
+        "line": 101,
+        "level": 2,
+        "text": "4 进程协议：一行一个 JSON"
+      },
+      {
+        "line": 139,
+        "level": 2,
+        "text": "5 所有权：单一写者不是口头约定"
+      },
+      {
+        "line": 169,
+        "level": 2,
+        "text": "6 检查点：每步可恢复，而不是\"最后存一次\""
+      },
+      {
+        "line": 200,
+        "level": 2,
+        "text": "7 500ms 回传：固定周期，单一来源"
+      },
+      {
+        "line": 222,
+        "level": 2,
+        "text": "8 FINAL 采纳：不是覆盖棋盘，而是回放历史"
+      },
+      {
+        "line": 258,
+        "level": 2,
+        "text": "9 状态机：把\"正在暂停\"和\"已暂停\"分开"
+      },
+      {
+        "line": 288,
+        "level": 2,
+        "text": "10 启动期恢复：GUI 重启之后"
+      },
+      {
+        "line": 300,
+        "level": 2,
+        "text": "11 踩过的坑（工程复盘）"
+      },
+      {
+        "line": 315,
+        "level": 2,
+        "text": "12 验收与边界"
+      },
+      {
+        "line": 336,
+        "level": 2,
+        "text": "13 小结"
+      },
+      {
+        "line": 355,
+        "level": 2,
+        "text": "附：整窗截图"
+      }
+    ],
+    "fences_count": 9,
+    "fence_langs": [
+      "",
+      "json",
+      "python"
+    ],
+    "fences": [
+      {
+        "line": 37,
+        "lang": "python",
+        "end_line": 46
+      },
+      {
+        "line": 69,
+        "lang": "python",
+        "end_line": 87
+      },
+      {
+        "line": 105,
+        "lang": "",
+        "end_line": 117
+      },
+      {
+        "line": 125,
+        "lang": "python",
+        "end_line": 131
+      },
+      {
+        "line": 143,
+        "lang": "json",
+        "end_line": 153
+      },
+      {
+        "line": 173,
+        "lang": "python",
+        "end_line": 180
+      },
+      {
+        "line": 204,
+        "lang": "python",
+        "end_line": 207
+      },
+      {
+        "line": 230,
+        "lang": "python",
+        "end_line": 246
+      },
+      {
+        "line": 262,
+        "lang": "python",
+        "end_line": 273
+      }
+    ],
+    "math_blocks": 0,
+    "inline_math": 0,
+    "images_count": 4,
+    "images": [
+      {
+        "alt": "游戏页（展开态：左游戏台 + 右 AI 运行控制）",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_solver.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_solver.png",
+        "exists": true
+      },
+      {
+        "alt": "自动连走（本机快速/标准执行）",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_auto.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_auto.png",
+        "exists": true
+      },
+      {
+        "alt": "后台求解运行中（真实 Worker，200+ 步）",
+        "target": "../v6_pyqt_2048_accelerated/experiments/v6_2/20261020_cross_mode_handoff/p4_background_running_200plus.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\v6_2\\20261020_cross_mode_handoff\\p4_background_running_200plus.png",
+        "exists": true
+      },
+      {
+        "alt": "后台暂停（FINAL 已采纳并持久化）",
+        "target": "../v6_pyqt_2048_accelerated/experiments/v6_2/20261020_cross_mode_handoff/p5_background_paused.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\v6_2\\20261020_cross_mode_handoff\\p5_background_paused.png",
+        "exists": true
+      }
+    ],
+    "links_count": 2,
+    "links": [
+      {
+        "text": "第 6 篇（上）· 使用 PyQt5 实现 2048 高性能计算版：四类计算后端与公平基准",
+        "target": "第6篇（上）·%20使用%20PyQt5%20实现%202048%20高性能计算版：四类计算后端与公平基准.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 6 篇（下）· 使用 PyQt5 实现 2048 高性能计算版：统一运行控制与跨模式安全交接",
+        "target": "第6篇（下）·%20使用%20PyQt5%20实现%202048%20高性能计算版：统一运行控制与跨模式安全交接.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  },
+  {
+    "ascii": "06c_cross_mode_handoff",
+    "source_name": "第6篇（下）· 使用 PyQt5 实现 2048 高性能计算版：统一运行控制与跨模式安全交接.md",
+    "source_path": "e:\\PyQt5_demo\\2048\\blog\\第6篇（下）· 使用 PyQt5 实现 2048 高性能计算版：统一运行控制与跨模式安全交接.md",
+    "sha256": "c36463efa6950f45201109e1ec49fa3fa3f9d54eb2fb999cfe7dd46e7df03d6b",
+    "size": 20459,
+    "lines": 419,
+    "bytes_utf8": 20040,
+    "headings_count": 18,
+    "headings": [
+      {
+        "line": 1,
+        "level": 1,
+        "text": "第6篇（下）· 使用 PyQt5 实现 2048 高性能计算版：统一运行控制与跨模式安全交接"
+      },
+      {
+        "line": 15,
+        "level": 2,
+        "text": "1 问题：三种执行模式带来的\"状态爆炸\""
+      },
+      {
+        "line": 35,
+        "level": 2,
+        "text": "2 三个状态变量与\"真实执行模式\""
+      },
+      {
+        "line": 80,
+        "level": 2,
+        "text": "3 交互语义：一张矩阵说清"
+      },
+      {
+        "line": 104,
+        "level": 2,
+        "text": "4 运行中切选项卡：非破坏性"
+      },
+      {
+        "line": 124,
+        "level": 2,
+        "text": "5 安全步边界暂停"
+      },
+      {
+        "line": 150,
+        "level": 2,
+        "text": "6 跨模式交接：三条路径"
+      },
+      {
+        "line": 154,
+        "level": 3,
+        "text": "6.1 标准 ↔ 快速：同一会话，换调度"
+      },
+      {
+        "line": 180,
+        "level": 3,
+        "text": "6.2 本机 → 后台：先确认接管，再结束本机"
+      },
+      {
+        "line": 202,
+        "level": 3,
+        "text": "6.3 后台 → 本机：等旧写者真正退出"
+      },
+      {
+        "line": 231,
+        "level": 2,
+        "text": "7 单一写者：为什么\"进程起来了\"不等于\"接管了\""
+      },
+      {
+        "line": 275,
+        "level": 2,
+        "text": "8 数据一致性：四个\"不许变\""
+      },
+      {
+        "line": 302,
+        "level": 2,
+        "text": "9 失败与回退：保留可恢复的暂停"
+      },
+      {
+        "line": 315,
+        "level": 2,
+        "text": "10 真实 GUI E2E：22 项检查"
+      },
+      {
+        "line": 333,
+        "level": 2,
+        "text": "11 测试矩阵：8 种暂停切换 + 4 项扩展"
+      },
+      {
+        "line": 360,
+        "level": 2,
+        "text": "12 门禁与未验证项"
+      },
+      {
+        "line": 379,
+        "level": 2,
+        "text": "13 小结"
+      },
+      {
+        "line": 408,
+        "level": 2,
+        "text": "附：整窗截图"
+      }
+    ],
+    "fences_count": 10,
+    "fence_langs": [
+      "json",
+      "python"
+    ],
+    "fences": [
+      {
+        "line": 47,
+        "lang": "python",
+        "end_line": 60
+      },
+      {
+        "line": 66,
+        "lang": "python",
+        "end_line": 74
+      },
+      {
+        "line": 108,
+        "lang": "python",
+        "end_line": 118
+      },
+      {
+        "line": 132,
+        "lang": "python",
+        "end_line": 142
+      },
+      {
+        "line": 158,
+        "lang": "python",
+        "end_line": 171
+      },
+      {
+        "line": 191,
+        "lang": "python",
+        "end_line": 198
+      },
+      {
+        "line": 214,
+        "lang": "python",
+        "end_line": 225
+      },
+      {
+        "line": 235,
+        "lang": "python",
+        "end_line": 248
+      },
+      {
+        "line": 257,
+        "lang": "json",
+        "end_line": 269
+      },
+      {
+        "line": 288,
+        "lang": "python",
+        "end_line": 291
+      }
+    ],
+    "math_blocks": 0,
+    "inline_math": 0,
+    "images_count": 4,
+    "images": [
+      {
+        "alt": "已暂停并选择快速：主按钮变为“切换至快速模式并继续”",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_handoff_paused.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_handoff_paused.png",
+        "exists": true
+      },
+      {
+        "alt": "交接中：主按钮“正在切换至后台求解模式…”，操作禁用",
+        "target": "../v6_pyqt_2048_accelerated/screenshots/full_handoff_switching.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\screenshots\\full_handoff_switching.png",
+        "exists": true
+      },
+      {
+        "alt": "后台暂停并选择标准：可安全切回本机",
+        "target": "../v6_pyqt_2048_accelerated/experiments/v6_2/20261020_cross_mode_handoff/p6_background_paused_selected_standard.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\v6_2\\20261020_cross_mode_handoff\\p6_background_paused_selected_standard.png",
+        "exists": true
+      },
+      {
+        "alt": "后台退出、所有权释放后由标准模式继续",
+        "target": "../v6_pyqt_2048_accelerated/experiments/v6_2/20261020_cross_mode_handoff/p7_standard_running_after_background.png",
+        "local": "e:\\PyQt5_demo\\2048\\v6_pyqt_2048_accelerated\\experiments\\v6_2\\20261020_cross_mode_handoff\\p7_standard_running_after_background.png",
+        "exists": true
+      }
+    ],
+    "links_count": 9,
+    "links": [
+      {
+        "text": "第 6 篇（中）· 使用 PyQt5 实现 2048 高性能计算版：无头后台求解与三档运行模式",
+        "target": "第6篇（中）·%20使用%20PyQt5%20实现%202048%20高性能计算版：无头后台求解与三档运行模式.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 1 篇",
+        "target": "第1篇%20·%20Python%20实现：从数学模型到完整控制台版《2048》游戏.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 2 篇",
+        "target": "第2篇%20·%20如何实现带历史记录功能的控制台2048游戏.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 3 篇",
+        "target": "第3篇%20·%20使用%20PyQt5%20实现%202048%20桌面版游戏：MVC%20架构与撤销和重做.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 4 篇",
+        "target": "第4篇%20·%20使用%20PyQt5%20实现%202048：平滑动画与性能优化.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 5 篇（上）",
+        "target": "第5篇（上）·%20使用%20PyQt5%20实现%202048%20算法求解版：五类搜索算法内核.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 5 篇（下）",
+        "target": "第5篇（下）·%20使用%20PyQt5%20实现%202048%20算法求解版：双栏%20AI%20求解工作台与交互.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 6 篇（上）",
+        "target": "第6篇（上）·%20使用%20PyQt5%20实现%202048%20高性能计算版：四类计算后端与公平基准.md",
+        "kind": "relative",
+        "exists": true
+      },
+      {
+        "text": "第 6 篇（中）",
+        "target": "第6篇（中）·%20使用%20PyQt5%20实现%202048%20高性能计算版：无头后台求解与三档运行模式.md",
+        "kind": "relative",
+        "exists": true
+      }
+    ],
+    "status": "OK"
+  }
+]

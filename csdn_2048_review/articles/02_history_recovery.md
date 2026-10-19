@@ -1,0 +1,518 @@
+# 第2篇 · 如何实现带历史记录功能的控制台2048游戏
+
+第 1 篇把 2048 的规则实现为一个可运行的控制台程序，但它有一个共同的局限：**进程退出后状态不保留**。关闭窗口后，上一局的分数、棋盘以及此前的每一步操作都会消失，只能重新开始。
+
+历史记录为游戏提供两套机制：**逐步轨迹 + 状态快照**。逐步轨迹负责将每一局、每一步（方向、棋盘、得分）持久化，随时可回看；状态快照负责在任意时刻冻结棋盘，下次启动时继续。
+
+该功能有几种实现选择：存入数据库最为规范，但对单机小游戏属于明显的过度设计；仅使用单个整体 JSON 文件最为简单，却要在每步重写全量数据，且写入中途崩溃会破坏整个存档。此处采用折中方案：**JSON 存储续玩快照 + CSV 记录逐步轨迹**，并复用仓库根目录的 `safe_store.py` 实现原子写入、校验、`.bak` 回退与单实例锁。
+
+需要先说明两点边界，后文会反复用到：
+
+- **原子性按文件计算**：`game_state.json`、`history.csv`、`index.json` 各自是原子替换，但三者不是同一个事务；进程若恰好在两次写入之间崩溃，可能出现“状态已更新、索引尚未更新”的不一致。
+- **快照不含 RNG 状态**：`game_state.json` 保存棋盘、分数、步数等，但不保存 `random.getstate()`；因此恢复后续玩时，棋盘与分数一致，**后续随机生成序列并不保证与崩溃前逐位一致**。这与第 6 篇后台 Worker 的“完整 RNG 交接”不是同一级别的保证。
+
+------
+
+
+
+## 1 游戏历史记录管理
+
+为便于玩家查看并管理自己的游戏历史，程序将每局游戏的相关数据（例如分数、网格状态等）保存到本地文件。历史记录包含每局游戏的操作步骤、分数、移动后的网格状态等。
+
+**关键点**：
+
+- **游戏ID生成**：每局游戏会生成一个唯一的 ID，基于当前的时间戳。
+- **CSV 文件记录**：每一步游戏操作（包括方块的移动、得分和网格变化）会记录到 CSV 文件中。
+- **JSON 文件记录**：游戏的完整状态（例如：网格、分数、胜利状态等）会保存到 JSON 文件中，以供后续恢复。
+
+**代码实现**：
+
+```python
+import random
+import os
+import sys
+import msvcrt  # Windows 键盘输入
+import csv
+import json
+import datetime
+
+# 跨版本共享的安全存档工具（原子写入 / 校验 / 备份 / 单实例锁）
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+import safe_store as _store
+
+HISTORY_HEADER = ["步数", "操作类型", "操作得分", "总分",
+                  "移动后的网格状态", "随机添加后的网格状态"]
+
+
+class Console2048WithHistory:
+    def __init__(self, grid_size=4):
+        self.grid_size = grid_size
+        self.grid = [[0] * grid_size for _ in range(grid_size)]
+        self.score = 0
+        self.best_score = 0
+        self.game_over = False
+        self.won = False
+
+        self.game_id = None
+        self.game_start_time = None
+        self.history_file = None
+        self.history_dir = _store.resolve_history_dir(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "game_history"), "v2")
+        self.current_move = 0
+        self.history_rows = []          # 已写入的 CSV 数据行（用于原子重写）
+
+        self.storage_version = "v2"
+        self.last_load_error = None
+        self.last_load_used_backup = False
+
+        os.makedirs(self.history_dir, exist_ok=True)
+        # 单实例锁：同一版本已有进程在跑时进入只读模式，避免覆盖存档
+        self.lock = _store.InstanceLock(os.path.join(self.history_dir, ".instance.lock"))
+        self.can_save = self.lock.acquire()
+        self.readonly_reason = "" if self.can_save else "检测到同一版本已有另一个进程在运行"
+        self.load_best_score()
+
+    def release_lock(self):
+        try:
+            self.lock.release()
+        except Exception:                                            # noqa: BLE001
+            pass
+
+    def load_best_score(self):
+        """读取最高分（校验合法性，损坏时忽略）。"""
+        path = os.path.join(self.history_dir, "best_score.json")
+        ok, data, _err = _store.read_json(path)
+        if ok and isinstance(data, dict):
+            value = data.get('best_score', 0)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                self.best_score = value
+
+    def save_best_score(self):
+        """保存最高分（原子写入）。"""
+        if not self.can_save:
+            return
+        path = os.path.join(self.history_dir, "best_score.json")
+        try:
+            _store.atomic_write_json(path, {'best_score': self.best_score})
+        except OSError:
+            pass
+
+    def start_new_game(self):
+        """开始新游戏：先结算上一局，再新建历史文件与状态。"""
+        if self.game_id:
+            self.update_index(is_completed=True)
+
+        # 微秒级时间戳：单机顺序开局足够唯一，但不是跨进程的 UUID 保证
+        self.game_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        self.game_start_time = datetime.datetime.now()
+        self.history_rows = []
+
+        if self.can_save:
+            game_dir = os.path.join(self.history_dir, self.game_id)
+            os.makedirs(game_dir, exist_ok=True)
+            self.history_file = os.path.join(game_dir, "history.csv")
+            self._write_history_file()
+        else:
+            self.history_file = None
+
+        self.grid = [[0] * self.grid_size for _ in range(self.grid_size)]
+        self.score = 0
+        self.game_over = False
+        self.won = False
+        self.current_move = 0
+        for _ in range(2):
+            self.add_new_tile()
+
+        self.record_move("初始状态", 0, self.grid, self.grid)
+        self.update_index()
+
+    def _write_history_file(self):
+        """按累积行原子重写 CSV：逻辑上逐步追加，物理上整文件替换。"""
+        if not self.history_file or not self.can_save:
+            return
+        try:
+            _store.atomic_write_csv(self.history_file, HISTORY_HEADER, self.history_rows)
+        except OSError:
+            pass
+
+    def record_move(self, move_type, move_score, after_move_grid, after_add_tile_grid):
+        """记录一步操作，并即时原子保存状态。"""
+        if not self.history_file:
+            return
+        self.current_move += 1
+        self.history_rows.append([
+            self.current_move, move_type, move_score, self.score,
+            json.dumps(after_move_grid, ensure_ascii=False),
+            json.dumps(after_add_tile_grid, ensure_ascii=False)])
+        self._write_history_file()      # 原子重写，而不是 open(..., 'a')
+        self.save_game_state()
+```
+
+至此，历史记录的写入侧已经完整：`start_new_game()` 负责创建目录与表头，`record_move()` 把一行追加到内存中的 `history_rows`，再由 `_write_history_file()` **原子重写整份 CSV**，并同时保存最新状态。
+
+这里有一个容易忽略的实现差异：当前源码并不是 `open(..., 'a')` 的直接追加，而是“内存累积 + 整文件原子替换”。好处是崩溃时不会留下半行；代价是每步写入量与历史长度成正比（写放大）。对 2048 这种每局几百到几千步的单机游戏可以接受，但如果步数达到十万级，应改为分段文件或数据库。
+
+------
+
+
+
+## 2 游戏状态保存与加载
+
+为增强用户体验，程序增加了游戏状态的保存与加载功能。每次玩家执行操作后，游戏的网格状态、分数等信息会保存为 JSON 文件。因此在玩家退出游戏后，下一次启动时仍可继续之前的游戏。
+
+**关键点**：
+
+- **状态保存**：每执行一步操作后，游戏状态（如网格、分数等）会保存在 JSON 文件中。
+- **状态恢复**：游戏支持恢复最近未完成的游戏，通过加载保存的状态继续游戏。
+
+**代码实现**：
+
+```python
+def save_game_state(self):
+    """保存完整状态：原子写入 + 仅在主文件有效时备份上一份。"""
+    if not self.game_id or not self.can_save:
+        return
+
+    game_dir = os.path.join(self.history_dir, self.game_id)
+    state_file = os.path.join(game_dir, "game_state.json")
+    backup_file = state_file + ".bak"
+
+    game_state = {
+        "grid": [row[:] for row in self.grid],
+        "score": self.score,
+        "best_score": self.best_score,
+        "game_over": self.game_over,
+        "won": self.won,
+        "current_move": self.current_move,
+        "history_count": len(self.history_rows),
+        "last_updated": datetime.datetime.now().isoformat(),
+    }
+    game_state = _store.wrap_state(game_state, self.storage_version)
+    try:
+        # 只有现有主文件通过校验时才备份，避免用损坏文件覆盖有效 .bak
+        ok, old, _err = _store.read_json(state_file)
+        if ok and _store.validate_game_state(old, self.grid_size)[0]:
+            _store.backup_copy(state_file, backup_file)
+        _store.atomic_write_json(state_file, game_state)
+    except OSError:
+        pass
+
+
+def load_game_state(self, game_id):
+    """加载状态：校验 + 主文件损坏时回退 .bak（并自愈主文件）。"""
+    self.last_load_error = None
+    self.last_load_used_backup = False
+    game_dir = os.path.join(self.history_dir, game_id)
+    state_file = os.path.join(game_dir, "game_state.json")
+    backup_file = state_file + ".bak"
+
+    game_state, used_backup, err = _store.load_json_validated(
+        state_file, lambda s: _store.validate_game_state(s, self.grid_size), backup_file)
+    if game_state is None:
+        self.last_load_error = err or "存档不可用"
+        return False
+
+    self.game_id = game_id
+    self.grid = [row[:] for row in game_state['grid']]
+    self.score = int(game_state.get('score', 0))
+    # 最高分只升不降：存档中的旧值不能把当前记录改小
+    self.best_score = max(int(game_state.get('best_score', 0)), self.best_score)
+    self.game_over = bool(game_state.get('game_over', False))
+    self.won = bool(game_state.get('won', False))
+    self.current_move = int(game_state.get('current_move', 0))
+
+    self.history_file = os.path.join(game_dir, "history.csv")
+    self.history_rows = self._read_history_rows()
+
+    self.last_load_used_backup = used_backup
+    if used_backup:
+        self.save_game_state()          # 用备份内容自愈主文件
+    return True
+```
+
+这段加载逻辑提供的是“单文件级”的可靠性：主文件损坏时回退到 `.bak`，但 `.bak` 是上一份有效状态，可能比崩溃前落后一步；回退成功后调用 `save_game_state()` 自愈主文件。它**不**保证 RNG 连续，也**不**把 JSON、CSV、索引合并成一个事务。实际使用时还有两点保护：
+
+- 最高分取 `max(存档值, 当前内存值)`，旧存档不会把记录改小；
+- 查找活档时额外要求状态文件存在（`game_state.json` 或 `.bak`），避免索引里残留“有记录但无状态”的幽灵档。
+
+------
+
+## 3 游戏历史记录查看与管理
+
+程序通过读取 `index.json` 文件来查看最近未完成的游戏，玩家可以选择加载最新的未完成游戏，从而继续上一次的对局，无需从头开始。
+
+**关键点**：
+
+- **对局索引**：`index.json` 记录每一局的概要（game_id、开始时间、分数、是否完成、最后更新时间），据此可以选出最近一局未完成的对局。
+- **加载历史游戏**：玩家可以选择继续最近的一局未完成的游戏，恢复之前的网格状态和分数。
+- **放弃续玩**：如果玩家不想继续，则把这一局在索引里标记为已完成，避免下次启动时又被当作可续玩的"活档"。
+
+**代码实现**：
+
+```python
+def get_last_unfinished_game(self):
+    """返回最后一个“未完成且状态文件仍可读”的活档。"""
+    index_file = os.path.join(self.history_dir, "index.json")
+    ok, index_data, _err = _store.read_json(index_file)
+    if not ok or not isinstance(index_data, list):
+        return None
+
+    def _has_state(game):
+        gid = game.get('game_id')
+        if not gid:
+            return False
+        game_dir = os.path.join(self.history_dir, gid)
+        return (os.path.exists(os.path.join(game_dir, "game_state.json"))
+                or os.path.exists(os.path.join(game_dir, "game_state.json.bak")))
+
+    unfinished = [g for g in index_data
+                  if isinstance(g, dict) and not g.get('is_completed', False)
+                  and _has_state(g)]
+    if not unfinished:
+        return None
+    unfinished.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
+    return unfinished[0]
+
+
+def mark_game_completed(self, game_id):
+    """把指定对局标记为已完成（用户放弃续玩时结算旧档）。"""
+    if not game_id or not self.can_save:
+        return
+    index_file = os.path.join(self.history_dir, "index.json")
+    ok, index_data, _err = _store.read_json(index_file)
+    if not ok or not isinstance(index_data, list):
+        return
+    changed = False
+    for info in index_data:
+        if isinstance(info, dict) and info.get('game_id') == game_id:
+            info['is_completed'] = True
+            info['last_updated'] = datetime.datetime.now().isoformat()
+            changed = True
+            break
+    if changed:
+        try:
+            _store.atomic_write_json(index_file, index_data)
+        except OSError:
+            pass
+```
+
+------
+
+
+
+## 4 游戏退出与数据更新
+
+当玩家退出游戏时，程序会更新游戏索引，确保当前数据被及时保存。退出时，游戏状态会被标记为未完成，玩家可以随时恢复上次的状态。
+
+**关键点**：
+
+- **游戏结束时更新索引**：每当一局游戏结束时，游戏的结果会更新到 `index.json` 文件中。
+- **游戏退出时保存未完成状态**：当玩家退出时，游戏状态会被标记为未完成，以便玩家以后继续。
+
+**代码实现**：
+
+```python
+def update_index(self, is_completed=None):
+    """更新对局索引（原子写入）。"""
+    if not self.game_id or not self.game_start_time:
+        return
+
+    if self.score > self.best_score:
+        self.best_score = self.score
+        self.save_best_score()
+
+    index_file = os.path.join(self.history_dir, "index.json")
+    ok, index_data, _err = _store.read_json(index_file)
+    if not ok or not isinstance(index_data, list):
+        index_data = []
+
+    completed = is_completed if is_completed is not None else (self.game_over or self.won)
+    game_info = {
+        "game_id": self.game_id,
+        "start_time": self.game_start_time.isoformat(),
+        "score": self.score,
+        "best_score": self.best_score,
+        "is_completed": completed,
+        "last_updated": datetime.datetime.now().isoformat(),
+    }
+    for info in index_data:
+        if isinstance(info, dict) and info.get("game_id") == self.game_id:
+            info.update(game_info)
+            break
+    else:
+        index_data.append(game_info)
+
+    if not self.can_save:
+        return
+    try:
+        _store.atomic_write_json(index_file, index_data)
+    except OSError:
+        pass
+```
+
+------
+
+
+
+## 5 启动续玩与主循环
+
+上述能力由 `run()` 串联：启动时先检查是否存在未完成的对局，若有则询问是否继续（选择 `n` 时用 `mark_game_completed()` 结算旧档）；随后进入主循环，显示网格、响应按键，每次成功移动都记录一步并刷新索引；游戏结束或退出时再通过 `update_index()` 落盘最终状态。
+
+**代码实现**：
+
+```python
+def run(self):
+    """运行游戏主循环。"""
+    if not self.can_save:
+        print("提示：%s。为避免覆盖存档，本次运行不会写入磁盘。" % self.readonly_reason)
+
+    last_unfinished = self.get_last_unfinished_game()
+    if last_unfinished:
+        print("检测到未完成的游戏：")
+        print("游戏ID:", last_unfinished.get('game_id'))
+        print("开始时间:", last_unfinished.get('start_time'))
+        print("当前分数:", last_unfinished.get('score'))
+        print("最高分:", last_unfinished.get('best_score'))
+        while True:
+            print("是否继续上一把游戏？ (y/n): ")
+            choice = msvcrt.getch().decode('utf-8', errors='ignore').lower()
+            print(choice)
+            if choice == 'y':
+                if self.load_game_state(last_unfinished.get('game_id')):
+                    print("游戏加载成功！")
+                    input("按回车键继续...")
+                    break
+                print("游戏加载失败（%s），开始新游戏。"
+                      % (self.last_load_error or "存档损坏或不可用"))
+                self.mark_game_completed(last_unfinished.get('game_id'))
+                self.start_new_game()
+                break
+            if choice == 'n':
+                self.mark_game_completed(last_unfinished.get('game_id'))
+                self.start_new_game()
+                break
+    else:
+        self.start_new_game()
+
+    while True:
+        self.display_grid()
+        self.check_win()
+        if self.check_game_over():
+            self.display_grid()
+            self.update_index(is_completed=True)
+            input("按回车键重新开始...")
+            self.start_new_game()
+            continue
+
+        key = self.get_key()
+        if key == 'quit':
+            print("感谢游玩！再见！")
+            self.update_index(is_completed=False)
+            self.release_lock()          # 退出前释放单实例锁
+            break
+
+        if key in ('up', 'down', 'left', 'right'):
+            previous_score = self.score
+            if self._move(key):
+                after_move_grid = [row.copy() for row in self.grid]
+                self.add_new_tile()
+                move_score = self.score - previous_score
+                self.record_move("向%s移动" % key, move_score, after_move_grid, self.grid)
+                self.update_index()
+```
+
+------
+
+
+
+## 6 示例文件内容
+
+1. **index.json**：记录游戏的基本信息，包括游戏ID、开始时间、分数等。
+
+    ```json
+    [
+        {
+            "game_id": "20251115_011133_522512",
+            "start_time": "2025-11-15T01:11:33.522512",
+            "score": 2940,
+            "best_score": 2940,
+            "is_completed": false,
+            "last_updated": "2025-11-15T01:16:45.692189"
+        },
+        {
+            "game_id": "20251115_022750_959447",
+            "start_time": "2025-11-15T02:27:50.959447",
+            "score": 1164,
+            "best_score": 12060,
+            "is_completed": true,
+            "last_updated": "2025-11-15T02:33:44.991410"
+        }
+    ]
+    ```
+
+2. **best_score.json**：记录游戏的最佳分数。
+
+    ```json
+    {
+        "best_score": 12060
+    }
+    ```
+
+3. **game_state.json**：记录每局游戏的完整状态；`schema`/`version` 由 `wrap_state()` 写入，`history_count` 用于对齐 CSV 行数。
+
+    ```json
+    {
+        "grid": [
+            [2, 4, 8, 4],
+            [16, 32, 16, 2],
+            [8, 16, 64, 8],
+            [32, 64, 32, 2]
+        ],
+        "score": 1164,
+        "best_score": 12060,
+        "game_over": false,
+        "won": false,
+        "current_move": 139,
+        "history_count": 139,
+        "last_updated": "2025-11-15T02:33:44.965340",
+        "schema": 1,
+        "version": "v2"
+    }
+    ```
+
+4. **history.csv**：记录每一步操作的信息，包括步数、操作类型、得分等。
+
+    ```csv
+    步数,操作类型,操作得分,总分,移动后的网格状态,随机添加后的网格状态
+    1,初始状态,0,0,"[[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [4, 0, 0, 4]]","[[2, 2, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [4, 0, 0, 4]]"
+    2,向left移动,12,12,"[[4, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [8, 0, 0, 0]]","[[4, 0, 0, 0], [0, 0, 2, 0], [0, 0, 0, 0], [8, 0, 0, 0]]"
+    3,向down移动,0,12,"[[0, 0, 0, 0], [0, 0, 0, 0], [4, 0, 0, 0], [8, 0, 2, 0]]","[[0, 0, 0, 2], [0, 0, 0, 0], [4, 0, 0, 0], [8, 0, 2, 0]]"
+    ```
+
+------
+
+
+
+## 7 运行方式
+
+```bash
+python v2_console_2048_with_history/v2_console_2048_with_history.py
+```
+
+- 依赖：Python 3.10+，Windows 终端（`msvcrt`）；
+- 每局数据写入 `game_history/<game_id>/`（`history.csv`、`game_state.json`、`.bak`）；
+- 根目录的 `index.json` 记录对局概要，`best_score.json` 记录历史最高分；
+- 退出时写入 `is_completed=false` 并释放单实例锁；同一目录第二次启动会进入只读模式。
+
+## 8 小结
+
+这些新增功能提升了 **2048 游戏** 的交互性：每局对局的完整操作轨迹与状态都会落盘（CSV + JSON），下次启动时可以直接恢复未完成的对局，历史最高分也会单独持久化。
+
+JSON + CSV 的文件方案适合单机存档、续玩与轨迹导出（CSV 可直接导入 pandas），也支撑了第 3 篇启动页的"最近一局"；多端同步、并发写入与海量检索很快会遇到瓶颈，届时需改用数据库。
+---
+
+**上一篇**：[第 1 篇 · Python 实现：从数学模型到完整控制台版《2048》游戏](../../blog/第1篇%20·%20Python%20实现：从数学模型到完整控制台版《2048》游戏.md)
+
+**下一篇**：[第 3 篇 · 使用 PyQt5 实现 2048 桌面版游戏：MVC 架构与撤销和重做](../../blog/第3篇%20·%20使用%20PyQt5%20实现%202048%20桌面版游戏：MVC%20架构与撤销和重做.md)，把这套规则逻辑搬进图形界面：用 MVC 分层把 Model 与 View 解耦，并基于状态快照实现撤销和重做。
