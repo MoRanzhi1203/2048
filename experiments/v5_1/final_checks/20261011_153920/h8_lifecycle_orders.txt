@@ -1,3 +1,0 @@
-﻿[order#1] Ran 4 tests in 6.072s ; OK
-[order#2] Ran 4 tests in 12.514s ; OK
-[order#3] Ran 4 tests in 6.869s ; OK

@@ -1,4 +1,0 @@
-﻿SUBPROC SOLVER_CLOSE_WAIT_MS=3500 entered_compute=True
-SUBPROC close_ms=4028 thread_alive_after_close=True retired_running=[True]
-SUBPROC after_release still_running=[False]
-SUBPROC EXIT_OK

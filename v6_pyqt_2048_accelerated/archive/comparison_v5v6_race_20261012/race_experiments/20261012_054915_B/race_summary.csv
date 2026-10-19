@@ -1,3 +1,0 @@
-side,steps,final_score,final_max_tile,avg_search_ms,p95_search_ms,search_cum_ms,wall_s,backend_used,engine_used,status
-v5,12,48,8,48.924,121.556,587.088,11.793,reference,reference,paused
-v6,2,4,4,7.499,7.997,14.998,1.184,cpp,python_kernel,running

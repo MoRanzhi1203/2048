@@ -1,4 +1,0 @@
-﻿[v5_pyqt_2048_solver\test_solver.py] Ran 80 tests in 39.265s ; OK
-[tests\test_popups.py] ==== 弹窗测试汇总：17/17 通过 ====
-[tests\test_cross_version.py] [PASS] v5   7. 存档彻底损坏时优雅失败 | error=invalid_json:Expecting property name enclosed in double quotes: line 1 column 3 (char 2) ; ==== 汇总：41/41 通过，0 失败 ====
-[tests\test_rl_model_management.py] Ran 5 tests in 3.504s ; OK
