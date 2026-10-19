@@ -1,0 +1,292 @@
+{
+  "scale": "1.0",
+  "dpr": 1.0,
+  "window": [
+    906,
+    720
+  ],
+  "screen": [
+    1920,
+    1080
+  ],
+  "modes": {
+    "standard": {
+      "module": {
+        "x": 524,
+        "y": 166,
+        "w": 364,
+        "h": 153,
+        "bottom": 319,
+        "visible": true,
+        "hidden": false
+      },
+      "primary": {
+        "x": 534,
+        "y": 281,
+        "w": 344,
+        "h": 30,
+        "bottom": 311,
+        "visible": true,
+        "hidden": false
+      },
+      "stop": {
+        "x": 828,
+        "y": 281,
+        "w": 50,
+        "h": 30,
+        "bottom": 311,
+        "visible": false,
+        "hidden": true
+      },
+      "summary": {
+        "x": 534,
+        "y": 231,
+        "w": 344,
+        "h": 44,
+        "bottom": 275,
+        "visible": true,
+        "hidden": false
+      },
+      "status": {
+        "x": 535,
+        "y": 352,
+        "w": 342,
+        "h": 33,
+        "bottom": 385,
+        "visible": true,
+        "hidden": false
+      },
+      "log": {
+        "x": 524,
+        "y": 501,
+        "w": 364,
+        "h": 163,
+        "bottom": 664,
+        "visible": true,
+        "hidden": false
+      },
+      "export": {
+        "x": 524,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "view": {
+        "x": 648,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "compare": {
+        "x": 772,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "advanced": {
+        "x": 524,
+        "y": 467,
+        "w": 87,
+        "h": 26,
+        "bottom": 493,
+        "visible": true,
+        "hidden": false
+      },
+      "legacy_start": {
+        "x": 512,
+        "y": 6,
+        "w": 640,
+        "h": 32,
+        "bottom": 38,
+        "visible": false,
+        "hidden": true
+      },
+      "legacy_progress": {
+        "x": 524,
+        "y": 327,
+        "w": 364,
+        "h": 8,
+        "bottom": 335,
+        "visible": true,
+        "hidden": false
+      },
+      "overlap_primary_stop": true,
+      "overlap_summary_actions": false,
+      "module_overflows_window": false,
+      "bottom_buttons_in_window": true,
+      "bottom_buttons_visible": true
+    },
+    "background": {
+      "module": {
+        "x": 524,
+        "y": 166,
+        "w": 364,
+        "h": 153,
+        "bottom": 319,
+        "visible": true,
+        "hidden": false
+      },
+      "primary": {
+        "x": 534,
+        "y": 281,
+        "w": 288,
+        "h": 30,
+        "bottom": 311,
+        "visible": true,
+        "hidden": false
+      },
+      "stop": {
+        "x": 828,
+        "y": 281,
+        "w": 50,
+        "h": 30,
+        "bottom": 311,
+        "visible": true,
+        "hidden": false
+      },
+      "summary": {
+        "x": 534,
+        "y": 231,
+        "w": 344,
+        "h": 44,
+        "bottom": 275,
+        "visible": true,
+        "hidden": false
+      },
+      "status": {
+        "x": 535,
+        "y": 336,
+        "w": 342,
+        "h": 33,
+        "bottom": 369,
+        "visible": true,
+        "hidden": false
+      },
+      "log": {
+        "x": 524,
+        "y": 485,
+        "w": 364,
+        "h": 179,
+        "bottom": 664,
+        "visible": true,
+        "hidden": false
+      },
+      "export": {
+        "x": 524,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "view": {
+        "x": 648,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "compare": {
+        "x": 772,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "advanced": {
+        "x": 524,
+        "y": 451,
+        "w": 87,
+        "h": 26,
+        "bottom": 477,
+        "visible": true,
+        "hidden": false
+      },
+      "legacy_start": {
+        "x": 512,
+        "y": 6,
+        "w": 640,
+        "h": 32,
+        "bottom": 38,
+        "visible": false,
+        "hidden": true
+      },
+      "legacy_progress": {
+        "x": 524,
+        "y": 327,
+        "w": 364,
+        "h": 8,
+        "bottom": 335,
+        "visible": false,
+        "hidden": true
+      },
+      "overlap_primary_stop": false,
+      "overlap_summary_actions": false,
+      "module_overflows_window": false,
+      "bottom_buttons_in_window": true,
+      "bottom_buttons_visible": true
+    }
+  },
+  "shots": [
+    {
+      "name": "rc_standard_s1_0.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    },
+    {
+      "name": "rc_background_s1_0.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    },
+    {
+      "name": "rc_background_running_s1_0.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    }
+  ],
+  "running": {
+    "state": "GUI_IDLE",
+    "summary": {
+      "x": 534,
+      "y": 231,
+      "w": 344,
+      "h": 44,
+      "bottom": 275,
+      "visible": true,
+      "hidden": false
+    },
+    "module": {
+      "x": 524,
+      "y": 166,
+      "w": 364,
+      "h": 153,
+      "bottom": 319,
+      "visible": true,
+      "hidden": false
+    },
+    "text": "后台 · 未运行\n步骤 / 耗时 / 后端 —"
+  }
+}

@@ -120,6 +120,9 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
     score = int(snap['score'])
     best = int(snap['best_score'])
     revision = int(snap['revision'])
+    # 恢复段：以快照 revision 作为**累计步数基准**，保证跨暂停 total_committed_moves 单调递增；
+    # 本段吞吐仍用 session_steps（steps）计算，避免把暂停前的耗时算进恢复段。
+    base_steps = int(snap.get('revision', 0) or 0)
     rng = core.make_rng(snap['rng_state'])
     opts = core.solver_options(snap['algorithm'], snap['strength'], backend=solver_backend,
                                native_search=native_search)
@@ -135,7 +138,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
         'mode': 'both', 'ms': limits.get('progress_interval_s', 0.4) * 1000.0,
         'steps': limits.get('progress_every_steps', 25)}
     _last_report = perf_counter()
-    _last_delivered = 0
+    _last_delivered = base_steps
     # 时间策略：首步完成后**立即回传一帧**，缩短“开始后长时间无数据”的空窗；
     # 之后恢复固定 1000ms 节奏。步数策略保持严格整数倍语义不变。
     _bootstrap = report_policy.get('mode') == 'time'
@@ -146,7 +149,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
         mode = report_policy.get('mode')
         if mode == 'steps':
             n = max(1, int(report_policy.get('steps') or 200))
-            return (steps - _last_delivered) >= n
+            return (base_steps + steps - _last_delivered) >= n
         if mode == 'time':
             ms = max(50.0, float(report_policy.get('ms') or 1000.0))
             return (now - _last_report) * 1000.0 >= ms
@@ -191,7 +194,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
             if pause is not None and pause():
                 status = _STATUS_PAUSED
                 break
-            if max_total_steps is not None and steps >= max_total_steps:
+            if max_total_steps is not None and (base_steps + steps) >= max_total_steps:
                 status = _STATUS_BUDGET             # 显式全局限额（非回传间隔）
                 break
             if time_budget is not None and (perf_counter() - t_session) >= time_budget:
@@ -256,6 +259,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
             perf['wall_step_ms'] += (perf_counter() - t_step0) * 1000.0
 
             now = perf_counter()
+            total_steps = base_steps + steps
             if progress_cb is not None and _report_due(now):
                 # 关键：暂停/停止请求可能在本步搜索期间到达。此时**不得再发周期回传**，
                 # 直接进入终态并强制 FINAL 同步——避免“点击暂停后仍触发 1000ms 回传”。
@@ -266,14 +270,14 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
                     status = _STATUS_PAUSED
                     break
                 _last_report = now
-                _last_delivered = steps
+                _last_delivered = total_steps
                 _bootstrap = False
                 wake = perf_counter()
                 keep = progress_cb({
                     'protocol_version': 2, 'type': 'progress',
                     'game_id': snap['game_id'], 'session_id': snap['game_id'],
-                    'revision': revision, 'sequence': steps,
-                    'step': steps, 'total_committed_moves': steps,
+                    'revision': revision, 'sequence': total_steps,
+                    'step': total_steps, 'total_committed_moves': total_steps,
                     'score': score, 'max_tile': core.max_tile(board), 'board': board,
                     'report_reason': ('periodic_steps'
                                       if report_policy.get('mode') == 'steps'
@@ -314,7 +318,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
         'report_reason': {'game_over': 'terminal', 'stopped': 'stop', 'paused': 'pause',
                           'budget_reached': 'explicit_budget', 'error': 'error',
                           'completed': 'terminal'}.get(status, status),
-        'total_committed_moves': steps,
+        'total_committed_moves': base_steps + steps,
         'reason': error,
         'snapshot': final_snapshot,
         'directions': directions,

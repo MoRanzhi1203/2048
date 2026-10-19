@@ -154,46 +154,29 @@ def replay_commit(model, directions, start_rng_state_json=None, cursor=0, base_g
 
 
 class BackgroundPanel(QWidget):
-    """后台求解生命周期控制（唯一一套）：开始 / 暂停 / 继续 / 停止。
+    """后台生命周期按钮已并入统一「AI 运行控制」模块（见 v6_speed）。
 
-    结果回传周期固定为内部常量 ``REPORT_INTERVAL_MS``（1000ms）——不再暴露 N 步 / N 时间
-    选择器、间隔下拉框或报告进度条；进度并入既有求解状态区（``solver_status``）。
+    这里仅保留控制器需要的轻量占位与状态同步入口：``_sync_buttons`` 把状态变化
+    转发给窗口的统一控制模块，避免出现第二套按钮（原 4 按钮已移除）。
     """
 
     def __init__(self, controller, parent=None):
         super().__init__(parent)
-        box = QVBoxLayout(self)
-        box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(4)
-        row = QHBoxLayout()
-        row.setSpacing(6)
-        self.btn_start = QPushButton('开始')
-        self.btn_pause = QPushButton('暂停')
-        self.btn_resume = QPushButton('继续')
-        self.btn_stop = QPushButton('停止')
-        for b in (self.btn_start, self.btn_pause, self.btn_resume, self.btn_stop):
-            b.setStyleSheet(_BTN_QSS)
-            b.setCursor(Qt.PointingHandCursor)
-            b.setFixedHeight(24)
-            row.addWidget(b)
-        box.addLayout(row)
-        self.btn_start.clicked.connect(controller.start)
-        self.btn_pause.clicked.connect(controller.pause)
-        self.btn_resume.clicked.connect(controller.resume)
-        self.btn_stop.clicked.connect(controller.stop)
-        self._sync_buttons(_EMPTY)
+        self.controller = controller
+        self.hide()
 
     def report_policy(self):
-        """固定 1000ms 结果回传（单一来源；不向用户暴露任何间隔选择）。"""
+        """固定内部周期结果回传（单一来源；不向用户暴露任何间隔选择）。"""
         return {'mode': 'time', 'ms': REPORT_INTERVAL_MS}
 
     def _sync_buttons(self, state):
-        running = state in ('HANDOFF_PREPARE', 'BG_RUNNING')
-        paused = state == 'BG_PAUSED'
-        self.btn_start.setEnabled(state in (_EMPTY, 'BG_COMPLETED', 'BG_ERROR'))
-        self.btn_pause.setEnabled(running)
-        self.btn_resume.setEnabled(paused)
-        self.btn_stop.setEnabled(running or paused)
+        win = getattr(self.controller, 'win', None)
+        fn = getattr(win, '_v6_sync_run_controls', None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:                                    # noqa: BLE001
+                pass
 
 
 class BackgroundController(QObject):
@@ -206,10 +189,15 @@ class BackgroundController(QObject):
         self._q = queue.Queue()
         self._reader = None
         self._session_seq = 0
+        self._game_id = None
+        self._snapshot_path = None
+        self._checkpoint_path = None
         self._adopted_revision = -1
         self._paused_snapshot_path = None
         self._staging_dir = os.path.join(V6_DIR, 'game_history', 'background')
         self._last_result = None
+        self._last_progress = None
+        self._stderr_file = None
         self._rendered_revision = -1
         # 正式历史回放（Headless ↔ 官方存档等价）：交接基准 RNG + 会话方向游标/基准棋盘
         self._handoff_rng_json = None
@@ -262,7 +250,12 @@ class BackgroundController(QObject):
     # ------------------------------------------------------------ 模式
     def on_mode_changed(self, mode):
         want_bg = mode == 'background'
-        self.panel.setVisible(want_bg)
+        # 注意：BackgroundPanel 已无可见控件且不再插入布局；**禁止** setVisible(True)，
+        # 否则它会成为独立顶层窗口（第二个空白 Qt 窗口）。
+        try:
+            self.panel.setVisible(False)
+        except Exception:                                            # noqa: BLE001
+            pass
         # 后台模式隐藏“求解忙态进度条”（回传间隔无百分比含义，避免无意义进度条）
         prog = getattr(self.win, 'solver_progress', None)
         if prog is not None:
@@ -358,6 +351,7 @@ class BackgroundController(QObject):
         self._last_render_step = 0
         self._last_render_t = time.perf_counter()
         self._final_seen = False
+        self._last_progress = None
 
     def _spawn_worker(self, snap):
         os.makedirs(self._staging_dir, exist_ok=True)
@@ -402,15 +396,44 @@ class BackgroundController(QObject):
             'progress_every_steps': 25,
         }
 
+    def _close_stderr(self):
+        f = getattr(self, '_stderr_file', None)
+        self._stderr_file = None
+        if f is not None and f not in (subprocess.DEVNULL, None):
+            try:
+                f.close()
+            except Exception:                                        # noqa: BLE001
+                pass
+
     def _launch_worker(self):
-        # 独占写者：由 **worker 自身**写入 owner.json（含 pid/创建时间）+ 心跳；GUI 只读校验
+        # 独占写者：由 **worker 自身**写入 owner.json（含 pid/创建时间）+ 心跳；GUI 只读校验。
+        # Windows 关键：必须 CREATE_NO_WINDOW。否则从**无控制台**的 GUI 进程启动 python.exe
+        # 会新建一个可见的空白控制台窗口（即“多余的 python 窗口”根因）。
         env = dict(os.environ, PYTHONNOUSERSITE='1')
+        kwargs = {}
+        if os.name == 'nt':
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            kwargs['startupinfo'] = si
+        # 有界诊断日志：每次启动截断 worker stderr（不丢诊断，不弹窗）
+        stderr = subprocess.DEVNULL
+        try:
+            os.makedirs(self._staging_dir, exist_ok=True)
+            self._close_stderr()
+            self._stderr_file = open(os.path.join(self._staging_dir, 'worker_stderr.log'),
+                                     'w', encoding='utf-8', errors='replace')
+            stderr = self._stderr_file
+        except OSError:
+            self._stderr_file = None
         try:
             self.proc = subprocess.Popen(
                 [sys.executable, '-m', 'headless.worker_main'], cwd=V6_DIR, env=env,
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                text=True, bufsize=1)
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr,
+                text=True, bufsize=1, **kwargs)
         except Exception as exc:                                      # noqa: BLE001
+            self._close_stderr()
             return False, repr(exc)
         self._start_reader()
         self._send({'cmd': 'start', 'snapshot_path': self._snapshot_path,
@@ -567,20 +590,40 @@ class BackgroundController(QObject):
         if not self._paused_snapshot_path or self.state != 'BG_PAUSED':
             self._show('无可恢复的暂停点')
             return
-        if self._transition('BG_RUNNING'):
-            if self.proc is None or self.proc.poll() is not None:
-                # 重连场景：worker 已退出（暂停=步边界停止），用暂停点重新拉起
-                ok, err = self._spawn_worker_from(self._paused_snapshot_path)
-                if not ok:
-                    self._show('恢复失败：%s' % err)
-                    self._transition('BG_ERROR')
-                    return
-            else:
-                self._send({'cmd': 'start', 'snapshot_path': self._paused_snapshot_path,
-                            'limits': self._limits(),
-                            'backend': getattr(self.win, '_v6_backend', None),
-                            'staging': self._checkpoint_path,
-                            'ownership': self._staging_dir})
+        if not os.path.exists(self._paused_snapshot_path):
+            self._show('暂停点文件缺失，无法继续')
+            return
+        if not self._transition('BG_RUNNING'):
+            return
+        # 继续**同一局**：revision 继续单调（不清零），新回传段从暂停点接管。
+        # 关键修复：暂停时已置 `_final_seen=True`；若不清除，恢复后的所有 progress 都会被
+        # 当作“终态后迟到帧”丢弃，表现为“继续后不再回传”。同时重置方向游标/交接基准，
+        # 供恢复段 FINAL 的正式历史回放（只回放新段，不重复历史）。
+        self._final_seen = False
+        self._session_cursor = 0
+        self._session_base_grid = [row[:] for row in self.win.model.grid]
+        self._fresh_handoff = False
+        self._mark('RESUME_REQUESTED', steps=self._last_render_step,
+                   revision=self._rendered_revision)
+        if self.proc is None or self.proc.poll() is not None:
+            # 重连场景：worker 已退出（暂停=步边界停止），用暂停点重新拉起
+            ok, err = self._spawn_worker_from(self._paused_snapshot_path)
+            if not ok:
+                self._show('恢复失败：%s' % err)
+                self._transition('BG_ERROR')
+                return
+        else:
+            sent = self._send({'cmd': 'start', 'snapshot_path': self._paused_snapshot_path,
+                               'limits': self._limits(),
+                               'backend': getattr(self.win, '_v6_backend', None),
+                               'native_search': bool(getattr(self.win, '_v6_native', False)),
+                               'staging': self._checkpoint_path,
+                               'ownership': self._staging_dir})
+            if not sent:
+                self._show('恢复失败：Worker 管道不可用')
+                self._transition('BG_ERROR')
+                return
+        self.panel._sync_buttons(self.state)
 
     def _render_snapshot(self, msg):
         """周期快照 → 左侧棋盘**无动画**刷新（只读展示，不 apply_move / 不改权威状态）。
@@ -662,6 +705,7 @@ class BackgroundController(QObject):
         except Exception:                                            # noqa: BLE001
             pass
         self.proc = None
+        self._close_stderr()
         self.state = _EMPTY
         if self.panel is not None:
             self.panel._sync_buttons(_EMPTY)
@@ -708,8 +752,18 @@ class BackgroundController(QObject):
             self._worker_exit_code = msg.get('code')
             self._mark('WORKER_EXITED', code=msg.get('code'))
             st = own.owner_status(self._staging_dir)
-            self._show('后台进程已退出：exit=%s；所有权状态=%s'
-                       % (msg.get('code'), st.get('state')))
+            if self.state in ('BG_RUNNING', 'BG_ERROR'):
+                self._show('后台进程已退出：exit=%s；所有权状态=%s'
+                           % (msg.get('code'), st.get('state')))
+            else:
+                # 正常收尾后不要再覆盖已结算的结果状态；把退出信息写入日志即可
+                try:
+                    fn = getattr(self.win, '_log_step', None)
+                    if callable(fn):
+                        fn('[后台] worker 已退出 exit=%s，所有权=%s'
+                           % (msg.get('code'), st.get('state')))
+                except Exception:                                    # noqa: BLE001
+                    pass
             # 暂停/停止期 worker 协作退出：收敛状态机（不能停在 BG_STOPPING/BG_PAUSED）
             if self.state in ('BG_PAUSED', 'BG_PAUSING', 'BG_STOPPING'):
                 self._finish_to_idle('后台求解已结束（worker 已退出 exit=%s）' % msg.get('code'))
@@ -729,15 +783,31 @@ class BackgroundController(QObject):
             if rev < self._adopted_revision:
                 return
             self._render_snapshot(msg)                            # 无动画只读刷新左侧棋盘
-            age_ms = (time.perf_counter() - self._last_render_t) * 1000.0
-            ck = msg.get('last_checkpoint') or {}
-            self._show(
-                '后台求解 %s｜步 %s（已同步至第 %s 步，%.0f ms 前）｜分数 %s｜最大 %s｜%s 步/秒\n'
-                '引擎 %s / %s｜回传=%s｜检查点 步%s rev%s'
-                % (msg.get('status'), msg.get('step'), self._last_render_step, age_ms,
-                   msg.get('score'), msg.get('max_tile'), msg.get('steps_per_s'),
-                   msg.get('backend_used'), msg.get('engine_used'),
-                   msg.get('report_reason'), ck.get('steps'), ck.get('revision')))
+            self._last_progress = {
+                'revision': int(msg.get('revision', -1)),
+                'steps': msg.get('total_committed_moves') or msg.get('step'),
+                'score': msg.get('score'), 'max_tile': msg.get('max_tile'),
+                'steps_per_s': msg.get('steps_per_s'),
+                'backend_used': msg.get('backend_used'),
+                'engine_used': msg.get('engine_used'),
+                'elapsed_s': round((msg.get('wall_ms') or 0) / 1000.0, 2),
+                'render_age_ms': round((time.perf_counter() - self._last_render_t) * 1000.0, 1)}
+            # 同一状态源：顶部摘要 + 下方 solver_status/metrics/log 一次更新
+            fn = getattr(self.win, '_v6_apply_bg_progress', None)
+            if callable(fn):
+                try:
+                    fn(self._last_progress)
+                except Exception:                                    # noqa: BLE001
+                    pass
+            else:                                                    # 兜底（无统一方法时）
+                self.panel._sync_buttons(self.state)
+                ck = msg.get('last_checkpoint') or {}
+                self._show(
+                    '后台求解 %s｜步 %s｜分数 %s｜最大 %s｜%s 步/秒\n引擎 %s / %s｜回传=%s｜检查点 步%s rev%s'
+                    % (msg.get('status'), msg.get('step'), msg.get('score'),
+                       msg.get('max_tile'), msg.get('steps_per_s'), msg.get('backend_used'),
+                       msg.get('engine_used'), msg.get('report_reason'),
+                       ck.get('steps'), ck.get('revision')))
         elif kind == 'final':
             self._final_seen = True
             self._last_result = msg
@@ -774,6 +844,12 @@ class BackgroundController(QObject):
                 self._transition('BG_ERROR')
                 self._show('后台求解出错：%s' % msg.get('reason'))
                 self._cleanup_worker()
+            fn = getattr(self.win, '_v6_apply_bg_final', None)
+            if callable(fn):
+                try:
+                    fn(msg)
+                except Exception:                                    # noqa: BLE001
+                    pass
         elif kind == 'error':
             self._transition('BG_ERROR')
             self._show('后台进程错误：%s' % msg.get('error'))

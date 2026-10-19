@@ -194,6 +194,22 @@ class ReportPolicyTest(unittest.TestCase):
         self.assertEqual(res['status'], 'stopped')
         self.assertEqual(res['steps'], 3)
 
+    def test_resumed_session_keeps_monotonic_total_steps(self):
+        """恢复段（快照 revision>0）的 total_committed_moves 必须从基准继续，不重置为 1。"""
+        snap = core.build_snapshot(BOARD, 0, 0, core.rng_state_to_json(random.getstate()),
+                                   'r', 100, 'expectimax', 'fast')
+        reports = []
+        res = game_loop.run_session(
+            snap, {'report_policy': {'mode': 'time', 'ms': 1000},
+                   'max_total_steps': None, 'time_budget_s': None},
+            progress_cb=lambda p: reports.append(p) or True,
+            solver_backend='cpp', pause=lambda: len(reports) >= 1)
+        self.assertTrue(reports)
+        self.assertEqual(reports[0]['total_committed_moves'], 101)
+        self.assertEqual(reports[0]['revision'], 101)
+        self.assertGreaterEqual(res['total_committed_moves'], 101)
+        self.assertEqual(res['status'], 'paused')
+
     def test_real_game_ends_naturally_before_200(self):
         """回归说明：真实规则下可能在 200 步前自然终局，这属于正常终局而非回传截断。"""
         _unpatch()

@@ -104,17 +104,32 @@ def migrate_prefs(prefs):
 TIERS = MODES                           # 兼容别名（旧名保留，值域已更新）
 TIER_LABELS = MODE_LABELS
 
+# 分段选择：浅米灰底 + 暖棕选中（低饱和，去掉深色块）
 _SEG_QSS = (
-    'QPushButton { background:#3a332d; color:#e2d7c7; border:1px solid #5a5048;'
-    ' border-radius:4px; padding:5px 0px; font-size:11px; }'
-    'QPushButton:hover { background:#463d35; }'
-    'QPushButton:checked { background:#c9a227; color:#241d15; font-weight:bold;'
-    ' border:1px solid #c9a227; }')
+    'QPushButton { background:#f3ece1; color:#6a5b4e; border:1px solid #e2d7c8;'
+    ' border-radius:6px; padding:6px 0px; font-size:12px; }'
+    'QPushButton:hover { background:#ece2d4; }'
+    'QPushButton:checked { background:#8f7a66; color:#fff8ef; font-weight:bold;'
+    ' border:1px solid #8f7a66; }')
 
-_TIMING_QSS = (
-    'background:#2b2622; color:#f3ead9; border:1px solid #5a5048;'
-    ' border-radius:6px; padding:5px 8px; font-family:Consolas,Menlo,monospace;'
-    ' font-size:11px;')
+# 紧凑性能摘要（浅米灰卡片）
+_SUMMARY_QSS = (
+    'background:#f7f1e7; color:#5e5245; border:1px solid #e6dccd;'
+    ' border-radius:8px; padding:7px 10px; font-size:11px;')
+# 统一主操作按钮（低饱和暖棕）
+_PRIMARY_QSS = (
+    'QPushButton { background:#8f7a66; color:#fff8ef; border:1px solid #8f7a66;'
+    ' border-radius:6px; padding:6px 14px; font-size:12px; font-weight:bold; }'
+    'QPushButton:hover { background:#9a8571; }'
+    'QPushButton:pressed { background:#7f6b58; }'
+    'QPushButton:disabled { background:#d8cdc0; color:#f6efe6; border-color:#d8cdc0; }')
+# 统一停止按钮（米白描边，避免黑块）
+_STOP_QSS = (
+    'QPushButton { background:#f3ece1; color:#6a5b4e; border:1px solid #cbbcaa;'
+    ' border-radius:6px; padding:6px 14px; font-size:12px; }'
+    'QPushButton:hover { background:#e9dfd1; }'
+    'QPushButton:pressed { background:#ded2c2; }'
+    'QPushButton:disabled { color:#b3a695; border-color:#e6dccd; }')
 
 
 def load_prefs():
@@ -169,10 +184,7 @@ class V6SpeedMixin:
         try:
             from v6_background import BackgroundController
             ctl = BackgroundController(self, _v5gui)
-            lay = getattr(self, 'solver_panel', None)
-            panel = getattr(self, 'v6_speed_panel', None)
-            if lay is not None and panel is not None and lay.layout() is not None:
-                lay.layout().insertWidget(lay.layout().indexOf(panel) + 1, ctl.panel)
+            # 后台生命周期控制已并入统一「AI 运行控制」模块，不再插入独立按钮面板
             self._v6_bg_controller = ctl
             ctl.recover_on_start()          # 启动期安全恢复：重连活动任务 / 释放过期所有权
         except Exception:                                        # noqa: BLE001
@@ -214,15 +226,20 @@ class V6SpeedMixin:
         except Exception:                                        # noqa: BLE001
             pass
 
-    # ---------------------------------------------------------- UI：主面板「运行速度」
+    # ---------------------------------------------------------- UI：统一「AI 运行控制」
     def _v6_install_speed_panel(self):
+        """统一的 AI 运行控制模块：三档 + 紧凑性能摘要 + 唯一一套求解操作按钮。
+
+        合并原「运行方式」三档、纯黑分段计时大块、独立浅色「开始求解」大按钮与
+        后台四按钮；不再额外插入后台专用按钮行。
+        """
         group = QWidget()
-        group.setObjectName('v6SpeedPanel')
+        group.setObjectName('v6RunControl')
         apply_style = getattr(self, '_make_solver_group', None)
         if callable(apply_style):
             try:
                 group = self._make_solver_group()
-                group.setObjectName('v6SpeedPanel')
+                group.setObjectName('v6RunControl')
             except Exception:                                    # noqa: BLE001
                 group = QWidget()
         box = QVBoxLayout(group)
@@ -230,14 +247,20 @@ class V6SpeedMixin:
         box.setSpacing(6)
 
         head = QHBoxLayout()
-        head.setSpacing(10)
-        lab = QLabel('运行方式')
-        lab.setStyleSheet('color:#8f8175; font-size:12px;')
-        lab.setFixedWidth(58)
-        head.addWidget(lab, 0, Qt.AlignVCenter)
+        head.setSpacing(8)
+        title = QLabel('AI 运行控制')
+        title.setStyleSheet('color:#5e4b35; font-size:12px; font-weight:bold;')
+        head.addWidget(title, 0, Qt.AlignVCenter)
+        head.addStretch(1)
+        self.v6_run_badge = QLabel('未运行')
+        self.v6_run_badge.setAlignment(Qt.AlignCenter)
+        head.addWidget(self.v6_run_badge, 0, Qt.AlignVCenter)
+        box.addLayout(head)
+        self._v6_set_badge('idle', '未运行')
 
+        # 运行方式：标准 / 快速 / 后台求解（唯一可见三档）
         seg = QHBoxLayout()
-        seg.setSpacing(4)
+        seg.setSpacing(6)
         self.v6_speed_buttons = {}
         self.v6_speed_group = QButtonGroup(self)
         self.v6_speed_group.setExclusive(True)
@@ -245,22 +268,41 @@ class V6SpeedMixin:
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(28)
             btn.setStyleSheet(_SEG_QSS)
             btn.setToolTip({'standard': '标准：保留走子动画与原有步间停顿（本机 GUI 实时渲染）',
                             'fast': '快速：关闭走子动画与人工等待，本机 GUI 立即落子',
                             'background': '后台求解：独立计算进程接管当前这局（无 Qt 渲染），GUI 仅低频显示进度'}[key])
             btn.clicked.connect(lambda _checked, k=key: self._v6_on_speed_clicked(k))
-            seg.addWidget(btn)
+            seg.addWidget(btn, 1)
             self.v6_speed_group.addButton(btn)
             self.v6_speed_buttons[key] = btn
-        head.addLayout(seg, 1)
-        box.addLayout(head)
+        box.addLayout(seg)
 
-        self.v6_timing_label = QLabel()
-        self.v6_timing_label.setWordWrap(True)
-        self.v6_timing_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.v6_timing_label.setStyleSheet(_TIMING_QSS)
-        box.addWidget(self.v6_timing_label)
+        # 紧凑性能摘要（浅米灰，≤2 行；详细分段在 tooltip）
+        self.v6_run_summary = QLabel()
+        self.v6_run_summary.setWordWrap(True)
+        self.v6_run_summary.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.v6_run_summary.setStyleSheet(_SUMMARY_QSS)
+        box.addWidget(self.v6_run_summary)
+        self.v6_timing_label = self.v6_run_summary      # 兼容旧属性名
+
+        # 唯一一套求解操作：主按钮（开始/暂停/继续）+ 停止
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        self.v6_run_primary = QPushButton('开始求解')
+        self.v6_run_primary.setStyleSheet(_PRIMARY_QSS)
+        self.v6_run_primary.setCursor(Qt.PointingHandCursor)
+        self.v6_run_primary.setFixedHeight(32)
+        self.v6_run_primary.clicked.connect(self._v6_on_run_primary)
+        self.v6_run_stop = QPushButton('停止')
+        self.v6_run_stop.setStyleSheet(_STOP_QSS)
+        self.v6_run_stop.setCursor(Qt.PointingHandCursor)
+        self.v6_run_stop.setFixedHeight(32)
+        self.v6_run_stop.clicked.connect(self._v6_on_run_stop)
+        actions.addWidget(self.v6_run_primary, 1)
+        actions.addWidget(self.v6_run_stop, 0)
+        box.addLayout(actions)
 
         if not self._v6_insert_into_main_panel(group):
             # 兜底：贴到求解容器顶部（保证一定可见）
@@ -270,9 +312,19 @@ class V6SpeedMixin:
                 lay.insertWidget(0, group)
             else:
                 group.setParent(self)
-                group.setGeometry(6, 6, 470, 96)
+                group.setGeometry(6, 6, 470, 150)
                 group.show()
         self.v6_speed_panel = group
+
+        # 隐藏 V5 旧「开始求解」大按钮与忙态进度条（逻辑保留，入口已并入统一模块）
+        for w in (getattr(self, 'solver_start_btn', None),
+                  getattr(self, 'solver_progress', None)):
+            if w is not None:
+                try:
+                    w.hide()
+                except Exception:                                # noqa: BLE001
+                    pass
+        self._v6_sync_run_controls()
 
     def _v6_insert_into_main_panel(self, group):
         """插入到 AI 求解主面板：紧跟参数表单（算法/求解强度/求解模式）之后。"""
@@ -312,6 +364,17 @@ class V6SpeedMixin:
         self._v6_metrics_every = int(p['metrics_every'])
         self._v6_particles_off = bool(p.get('particles_off', False))
         self._v6_flow = bool(p.get('flow', True))
+        if tier == 'background':
+            # 切到后台：仅重置“上一求解会话”的计数/指标，不动真实游戏分数/最高分
+            self._v6_bg_log_key = None
+            self._v6_last_bg = None
+            for k in ('steps', 'action', 'eval', 'score', 'max_tile', 'elapsed'):
+                self._set_metric(k, '—')
+            try:
+                self._set_status('状态：<b>后台求解未启动</b>',
+                                 '选择「开始求解」后由后台 Worker 接管当前这局。')
+            except Exception:                                    # noqa: BLE001
+                pass
         if persist:
             prefs = load_prefs()
             prefs['run_mode'] = tier
@@ -324,6 +387,7 @@ class V6SpeedMixin:
         ctl = getattr(self, '_v6_bg_controller', None)
         if ctl is not None:
             ctl.on_mode_changed(tier)
+        self._v6_sync_run_controls()
 
     def _v6_apply_effects(self):
         """按运行方式应用**粒子 / 方向光**策略（仅 V6 运行时控制，不改 V4/V5 源码）。
@@ -387,25 +451,262 @@ class V6SpeedMixin:
                   'steps': 0, 'start': perf_counter(), 'req_t0': None, 'anim_t0': None,
                   'wait_t0': None, 'metrics_steps': 0})
 
+    # ---------------------------------------------------------- 运行控制：唯一状态源
+    def _v6_bg(self):
+        """仅当运行方式为后台时返回后台控制器（否则 None）。"""
+        if getattr(self, '_v6_speed', 'standard') != 'background':
+            return None
+        return getattr(self, '_v6_bg_controller', None)
+
+    def _v6_on_run_primary(self):
+        """统一主按钮：标准/快速复用 V5 开始-停止；后台按状态 start/pause/resume。"""
+        ctl = self._v6_bg()
+        if ctl is not None:
+            st = getattr(ctl, 'state', 'GUI_IDLE')
+            try:
+                if st in ('GUI_IDLE', 'BG_COMPLETED', 'BG_ERROR'):
+                    ctl.start()
+                elif st in ('BG_RUNNING', 'HANDOFF_PREPARE'):
+                    ctl.pause()
+                elif st == 'BG_PAUSED':
+                    ctl.resume()
+            finally:
+                self._v6_sync_run_controls()
+            return
+        self.on_solver_clicked()          # 复用既有算法求解入口（开始/停止）
+        self._v6_sync_run_controls()
+
+    def _v6_on_run_stop(self):
+        """统一停止按钮（仅后台需要；标准/快速由主按钮切换为“停止”）。"""
+        ctl = self._v6_bg()
+        if ctl is not None:
+            ctl.stop()
+            self._v6_sync_run_controls()
+
+    def _update_solver_buttons(self):
+        """V5 更新旧按钮文案后，同步统一控制按钮（避免两套状态不一致）。"""
+        super()._update_solver_buttons()
+        self._v6_sync_run_controls()
+
+    _BADGE_STYLES = {
+        'idle': ('#efe7db', '#8f8175', '#e2d7c8'),
+        'running': ('#8f7a66', '#fff8ef', '#8f7a66'),
+        'paused': ('#e7d5ba', '#6b5334', '#dcc8a9'),
+        'stopping': ('#efe7db', '#8f8175', '#e2d7c8'),
+        'error': ('#e8ccc7', '#8a3a30', '#d9b3ad'),
+    }
+
+    def _v6_set_badge(self, kind, text):
+        """运行状态徽标（低饱和胶囊）。"""
+        lbl = getattr(self, 'v6_run_badge', None)
+        if lbl is None:
+            return
+        bg, fg, bd = self._BADGE_STYLES.get(kind, self._BADGE_STYLES['idle'])
+        lbl.setText(text)
+        lbl.setStyleSheet(
+            'background:%s; color:%s; border:1px solid %s; border-radius:9px;'
+            ' padding:2px 9px; font-size:10px; font-weight:bold;' % (bg, fg, bd))
+
+    def _v6_sync_run_controls(self):
+        """按“运行方式 + 运行状态”刷新唯一一套控制按钮（信号只连接一次）。"""
+        primary = getattr(self, 'v6_run_primary', None)
+        if primary is None:
+            return
+        stop = getattr(self, 'v6_run_stop', None)
+        ctl = self._v6_bg()
+        if ctl is not None:
+            st = getattr(ctl, 'state', 'GUI_IDLE')
+            text, enabled = '开始求解', True
+            badge = ('idle', '未运行')
+            if st == 'HANDOFF_PREPARE':
+                text, enabled, badge = '开始中…', False, ('stopping', '开始中')
+            elif st == 'BG_RUNNING':
+                text, badge = '暂停', ('running', '运行中')
+            elif st == 'BG_PAUSING':
+                text, enabled, badge = '暂停中…', False, ('stopping', '暂停中')
+            elif st == 'BG_PAUSED':
+                text, badge = '继续', ('paused', '已暂停')
+            elif st == 'BG_STOPPING':
+                text, enabled, badge = '正在停止', False, ('stopping', '正在停止')
+            elif st == 'BG_ERROR':
+                badge = ('error', '出错')
+            else:
+                lr = getattr(ctl, '_last_result', None) or {}
+                lst = lr.get('status')
+                if lst == 'stopped':
+                    badge = ('idle', '已停止')
+                elif lst in ('completed', 'game_over'):
+                    badge = ('idle', '已结束')
+            primary.setText(text)
+            primary.setEnabled(enabled)
+            self._v6_set_badge(*badge)
+            if stop is not None:
+                stop.setVisible(True)
+                stop.setEnabled(st in ('BG_RUNNING', 'BG_PAUSED'))
+        else:
+            running = bool(getattr(self, '_solver_running', False))
+            primary.setText('停止' if running else '开始求解')
+            primary.setEnabled(True)
+            self._v6_set_badge('running' if running else 'idle',
+                               '运行中' if running else '未运行')
+            if stop is not None:
+                stop.setVisible(False)
+        self._v6_update_timing_label()
+
+    # ---------------------------------------------------------- 紧凑性能摘要（P3）
     def _v6_update_timing_label(self):
-        t = self._v6_t
-        total = (perf_counter() - t['start']) * 1000.0
-        steps = t['steps']
-        per = (total / steps) if steps else 0.0
-        cur = dict(TIER_LABELS).get(self._v6_speed, self._v6_speed)
-        pend = dict(TIER_LABELS).get(self._v6_pending_tier or '', '')
-        head = '运行速度：%s' % cur
-        if pend:
-            head += '（下一步切换为 %s）' % pend
-        text = ('%s｜动画%s，步间等待 %dms，每 %d 步刷新指标\n'
-                '分段累计(ms)  搜索 %.0f | 动画 %.0f | 等待 %.0f | 渲染 %.0f\n'
-                '步数 %d   总耗时 %.1f ms   平均 %.1f ms/步'
-                % (head, '关' if self._v6_anim_off else '开', self._v5gui.STEP_DELAY_MS,
-                   self._v6_metrics_every, t['search_ms'], t['anim_ms'], t['wait_ms'],
-                   t['render_ms'], steps, total, per))
-        lbl = getattr(self, 'v6_timing_label', None)
-        if lbl is not None:
-            lbl.setText(text)
+        """≤2 行紧凑摘要：状态 / 有效步数 / 耗时 / 步每秒 / 实际后端。
+
+        详细分段计时保留在 tooltip；**未运行时不把历史计时当作当前耗时**。
+        """
+        lbl = getattr(self, 'v6_run_summary', None)
+        if lbl is None:
+            return
+        t = getattr(self, '_v6_t', None) or {}
+        mode_name = dict((k, text) for text, k in TIER_LABELS).get(
+            getattr(self, '_v6_speed', 'standard'), '')
+        ctl = self._v6_bg()
+        if ctl is not None:
+            st = getattr(ctl, 'state', 'GUI_IDLE')
+            p = getattr(ctl, '_last_progress', None) or {}
+            if st == 'BG_RUNNING':
+                line1 = '步 %s　%s 步/秒' % (p.get('steps', '—'), p.get('steps_per_s', '—'))
+                line2 = '分数 %s　最大 %s　后端 %s' % (
+                    p.get('score', '—'), p.get('max_tile', '—'), p.get('backend_used') or '—')
+            elif st == 'BG_PAUSED':
+                line1 = '步 %s　分数 %s' % (p.get('steps', '—'), p.get('score', '—'))
+                line2 = '最大 %s　继续后从精确 RNG 恢复' % p.get('max_tile', '—')
+            elif st in ('BG_PAUSING', 'BG_STOPPING'):
+                line1, line2 = '等待 Worker 提交最终状态…', '界面保持可操作，请稍候'
+            else:
+                # 未运行：若已有上一段后台结果，则显示“上次”并与下方 solver_status 一致
+                lr = getattr(ctl, '_last_result', None) or {}
+                snap = lr.get('snapshot') or {}
+                if lr and snap:
+                    grid = snap.get('board') or []
+                    mt2 = max((max(r) for r in grid), default=None) if grid else None
+                    lsteps = lr.get('total_committed_moves')
+                    line1 = '上次 %s 步　分数 %s' % (
+                        lsteps if lsteps is not None else '—',
+                        snap.get('score') if snap.get('score') is not None else '—')
+                    line2 = '%s　最大 %s' % (
+                        '已结束' if lr.get('status') in ('completed', 'game_over') else '已停止',
+                        mt2 if mt2 is not None else '—')
+                else:
+                    line1, line2 = '步骤 —　— 步/秒', '分数 —　最大 —　后端 —'
+            lbl.setText(line1 + '\n' + line2)
+            lbl.setToolTip('后台指标来自 Worker 最新回传（固定 500ms 一帧）。')
+            return
+        running = bool(getattr(self, '_solver_running', False))
+        steps = int(t.get('steps', 0))
+        total = ((perf_counter() - t.get('start', perf_counter())) * 1000.0
+                 if running else 0.0)
+        if not running and steps == 0:
+            lbl.setText('步骤 —　— 步/秒\n耗时 —　%s求解' % mode_name)
+            lbl.setToolTip('未运行。')
+            return
+        if not running:
+            lbl.setText('上次 %d 步　当前未计时\n%s求解' % (steps, mode_name))
+        else:
+            sps = (steps / (total / 1000.0)) if total > 0 else 0.0
+            lbl.setText('步 %d　%.1f 步/秒\n耗时 %.0f ms　%s求解'
+                        % (steps, sps, total, mode_name))
+        lbl.setToolTip('分段累计(ms)  搜索 %.0f | 动画 %.0f | 等待 %.0f | 渲染 %.0f\n'
+                       '步数 %d  总耗时 %.1f ms  平均 %.1f ms/步'
+                       % (t.get('search_ms', 0), t.get('anim_ms', 0), t.get('wait_ms', 0),
+                          t.get('render_ms', 0), steps, total,
+                          (total / steps) if steps else 0.0))
+
+    # ---------------------------------------------------------- 后台：统一状态源（P3）
+    def _v6_bg_log(self, text, key=None):
+        """后台日志：按 (阶段, revision/status) 去重，避免每帧刷屏。"""
+        if key is not None:
+            if key == getattr(self, '_v6_bg_log_key', None):
+                return
+            self._v6_bg_log_key = key
+        try:
+            self._log_step(text)
+        except Exception:                                            # noqa: BLE001
+            pass
+
+    def _v6_apply_bg_progress(self, p):
+        """PROGRESS → 顶部摘要 + 下方 solver_status/metrics/log 使用**同一数据源**。"""
+        p = dict(p or {})
+        self._v6_last_bg = p
+        self._v6_sync_run_controls()                     # 顶部紧凑摘要（含状态/步数/后端）
+        steps = p.get('steps'); score = p.get('score'); mt = p.get('max_tile')
+        sps = p.get('steps_per_s'); backend = p.get('backend_used')
+        engine = p.get('engine_used'); rev = p.get('revision')
+        lag = p.get('render_age_ms')
+        try:
+            self._set_status(
+                '状态：<b>后台求解中</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+                    steps if steps is not None else '—',
+                    score if score is not None else '—'),
+                '最大瓦片 <b>%s</b>　%s 步/秒　引擎 <b>%s</b> / %s　rev %s　同步延迟 %sms' % (
+                    mt if mt is not None else '—',
+                    ('%.1f' % sps) if isinstance(sps, (int, float)) else '—',
+                    backend or '—', engine or '—',
+                    rev if rev is not None else '—',
+                    ('%.0f' % lag) if isinstance(lag, (int, float)) else '—'))
+        except Exception:                                            # noqa: BLE001
+            pass
+        # 下方既有 metrics：未知值显示 —，不造假零值
+        self._set_metric('steps', steps if steps is not None else '—')
+        self._set_metric('action', '后台连走')
+        self._set_metric('eval', '—')
+        self._set_metric('score', score if score is not None else '—')
+        self._set_metric('max_tile', mt if mt is not None else '—')
+        el = p.get('elapsed_s')
+        self._set_metric('elapsed', ('%.1fs' % el) if isinstance(el, (int, float)) else '—')
+        self._v6_bg_log(
+            '[后台] rev %s · 步 %s · 分数 %s · 最大 %s · %s 步/秒'
+            % (rev, steps, score, mt,
+               ('%.1f' % sps) if isinstance(sps, (int, float)) else '—'),
+            key=('progress', rev))
+
+    def _v6_apply_bg_final(self, msg):
+        """PAUSED / STOPPED / COMPLETED / GAME_OVER / ERROR → 顶部与下方状态一次收敛。"""
+        msg = dict(msg or {})
+        ctl = getattr(self, '_v6_bg_controller', None)
+        st = getattr(ctl, 'state', 'GUI_IDLE')
+        snap = msg.get('snapshot') or {}
+        score = snap.get('score')
+        steps = msg.get('total_committed_moves')
+        grid = snap.get('board') or []
+        mt = max((max(r) for r in grid), default=None) if grid else None
+        status = msg.get('status')
+        if st == 'BG_PAUSED':
+            head = '状态：<b>已暂停</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+                steps if steps is not None else '—', score if score is not None else '—')
+            tail = '可点「继续」从精确 RNG 状态恢复；最大瓦片 <b>%s</b>' % (
+                mt if mt is not None else '—')
+            action = '已暂停'
+        elif status in ('game_over', 'completed'):
+            head = '状态：<b>后台求解结束</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+                steps if steps is not None else '—', score if score is not None else '—')
+            tail = '最终棋盘已同步；最大瓦片 <b>%s</b>' % (mt if mt is not None else '—')
+            action = '已结束'
+        elif status == 'error':
+            head, tail, action = '状态：<b>后台求解出错</b>', (msg.get('reason') or ''), '出错'
+        else:
+            head = '状态：<b>后台求解已停止</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+                steps if steps is not None else '—', score if score is not None else '—')
+            tail = '最终棋盘已同步；最大瓦片 <b>%s</b>' % (mt if mt is not None else '—')
+            action = '已停止'
+        try:
+            self._set_status(head, tail)
+        except Exception:                                            # noqa: BLE001
+            pass
+        self._set_metric('steps', steps if steps is not None else '—')
+        self._set_metric('action', action)
+        self._set_metric('eval', '—')
+        self._set_metric('score', score if score is not None else '—')
+        self._set_metric('max_tile', mt if mt is not None else '—')
+        self._set_metric('elapsed', '—')
+        self._v6_sync_run_controls()
+        self._v6_bg_log('[后台] %s · 步 %s · 分数 %s' % (action, steps, score),
+                        key=('final', status, steps))
 
     # ---------------------------------------------------------- 挂钩：搜索
     def _request_decision(self):

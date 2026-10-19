@@ -130,9 +130,11 @@ TEXT/VISUAL 人工目视：**UNVERIFIED**。DPI 125%/150%：**UNVERIFIED**（未
 **真实 V6 GUI 内**（`p5_screenshots.json.timeline`）：`periodic_time` 回传，revision 单调递增
 （13→25→33），左盘按最新已提交快照刷新；间隔受单步搜索时长影响（见 §7 局限）。
 
-`REPORT_INTERVAL_MS = 1000` 为**单一内部来源**；GUI 不暴露/不持久化 N 步/N 时间；
-旧偏好 `report_mode/report_value` 经**版本化幂等迁移**为 `report_interval_ms=1000` 并删除
-（`ReportPrefsMigrationTest` 2 项通过）。
+`REPORT_INTERVAL_MS` 为**单一内部来源**；GUI 不暴露/不持久化 N 步/N 时间；旧偏好
+`report_mode/report_value` 经**版本化幂等迁移**清除（`ReportPrefsMigrationTest` 通过）。
+
+> **后续变更（用户明确指令，优先级最高）**：固定周期已是 **500ms，且永不改回 1000ms**。
+> 上文 1000ms 仅为本轮历史记录；以当前源码为准。
 
 ---
 

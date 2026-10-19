@@ -297,17 +297,156 @@ class BackgroundHistoryEquivalenceTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(gdir, 'history.csv')))
 
     def test_background_controller_is_wired(self):
-        """后台控制器必须在真实 V6 窗口中可用；回传固定 1000ms，且无 N 步/N 时间控件。"""
+        """旧后台四按钮已移除；统一「AI 运行控制」控件必须存在且回传固定 500ms。"""
         ctl = getattr(self.win, '_v6_bg_controller', None)
         self.assertIsNotNone(ctl, 'V6 后台控制器未接线：后台求解在真实 GUI 中将不可用')
         panel = getattr(ctl, 'panel', None)
-        self.assertIsNotNone(panel, '后台生命周期面板未创建')
-        for name in ('btn_start', 'btn_pause', 'btn_resume', 'btn_stop'):
-            self.assertTrue(hasattr(panel, name), '缺少后台生命周期按钮 %s' % name)
-        for gone in ('btn_time', 'btn_steps', 'report_combo', '_set_mode', 'load_prefs', 'label'):
-            self.assertFalse(hasattr(panel, gone), '报告配置控件未删除：%s' % gone)
-        self.assertEqual(panel.report_policy(), {'mode': 'time', 'ms': 500},
-                         '结果回传必须固定为内部 500ms')
+        self.assertIsNotNone(panel, '后台占位面板缺失')
+        # 旧后台四按钮/报告配置必须已移除（避免第二套控制）
+        for gone in ('btn_start', 'btn_pause', 'btn_resume', 'btn_stop', 'btn_time',
+                     'btn_steps', 'report_combo', '_set_mode', 'load_prefs', 'label'):
+            self.assertFalse(hasattr(panel, gone), '旧后台控件未移除：%s' % gone)
+        # 统一模块控件存在
+        for name in ('v6_run_primary', 'v6_run_stop', 'v6_run_summary'):
+            self.assertTrue(hasattr(self.win, name), '缺少统一控件 %s' % name)
+        self.assertEqual(len(getattr(self.win, 'v6_speed_buttons', {})), 3,
+                         '应只有标准/快速/后台求解三个可见档位')
+        self.assertEqual(panel.report_policy(), {'mode': 'time', 'ms': 500})
+
+    def test_unified_controls_dispatch_background(self):
+        """统一主/停按钮必须正确路由到后台控制器 start/pause/resume/stop。"""
+        ctl = self.win._v6_bg_controller
+        calls = []
+        saved = {n: getattr(ctl, n) for n in ('start', 'pause', 'resume', 'stop')}
+        try:
+            for n in saved:
+                setattr(ctl, n, (lambda name: (lambda *a, **k: calls.append(name)))(n))
+            self.win._v6_apply_tier('background', persist=False)
+            ctl.state = 'GUI_IDLE'
+            self.win._v6_on_run_primary()
+            ctl.state = 'BG_RUNNING'
+            self.win._v6_on_run_primary()
+            ctl.state = 'BG_PAUSED'
+            self.win._v6_on_run_primary()
+            self.win._v6_on_run_stop()
+            self.assertEqual(calls, ['start', 'pause', 'resume', 'stop'],
+                             '统一按钮未正确接线到后台控制器')
+            # 停止交接中：主按钮禁用并显示“正在停止”，防重复触发
+            ctl.state = 'BG_STOPPING'
+            self.win._v6_sync_run_controls()
+            self.assertFalse(self.win.v6_run_primary.isEnabled())
+            self.assertEqual(self.win.v6_run_primary.text(), '正在停止')
+        finally:
+            for n, fn in saved.items():
+                setattr(ctl, n, fn)
+            ctl.state = 'GUI_IDLE'
+            self.win._v6_apply_tier('standard', persist=False)
+
+    def test_standard_primary_reflects_solver_state(self):
+        """标准/快速：主按钮随 _solver_running 在“开始求解/停止”之间切换，停止按钮隐藏。"""
+        win = self.win
+        win._v6_apply_tier('standard', persist=False)
+        win._solver_running = False
+        win._v6_sync_run_controls()
+        self.assertEqual(win.v6_run_primary.text(), '开始求解')
+        self.assertTrue(win.v6_run_stop.isHidden(), '标准模式不应显示独立停止按钮')
+        win._solver_running = True
+        win._v6_sync_run_controls()
+        self.assertEqual(win.v6_run_primary.text(), '停止')
+        win._solver_running = False
+        win._v6_sync_run_controls()
+        self.assertEqual(win.v6_run_primary.text(), '开始求解')
+
+    def test_worker_launch_uses_no_window_flags(self):
+        """Windows：worker 子进程必须 CREATE_NO_WINDOW（否则出现多余空白 python 窗口）。"""
+        import subprocess as sp
+        ctl = self.win._v6_bg_controller
+        captured = {}
+
+        class _Pipe:
+            def readline(self):
+                return ''
+
+        class _P:
+            pid = 1
+            stdin = None
+            stdout = _Pipe()
+
+            def poll(self):
+                return 0
+
+        orig = sp.Popen
+        saved_proc = ctl.proc
+        sp.Popen = lambda args, **kw: (captured.update(kw) or _P())
+        try:
+            ok, err = ctl._launch_worker()
+        finally:
+            sp.Popen = orig
+            ctl.proc = saved_proc
+            ctl._close_stderr()
+        self.assertTrue(ok, err)
+        if os.name == 'nt':
+            self.assertIn('creationflags', captured)
+            self.assertEqual(captured['creationflags'], sp.CREATE_NO_WINDOW)
+            self.assertIn('startupinfo', captured)
+
+    def test_resume_clears_final_gate_and_resets_segment(self):
+        """暂停后继续：必须清除 `_final_seen` 并重置方向游标，否则新 progress 全被丢弃。"""
+        ctl = self.win._v6_bg_controller
+        tmp = tempfile.mkdtemp(prefix='v6_resume_')
+        path = os.path.join(tmp, 'resume.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('{}')
+        sent = []
+        saved = {'_send': ctl._send, 'proc': ctl.proc, 'state': ctl.state,
+                 'paused': ctl._paused_snapshot_path, 'final': ctl._final_seen,
+                 'cursor': ctl._session_cursor}
+
+        class _P:
+            def poll(self):
+                return None
+
+        try:
+            ctl._send = lambda msg: (sent.append(msg) or True)
+            ctl.proc = _P()
+            ctl._paused_snapshot_path = path
+            ctl.state = 'BG_PAUSED'
+            ctl._final_seen = True
+            ctl._session_cursor = 88
+            ctl.resume()
+            self.assertFalse(ctl._final_seen, '恢复后必须清除终态门，否则 progress 被丢弃')
+            self.assertEqual(ctl._session_cursor, 0)
+            self.assertEqual(ctl.state, 'BG_RUNNING')
+            self.assertTrue(any(m.get('cmd') == 'start' for m in sent), '恢复未发送 start')
+        finally:
+            ctl._send = saved['_send']
+            ctl.proc = saved['proc']
+            ctl.state = saved['state']
+            ctl._paused_snapshot_path = saved['paused']
+            ctl._final_seen = saved['final']
+            ctl._session_cursor = saved['cursor']
+
+    def test_bg_progress_updates_both_areas_and_logs_once(self):
+        """同一 PROGRESS 必须同时刷新顶部摘要与下方 solver_status/metrics，并按 revision 去重日志。"""
+        win = self.win
+        win._solver_running = False
+        win._v6_bg_log_key = None
+        p = {'revision': 7, 'steps': 123, 'score': 456, 'max_tile': 64,
+             'steps_per_s': 12.5, 'backend_used': 'cpp', 'engine_used': 'python_kernel',
+             'elapsed_s': 3.2, 'render_age_ms': 120}
+        win._v6_apply_bg_progress(p)
+        self.assertIn('123', win.solver_status.text())
+        self.assertIn('456', win.solver_status.text())
+        self.assertEqual(win.solver_metrics['steps'].text(), '123')
+        self.assertEqual(win.solver_metrics['score'].text(), '456')
+        self.assertEqual(win.solver_metrics['max_tile'].text(), '64')
+        self.assertEqual(win.solver_metrics['elapsed'].text(), '3.2s')
+        n1 = win.solver_log.count()
+        self.assertGreaterEqual(n1, 1)
+        win._v6_apply_bg_progress(dict(p))                 # 同 revision：不重复写日志
+        self.assertEqual(win.solver_log.count(), n1)
+        win._v6_apply_bg_progress(dict(p, revision=8))     # 新 revision：追加一条
+        self.assertEqual(win.solver_log.count(), n1 + 1)
 
     def test_mode_effects_policy(self):
         """P4：standard 粒子开；fast/background 粒子在发射前抑制；background 方向光静态。"""

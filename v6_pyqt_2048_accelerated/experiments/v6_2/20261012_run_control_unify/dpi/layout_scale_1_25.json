@@ -1,0 +1,262 @@
+{
+  "scale": "1.25",
+  "dpr": 1.25,
+  "window": [
+    906,
+    720
+  ],
+  "screen": [
+    1536,
+    864
+  ],
+  "modes": {
+    "standard": {
+      "module": {
+        "x": 524,
+        "y": 166,
+        "w": 364,
+        "h": 149,
+        "bottom": 315,
+        "visible": true,
+        "hidden": false
+      },
+      "primary": {
+        "x": 534,
+        "y": 277,
+        "w": 344,
+        "h": 30,
+        "bottom": 307,
+        "visible": true,
+        "hidden": false
+      },
+      "stop": {
+        "x": 828,
+        "y": 277,
+        "w": 50,
+        "h": 30,
+        "bottom": 307,
+        "visible": false,
+        "hidden": true
+      },
+      "summary": {
+        "x": 534,
+        "y": 229,
+        "w": 344,
+        "h": 42,
+        "bottom": 271,
+        "visible": true,
+        "hidden": false
+      },
+      "status": {
+        "x": 535,
+        "y": 348,
+        "w": 342,
+        "h": 31,
+        "bottom": 379,
+        "visible": true,
+        "hidden": false
+      },
+      "log": {
+        "x": 524,
+        "y": 491,
+        "w": 364,
+        "h": 173,
+        "bottom": 664,
+        "visible": true,
+        "hidden": false
+      },
+      "export": {
+        "x": 524,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "view": {
+        "x": 648,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "compare": {
+        "x": 772,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "advanced": {
+        "x": 524,
+        "y": 458,
+        "w": 87,
+        "h": 25,
+        "bottom": 483,
+        "visible": true,
+        "hidden": false
+      },
+      "legacy_start": {
+        "x": 512,
+        "y": 6,
+        "w": 640,
+        "h": 32,
+        "bottom": 38,
+        "visible": false,
+        "hidden": true
+      },
+      "legacy_progress": {
+        "x": 524,
+        "y": 323,
+        "w": 364,
+        "h": 8,
+        "bottom": 331,
+        "visible": true,
+        "hidden": false
+      },
+      "overlap_primary_stop": true,
+      "overlap_summary_actions": false,
+      "module_overflows_window": false,
+      "bottom_buttons_in_window": true,
+      "bottom_buttons_visible": true
+    },
+    "background": {
+      "module": {
+        "x": 524,
+        "y": 166,
+        "w": 364,
+        "h": 149,
+        "bottom": 315,
+        "visible": true,
+        "hidden": false
+      },
+      "primary": {
+        "x": 534,
+        "y": 277,
+        "w": 288,
+        "h": 30,
+        "bottom": 307,
+        "visible": true,
+        "hidden": false
+      },
+      "stop": {
+        "x": 828,
+        "y": 277,
+        "w": 50,
+        "h": 30,
+        "bottom": 307,
+        "visible": true,
+        "hidden": false
+      },
+      "summary": {
+        "x": 534,
+        "y": 229,
+        "w": 344,
+        "h": 42,
+        "bottom": 271,
+        "visible": true,
+        "hidden": false
+      },
+      "status": {
+        "x": 535,
+        "y": 332,
+        "w": 342,
+        "h": 31,
+        "bottom": 363,
+        "visible": true,
+        "hidden": false
+      },
+      "log": {
+        "x": 524,
+        "y": 475,
+        "w": 364,
+        "h": 189,
+        "bottom": 664,
+        "visible": true,
+        "hidden": false
+      },
+      "export": {
+        "x": 524,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "view": {
+        "x": 648,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "compare": {
+        "x": 772,
+        "y": 672,
+        "w": 116,
+        "h": 30,
+        "bottom": 702,
+        "visible": true,
+        "hidden": false
+      },
+      "advanced": {
+        "x": 524,
+        "y": 442,
+        "w": 87,
+        "h": 25,
+        "bottom": 467,
+        "visible": true,
+        "hidden": false
+      },
+      "legacy_start": {
+        "x": 512,
+        "y": 6,
+        "w": 640,
+        "h": 32,
+        "bottom": 38,
+        "visible": false,
+        "hidden": true
+      },
+      "legacy_progress": {
+        "x": 524,
+        "y": 323,
+        "w": 364,
+        "h": 8,
+        "bottom": 331,
+        "visible": false,
+        "hidden": true
+      },
+      "overlap_primary_stop": false,
+      "overlap_summary_actions": false,
+      "module_overflows_window": false,
+      "bottom_buttons_in_window": true,
+      "bottom_buttons_visible": true
+    }
+  },
+  "shots": [
+    {
+      "name": "rc_standard_s1_25.png",
+      "ok": true,
+      "size": [
+        1135,
+        939
+      ]
+    },
+    {
+      "name": "rc_background_s1_25.png",
+      "ok": true,
+      "size": [
+        1135,
+        939
+      ]
+    }
+  ]
+}

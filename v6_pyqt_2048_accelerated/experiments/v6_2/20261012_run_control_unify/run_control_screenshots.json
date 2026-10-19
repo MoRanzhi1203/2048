@@ -1,0 +1,81 @@
+{
+  "shots": [
+    {
+      "name": "rc_standard_idle.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ],
+      "frame_src": "dwm",
+      "grab_src": "screen-bitblt"
+    },
+    {
+      "name": "rc_fast_idle.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ],
+      "frame_src": "dwm",
+      "grab_src": "screen-bitblt"
+    },
+    {
+      "name": "rc_background_idle.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ],
+      "frame_src": "dwm",
+      "grab_src": "screen-bitblt"
+    },
+    {
+      "name": "rc_background_running.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ],
+      "frame_src": "dwm",
+      "grab_src": "screen-bitblt"
+    },
+    {
+      "name": "rc_background_paused.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ],
+      "frame_src": "dwm",
+      "grab_src": "screen-bitblt"
+    },
+    {
+      "name": "rc_background_stopped.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ],
+      "frame_src": "dwm",
+      "grab_src": "screen-bitblt"
+    }
+  ],
+  "layout": {
+    "window": [
+      906,
+      720
+    ],
+    "mode_buttons": 3,
+    "has_primary": true,
+    "has_stop": true,
+    "has_summary": true,
+    "legacy_start_hidden": true,
+    "legacy_progress_hidden": true,
+    "primary_text": "开始求解",
+    "summary_text": "后台 · 未运行\n步骤 / 耗时 / 后端 —"
+  },
+  "states": {
+    "running": "GUI_IDLE"
+  }
+}
