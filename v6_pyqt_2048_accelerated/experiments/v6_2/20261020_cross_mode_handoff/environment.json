@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-10-20T05:50:00+08:00",
+  "python": "E:\\anaconda3\\envs\\2048\\python.exe",
+  "python_version": "3.12.3",
+  "platform": "Windows-10-10.0.19042-SP0",
+  "PYTHONNOUSERSITE": "1",
+  "repo_head": "8c6d96f",
+  "branch": "main",
+  "backend_used_in_e2e": "reference",
+  "strategy": "heuristic",
+  "strength": "fast",
+  "solver_mode": "auto",
+  "isolation": {
+    "2048_HISTORY_DIR": "临时目录（每次运行独立）",
+    "prefs": "v6_speed.PREFS_PATH 指向临时文件",
+    "background_staging": "ctl._staging_dir 指向临时目录"
+  },
+  "note": "V1–V5 只读；正式存档/RL 模型/历史实验未被修改；本次未执行 git commit。"
+}

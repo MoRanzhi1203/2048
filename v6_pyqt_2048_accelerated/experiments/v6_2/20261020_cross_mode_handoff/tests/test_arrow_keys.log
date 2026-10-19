@@ -1,0 +1,11 @@
+﻿python.exe : .........
+At line:15 char:4057
++ ...  in $mods){ & 'E:\anaconda3\envs\2048\python.exe' -m unittest $m *> " ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (.........:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+----------------------------------------------------------------------
+Ran 9 tests in 14.562s
+
+OK

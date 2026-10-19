@@ -604,6 +604,44 @@ V5_SCENES = {"start": v5_scene_start, "game": v5_scene_game,
              "collapsed": v5_scene_collapsed}
 
 
+def v6_scene_handoff_paused(w, app, settle_ms):
+    """V6 跨模式交接：标准模式已暂停、已选择快速，主按钮显示“切换至快速模式并继续”。"""
+    w.stack.setCurrentIndex(1)
+    _v5_demo_board(w)
+    w._v6_apply_tier('standard', persist=False)
+    w._solver_running = True
+    w._v6_active_mode = 'standard'
+    w._v6_local_paused = True
+    w._v6_local_pausing = False
+    w._solve_in_flight = False
+    w._v6_selected_mode = 'fast'
+    btn = (getattr(w, 'v6_speed_buttons', {}) or {}).get('fast')
+    if btn is not None:
+        btn.setChecked(True)
+    w._v6_sync_run_controls()
+    pump(app, max(settle_ms, 260))
+    return 'handoff_paused'
+
+
+def v6_scene_handoff_switching(w, app, settle_ms):
+    """V6 跨模式交接中：主按钮“正在切换至后台求解模式…”，操作禁用。"""
+    w.stack.setCurrentIndex(1)
+    _v5_demo_board(w)
+    w._v6_apply_tier('standard', persist=False)
+    w._solver_running = True
+    w._v6_active_mode = 'standard'
+    w._v6_local_paused = True
+    w._v6_local_pausing = False
+    w._solve_in_flight = False
+    w._v6_handoff = {'from': 'standard', 'to': 'background', 'phase': 'switching'}
+    w._v6_sync_run_controls()
+    pump(app, max(settle_ms, 260))
+    return 'handoff_switching'
+
+
+# V6 专属场景在 V5_SCENES_ALL 定义后注册（见下方 V6_SCENES）
+
+
 def v5_required_text_widgets(w, scene):
     """第 5 版必需文字：游戏页原有控件 + 求解面板控件"""
     items = list(required_text_widgets(w, "start" if scene in ("start", "recover") else "game"))
@@ -628,6 +666,12 @@ def v5_required_text_widgets(w, scene):
             btn = (getattr(w, "v6_speed_buttons", {}) or {}).get(key)
             if btn is not None:
                 items.append(("速度-" + key, btn))
+    # V6 统一运行控制：主按钮文案/状态徽标/摘要必须真实绘制
+    for name, attr in (("统一主操作", "v6_run_primary"), ("运行状态徽标", "v6_run_badge"),
+                       ("运行摘要", "v6_run_summary")):
+        wdg = getattr(w, attr, None)
+        if wdg is not None:
+            items.append((name, wdg))
     return items
 
 
@@ -774,6 +818,11 @@ V5_SCENES_ALL.update({"gameover": v5_scene_gameover, "export": v5_scene_export,
                       "results": v5_scene_results, "recover": v5_scene_recover})
 V5_SCENES_ALL.update({"auto": v5_scene_auto})
 
+# V6 专属：跨运行方式交接（暂停/切换中）——V5 不注册，避免使用 V6 状态机属性
+V6_SCENES = dict(V5_SCENES_ALL)
+V6_SCENES.update({"handoff_paused": v6_scene_handoff_paused,
+                  "handoff_switching": v6_scene_handoff_switching})
+
 
 # 统一入口覆盖的版本：新增 GUI 版本时在此登记（模块目录 / 模块名 / 可用场景 / 出图目录）
 VERSIONS = {
@@ -782,7 +831,7 @@ VERSIONS = {
         "dir": "v6_pyqt_2048_accelerated",
         "module": "v6_pyqt_2048_accelerated",
         "entry": "v6_pyqt_2048_accelerated.py",
-        "scenes": V5_SCENES_ALL,
+        "scenes": V6_SCENES,
         "texts": v5_required_text_widgets,
         "shots": os.path.join(PROJ, "v6_pyqt_2048_accelerated", "screenshots"),
     },

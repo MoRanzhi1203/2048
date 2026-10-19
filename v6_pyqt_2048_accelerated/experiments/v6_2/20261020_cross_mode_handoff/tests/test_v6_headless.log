@@ -1,0 +1,11 @@
+﻿python.exe : ........................ss
+At line:15 char:3825
++ ... gration')){ & 'E:\anaconda3\envs\2048\python.exe' -m unittest $m *> " ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (........................ss:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+----------------------------------------------------------------------
+Ran 26 tests in 5.986s
+
+OK (skipped=2)

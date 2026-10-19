@@ -37,6 +37,7 @@ PREFS_PATH = os.path.join(_HERE, 'config', 'ui_prefs.json')
 
 MODES = ('standard', 'fast', 'background')
 MODE_LABELS = (('标准', 'standard'), ('快速', 'fast'), ('后台求解', 'background'))
+_MODE_LABEL_CN = {'standard': '标准模式', 'fast': '快速模式', 'background': '后台求解模式'}
 
 # 运行方式仅决定「动画 / 步间等待 / UI 调度 / 执行位置」，与算法、求解强度、求解模式完全独立。
 # particles_off：在**分配/计时调度之前**抑制合并粒子发射（fast/background）；
@@ -122,7 +123,7 @@ _PRIMARY_QSS = (
     ' border-radius:6px; padding:6px 14px; font-size:12px; font-weight:bold; }'
     'QPushButton:hover { background:#9a8571; }'
     'QPushButton:pressed { background:#7f6b58; }'
-    'QPushButton:disabled { background:#d8cdc0; color:#f6efe6; border-color:#d8cdc0; }')
+    'QPushButton:disabled { background:#e3d8ca; color:#8a7b6c; border-color:#d8cdc0; }')
 # 统一停止按钮（米白描边，避免黑块）
 _STOP_QSS = (
     'QPushButton { background:#f3ece1; color:#6a5b4e; border:1px solid #cbbcaa;'
@@ -183,6 +184,8 @@ class V6SpeedMixin:
         self._v6_local_paused = False       # 标准/快速：已在安全步边界暂停
         self._v6_local_pausing = False      # 已请求暂停、等待在途计算返回
         self._v6_paused_result = None       # 暂停时保留的本步结果（恢复时优先使用）
+        # 跨运行方式交接（暂停后才允许）：{'from','to','phase'}；非空期间禁用全部操作入口
+        self._v6_handoff = None
         self._v6_t = {'search_ms': 0.0, 'anim_ms': 0.0, 'wait_ms': 0.0, 'render_ms': 0.0,
                       'steps': 0, 'start': perf_counter(), 'req_t0': None, 'anim_t0': None,
                       'wait_t0': None, 'metrics_steps': 0}
@@ -356,9 +359,13 @@ class V6SpeedMixin:
     def _v6_on_speed_clicked(self, key):
         if key not in TIERS:
             return
+        if getattr(self, '_v6_handoff', None) is not None:
+            self._log_step('正在切换运行方式，已忽略本次选项卡点击。')
+            self._v6_sync_speed_buttons()
+            return
         if self._v6_session_active():
             # 选项卡切换**非破坏性**：只记录“已选择”，绝不暂停/停止/重启活动任务。
-            # 真正切换必须等用户显式暂停或停止后，在新的安全边界完成交接。
+            # 真正切换必须等用户显式暂停后，点主按钮完成跨模式安全交接。
             self._v6_selected_mode = key
             self._v6_update_timing_label()
             self._v6_sync_run_controls()
@@ -466,20 +473,47 @@ class V6SpeedMixin:
                   'wait_t0': None, 'metrics_steps': 0})
 
     # ---------------------------------------------------------- 运行控制：唯一状态源
+    def _v6_effective_active(self):
+        """真正在执行的运行方式（空闲为 None）。
+
+        优先级：显式 `_v6_active_mode` → 本机求解器运行态 → 后台控制器活动状态。
+        外部测试/恢复代码只设置其中一种来源时，仍能得到一致结论。
+        """
+        active = getattr(self, '_v6_active_mode', None)
+        if active in MODES:
+            return active
+        if getattr(self, '_solver_running', False):
+            sp = getattr(self, '_v6_speed', 'standard')
+            return sp if sp in ('standard', 'fast') else 'standard'
+        ctl = getattr(self, '_v6_bg_controller', None)
+        if ctl is not None and getattr(ctl, 'state', 'GUI_IDLE') in (
+                'HANDOFF_PREPARE', 'BG_RUNNING', 'BG_PAUSING', 'BG_PAUSED', 'BG_STOPPING'):
+            return 'background'
+        return None
+
+    def _v6_is_paused(self, active=None):
+        """该执行模式是否已真正停在安全边界（暂停中不算）。"""
+        active = active or self._v6_effective_active()
+        if active == 'background':
+            ctl = getattr(self, '_v6_bg_controller', None)
+            return bool(ctl is not None and getattr(ctl, 'state', '') == 'BG_PAUSED')
+        return bool(getattr(self, '_solver_running', False)
+                    and getattr(self, '_v6_local_paused', False)
+                    and not getattr(self, '_v6_local_pausing', False))
+
     def _v6_bg(self):
         """活动执行模式为后台（或空闲且选择后台）时返回后台控制器。"""
-        active = getattr(self, '_v6_active_mode', None)
+        active = self._v6_effective_active()
+        ctl = getattr(self, '_v6_bg_controller', None)
         if active is not None:
-            return getattr(self, '_v6_bg_controller', None) if active == 'background' else None
+            return ctl if active == 'background' else None
         if getattr(self, '_v6_speed', 'standard') != 'background':
             return None
-        return getattr(self, '_v6_bg_controller', None)
+        return ctl
 
     def _v6_session_active(self):
-        """是否存在**真实执行中**的求解会话（本机线程或后台 Worker）。"""
-        if getattr(self, '_v6_active_mode', None) is not None:
-            return True
-        if getattr(self, '_solver_running', False):
+        """是否存在**真实执行中**的求解会话（本机线程或后台 Worker；含已暂停）。"""
+        if self._v6_effective_active() is not None:
             return True
         ctl = getattr(self, '_v6_bg_controller', None)
         try:
@@ -489,9 +523,8 @@ class V6SpeedMixin:
 
     def _v6_active_label(self):
         """当前**执行**模式的限定文案（不是选项卡）。"""
-        mode = getattr(self, '_v6_active_mode', None) or getattr(self, '_v6_speed', 'standard')
-        return {'standard': '标准模式', 'fast': '快速模式',
-                'background': '后台求解模式'}.get(mode, '标准模式')
+        mode = self._v6_effective_active() or getattr(self, '_v6_speed', 'standard')
+        return _MODE_LABEL_CN.get(mode, '标准模式')
 
     # ------------------------------------------------ 标准/快速：安全步边界暂停
     def _v6_start_local(self):
@@ -533,43 +566,220 @@ class V6SpeedMixin:
         self._request_decision()
         self._v6_sync_run_controls()
 
-    def _v6_stop_local(self, reason='用户停止'):
+    def _v6_stop_local(self, reason='用户停止', silent=False):
+        prev_active = getattr(self, '_v6_active_mode', None)
         self._v6_local_paused = False
         self._v6_local_pausing = False
         self._v6_paused_result = None
-        super()._stop_solver(reason)
-        self._v6_active_mode = None
+        super()._stop_solver(reason, silent=silent)
+        # 仅清除“本机执行模式”；交接成功时控制器已把活动模式置为 background，必须保留
+        if (prev_active in ('standard', 'fast')
+                and getattr(self, '_v6_active_mode', None) == prev_active):
+            self._v6_active_mode = None
 
+    # ------------------------------------------------ 跨运行方式：暂停后安全交接
     def _v6_on_run_primary(self):
-        """唯一主按钮：开始 / 暂停 / 继续（三模式共用同一状态机）。"""
-        ctl = self._v6_bg()
-        if ctl is not None:
-            st = getattr(ctl, 'state', 'GUI_IDLE')
-            try:
-                if st in ('GUI_IDLE', 'BG_COMPLETED', 'BG_ERROR'):
-                    ctl.start()
-                elif st in ('BG_RUNNING', 'HANDOFF_PREPARE'):
-                    ctl.pause()
-                elif st == 'BG_PAUSED':
-                    ctl.resume()
-            finally:
-                self._v6_sync_run_controls()
+        """唯一主按钮：开始 / 暂停 / 继续 / 切换至XX并继续（三模式共用）。"""
+        if getattr(self, '_v6_handoff', None) is not None:
+            self._log_step('正在切换运行方式，已忽略重复点击。')
             return
-        if not getattr(self, '_solver_running', False):
-            self._v6_start_local()
-        elif getattr(self, '_v6_local_paused', False):
-            self._v6_resume_local()
+        active = self._v6_effective_active()
+        if active is None:
+            ctl = self._v6_bg()
+            if ctl is not None:
+                ctl.start()
+            else:
+                self._v6_start_local()
+            self._v6_sync_run_controls()
+            return
+        if not self._v6_is_paused(active):
+            if active == 'background':
+                self._v6_bg_controller.pause()
+            else:
+                self._v6_request_local_pause()
+            self._v6_sync_run_controls()
+            return
+        target = getattr(self, '_v6_selected_mode', None)
+        if target and target != active:
+            self._v6_begin_handoff(active, target)
+            return
+        self._v6_selected_mode = None
+        if active == 'background':
+            self._v6_bg_controller.resume()
         else:
-            self._v6_request_local_pause()
+            self._v6_resume_local()
+        self._v6_sync_run_controls()
+
+    def _v6_begin_handoff(self, src, dst):
+        """已暂停 → 执行跨模式安全交接（禁止并发点击/切换/重复创建 Worker）。"""
+        label = _MODE_LABEL_CN.get(dst, dst)
+        if not self._v6_is_paused(src):
+            self._v6_handoff_fail('原会话尚未达到安全暂停状态，未执行切换', src, dst)
+            return
+        self._v6_handoff = {'from': src, 'to': dst, 'phase': 'switching'}
+        self._v6_selected_mode = None
+        self._v6_sync_run_controls()
+        self._log_step('运行方式切换开始：%s → %s（原会话保持暂停，等待安全交接）'
+                       % (_MODE_LABEL_CN.get(src, src), label))
+        if src in ('standard', 'fast') and dst in ('standard', 'fast'):
+            self._v6_handoff_local_to_local(src, dst)
+        elif src in ('standard', 'fast') and dst == 'background':
+            self._v6_handoff_local_to_background(src, dst)
+        elif src == 'background' and dst in ('standard', 'fast'):
+            self._v6_handoff_background_to_local(src, dst)
+        else:
+            self._v6_handoff_fail('不支持的运行方式切换：%s → %s' % (src, dst), src, dst)
+
+    def _v6_handoff_local_to_local(self, src, dst):
+        """标准 ↔ 快速：同一棋盘/会话继续，只更换动画与调度策略。"""
+        # 原模式在途/暂存结果失效：新执行会话不得复用旧消息序号
+        self._v6_paused_result = None
+        self._v6_local_pausing = False
+        self._solve_in_flight = False
+        self._pending_result = None
+        self._job_id += 1
+        try:
+            self.solver_progress.setRange(0, 100)
+            self.solver_progress.setValue(0)
+        except Exception:                                            # noqa: BLE001
+            pass
+        self._clear_hint()                       # 旧方向提示属于旧执行模式，必须清除
+        self._v6_apply_tier(dst)                 # 动画/粒子/步间等待/偏好一次性生效
+        self._v6_active_mode = dst
+        self._v6_local_paused = False
+        self._v6_handoff = None
+        self._v6_sync_run_controls()
+        self._log_step('已切换至%s：同一棋盘继续求解（job=%s，未重新开局/未重复落子）'
+                       % (_MODE_LABEL_CN.get(dst, dst), getattr(self, '_job_id', '—')))
+        self._request_decision()
+
+    def _v6_handoff_local_to_background(self, src, dst):
+        """标准/快速 → 后台：先从最新一致状态建快照，Worker 成功接管后才收尾本机会话。"""
+        ctl = getattr(self, '_v6_bg_controller', None)
+        if ctl is None:
+            self._v6_handoff_fail('后台求解控制器不可用', src, dst)
+            return
+        meta = {'from': src, 'to': dst, 'reason': 'paused_cross_mode_handoff',
+                'model_game_id': getattr(self.model, 'game_id', None),
+                'board_sig': self._board_signature(self.model.grid),
+                'score': int(self.model.score),
+                'best_score': int(getattr(self.model, 'best_score', 0))}
+        try:
+            snap = ctl._build_snapshot(handoff_meta=meta)
+        except Exception as exc:                                     # noqa: BLE001
+            self._v6_handoff_fail('生成交接快照失败：%s' % exc, src, dst)
+            return
+        if not ctl.start(snapshot=snap, handoff_meta=meta):
+            # 控制器已在 _fail_start 中回调；若尚未清理（例如拒绝受理），此处兜底
+            if getattr(self, '_v6_handoff', None) is not None:
+                self._v6_handoff_fail('后台求解无法启动（请确认求解模式为自动连走）', src, dst)
+            return
+
+    def _v6_on_bg_started(self, meta):
+        """后台 Worker 已确认接管所有权：此时才结束本机会话（单一写者）。"""
+        meta = dict(meta or {})
+        if meta.get('from') in ('standard', 'fast'):
+            self._v6_stop_local('交由后台求解接管', silent=True)
+            self._v6_apply_tier('background')
+            self._log_step('已切换至后台求解模式：Worker 已接管当前棋盘（正式 game=%s）'
+                           % (meta.get('model_game_id') or '—'))
+        self._v6_handoff = None
+        self._v6_sync_run_controls()
+
+    def _v6_on_bg_start_failed(self, reason, meta):
+        """后台启动/交接失败：保留原暂停会话，明确提示，不静默切换模式。"""
+        meta = dict(meta or {})
+        dst = meta.get('to') or 'background'
+        label = _MODE_LABEL_CN.get(dst, dst)
+        self._v6_handoff = None
+        self._v6_selected_mode = None
+        self._v6_sync_speed_buttons()            # 选项卡回到真正执行的模式
+        self._v6_sync_run_controls()
+        self._log_step('%s切换失败：%s（原会话保持暂停）' % (label, reason))
+        try:
+            self._set_status('状态：<b>%s切换失败</b>' % label,
+                             '原会话保持暂停，可继续或重新尝试切换：%s' % reason, error=True)
+        except Exception:                                            # noqa: BLE001
+            pass
+
+    def _v6_handoff_background_to_local(self, src, dst):
+        """后台 → 标准/快速：先确认终态已提交，再让 Worker 退出并释放所有权，最后由本机继续。"""
+        ctl = getattr(self, '_v6_bg_controller', None)
+        if ctl is None:
+            self._v6_handoff_fail('后台求解控制器不可用', src, dst)
+            return
+        if getattr(ctl, 'state', '') != 'BG_PAUSED':
+            self._v6_handoff_fail('后台会话尚未完成暂停提交，禁止提前切换', src, dst)
+            return
+        self._ensure_bg_final_adopted(ctl)
+        self._v6_handoff['phase'] = 'draining'
+        self._v6_sync_run_controls()
+
+        def done(ok, reason):
+            if getattr(self, '_v6_handoff', None) is None:
+                return                              # 已被停止/关闭等路径收尾
+            if not ok:
+                self._v6_handoff_fail(reason, src, dst)
+                return
+            # 旧会话彻底失效：迟到 progress/final 一律丢弃
+            try:
+                ctl._game_id = None
+                ctl._final_seen = True
+                ctl._last_progress = None
+            except Exception:                                        # noqa: BLE001
+                pass
+            self._v6_active_mode = None
+            self._v6_handoff = None
+            self._v6_apply_tier(dst)
+            self._v6_sync_run_controls()
+            self._log_step('已切换至%s：后台 Worker 已退出并释放所有权，由本机求解器继续（正式 game=%s）'
+                           % (_MODE_LABEL_CN.get(dst, dst),
+                              getattr(self.model, 'game_id', None) or '—'))
+            self._v6_start_local()
+
+        ctl.drain_for_handoff(done, deadline_s=8.0)
+
+    def _ensure_bg_final_adopted(self, ctl):
+        """后台暂停终态必须已进入官方模型（棋盘/分数/RNG/历史）；偏离则补一次正式采纳。"""
+        res = getattr(ctl, '_last_result', None) or {}
+        snap = res.get('snapshot') or {}
+        if not snap:
+            return
+        model = self.model
+        try:
+            same = ([row[:] for row in model.grid] == [list(r) for r in snap['board']]
+                    and int(model.score) == int(snap['score']))
+        except Exception:                                            # noqa: BLE001
+            same = False
+        if same:
+            return
+        self._log_step('后台终态与官方模型不一致，补一次正式回放采纳（防止交接错位）')
+        ctl._adopt(snap, res.get('directions'))
+
+    def _v6_handoff_fail(self, reason, src, dst):
+        """交接失败：保留原模式与原暂停状态，仅明确提示失败原因。"""
+        label = _MODE_LABEL_CN.get(dst, dst)
+        self._v6_handoff = None
+        self._v6_selected_mode = None
+        self._v6_active_mode = src
+        self._v6_sync_speed_buttons()
+        self._v6_sync_run_controls()
+        self._log_step('%s切换失败：%s（原会话保持暂停）' % (label, reason))
+        try:
+            self._set_status('状态：<b>%s切换失败</b>' % label,
+                             '原会话保持暂停，可继续或重新尝试切换：%s' % reason, error=True)
+        except Exception:                                            # noqa: BLE001
+            pass
 
     def _v6_on_run_stop(self):
         """唯一停止按钮（三模式共用）。"""
-        ctl = self._v6_bg()
-        if ctl is not None:
-            ctl.stop()
-            self._v6_sync_run_controls()
+        if getattr(self, '_v6_handoff', None) is not None:
+            self._log_step('正在切换运行方式，停止按钮已禁用。')
             return
-        if getattr(self, '_solver_running', False):
+        active = self._v6_effective_active()
+        if active == 'background':
+            self._v6_bg_controller.stop()
+        elif active in ('standard', 'fast') or getattr(self, '_solver_running', False):
             self._v6_stop_local('用户停止')
         self._v6_sync_run_controls()
 
@@ -598,74 +808,87 @@ class V6SpeedMixin:
             ' padding:2px 9px; font-size:10px; font-weight:bold;' % (bg, fg, bd))
 
     def _v6_sync_run_controls(self):
-        """唯一控制矩阵：三模式共用 开始/暂停/继续 + 停止，状态文案带模式限定。"""
+        """唯一控制矩阵：三模式共用 开始/暂停/继续/切换并继续 + 停止。
+
+        状态徽标始终标识**真正执行**的模式；选项卡只表达“已选择”。
+        """
         primary = getattr(self, 'v6_run_primary', None)
         if primary is None:
             return
         stop = getattr(self, 'v6_run_stop', None)
-        ctl = self._v6_bg()
-        if ctl is not None:
-            st = getattr(ctl, 'state', 'GUI_IDLE')
-            text, enabled = '开始求解', True
-            badge = ('idle', '后台求解模式未运行')
-            show_stop = st in ('HANDOFF_PREPARE', 'BG_RUNNING', 'BG_PAUSING',
-                               'BG_PAUSED', 'BG_STOPPING')
-            if st == 'HANDOFF_PREPARE':
+        handoff = getattr(self, '_v6_handoff', None)
+        for btn in (getattr(self, 'v6_speed_buttons', None) or {}).values():
+            try:
+                btn.setEnabled(handoff is None)
+            except Exception:                                        # noqa: BLE001
+                pass
+        if handoff is not None:
+            label = _MODE_LABEL_CN.get(handoff.get('to'), '')
+            primary.setText('正在切换至%s…' % label)
+            primary.setEnabled(False)
+            self._v6_set_badge('stopping', '正在切换至%s' % label)
+            if stop is not None:
+                stop.setVisible(True)
+                stop.setEnabled(False)
+            self._v6_update_timing_label()
+            return
+
+        active = self._v6_effective_active()
+        if active is not None:
+            label = _MODE_LABEL_CN.get(active, '标准模式')
+            ctl = getattr(self, '_v6_bg_controller', None)
+            st = getattr(ctl, 'state', '') if active == 'background' else ''
+            paused = self._v6_is_paused(active)
+            target = getattr(self, '_v6_selected_mode', None)
+            if target == active:
+                target = None
+            enabled = True
+            show_stop = True
+            if active == 'background' and st == 'HANDOFF_PREPARE':
                 text, enabled, badge = '开始中…', False, ('stopping', '后台求解模式启动中')
-            elif st == 'BG_RUNNING':
-                text, badge = '暂停', ('running', '后台求解模式运行中')
-            elif st == 'BG_PAUSING':
-                text, enabled, badge = '正在暂停…', False, ('stopping', '后台求解模式正在暂停')
-            elif st == 'BG_PAUSED':
-                text, badge = '继续', ('paused', '后台求解模式已暂停')
-            elif st == 'BG_STOPPING':
+            elif active == 'background' and st == 'BG_STOPPING':
                 text, enabled, badge = '正在停止', False, ('stopping', '后台求解模式正在停止')
-            elif st == 'BG_ERROR':
-                badge = ('error', '后台求解模式出错')
+            elif (active != 'background' and getattr(self, '_v6_local_pausing', False)) \
+                    or (active == 'background' and st == 'BG_PAUSING'):
+                text, enabled, badge = '正在暂停…', False, ('stopping', '%s正在暂停' % label)
+            elif paused and target:
+                text = '切换至%s并继续' % _MODE_LABEL_CN.get(target, target)
+                badge = ('paused', '%s已暂停' % label)
+            elif paused:
+                text, badge = '继续', ('paused', '%s已暂停' % label)
             else:
-                lr = getattr(ctl, '_last_result', None) or {}
-                lst = lr.get('status')
-                if lst == 'stopped':
-                    badge = ('idle', '后台求解模式已停止')
-                elif lst in ('completed', 'game_over'):
-                    badge = ('idle', '后台求解模式已结束')
+                text, badge = '暂停', ('running', '%s运行中' % label)
             primary.setText(text)
             primary.setEnabled(enabled)
             self._v6_set_badge(*badge)
             if stop is not None:
                 stop.setVisible(show_stop)
-                stop.setEnabled(st in ('BG_RUNNING', 'BG_PAUSED'))
-            if st in ('GUI_IDLE', 'BG_COMPLETED', 'BG_ERROR'):
-                self._v6_active_mode = None
-                self._v6_apply_selected_if_idle()
+                stop.setEnabled(enabled)
+            self._v6_update_timing_label()
+            return
+
+        # ---- 空闲：清空活动执行模式；已选择档位直接用于下一次“开始求解” ----
+        self._v6_active_mode = None
+        ctl = getattr(self, '_v6_bg_controller', None)
+        badge = ('idle', '%s未运行' % _MODE_LABEL_CN.get(
+            getattr(self, '_v6_speed', 'standard'), '标准模式'))
+        if ctl is not None and getattr(ctl, 'state', '') == 'BG_ERROR':
+            badge = ('error', '后台求解模式出错')
         else:
-            running = bool(getattr(self, '_solver_running', False))
-            paused = bool(getattr(self, '_v6_local_paused', False))
-            pausing = bool(getattr(self, '_v6_local_pausing', False))
-            if running:
-                if not getattr(self, '_v6_active_mode', None):
-                    self._v6_active_mode = self._v6_speed
-                mode = self._v6_active_label()
-                if paused:
-                    primary.setText('继续')
-                    self._v6_set_badge('paused', '%s已暂停' % mode)
-                elif pausing:
-                    primary.setText('正在暂停…')
-                    self._v6_set_badge('stopping', '%s正在暂停' % mode)
-                else:
-                    primary.setText('暂停')
-                    self._v6_set_badge('running', '%s运行中' % mode)
-                primary.setEnabled(not pausing)
-            else:
-                self._v6_active_mode = None
-                primary.setText('开始求解')
-                primary.setEnabled(True)
-                self._v6_set_badge('idle', '%s未运行' % self._v6_active_label())
-            if stop is not None:
-                stop.setVisible(bool(running))
-                stop.setEnabled(bool(running))
-            if not running:
-                self._v6_apply_selected_if_idle()
+            lr = getattr(ctl, '_last_result', None) or {}
+            lst = lr.get('status')
+            if getattr(self, '_v6_speed', '') == 'background':
+                if lst == 'stopped':
+                    badge = ('idle', '后台求解模式已停止')
+                elif lst in ('completed', 'game_over'):
+                    badge = ('idle', '后台求解模式已结束')
+        primary.setText('开始求解')
+        primary.setEnabled(True)
+        self._v6_set_badge(*badge)
+        if stop is not None:
+            stop.setVisible(False)
+            stop.setEnabled(False)
+        self._v6_apply_selected_if_idle()
         self._v6_update_timing_label()
 
     def _v6_apply_selected_if_idle(self):
@@ -682,16 +905,27 @@ class V6SpeedMixin:
         """≤2 行紧凑摘要：状态 / 有效步数 / 耗时 / 步每秒 / 实际后端。
 
         详细分段计时保留在 tooltip；**未运行时不把历史计时当作当前耗时**。
+        交接中显示目标模式；已暂停且变更选择时提示“切换并继续”入口。
         """
         lbl = getattr(self, 'v6_run_summary', None)
         if lbl is None:
             return
         t = getattr(self, '_v6_t', None) or {}
+        active = self._v6_effective_active()
+        handoff = getattr(self, '_v6_handoff', None)
+        if handoff is not None:
+            label = _MODE_LABEL_CN.get(handoff.get('to'), '')
+            lbl.setText('正在切换至%s…\n原会话保持暂停，等待安全交接完成' % label)
+            lbl.setToolTip('交接期间禁止重复点击/再次切换；旧 Worker 必须释放所有权。')
+            return
         sel = getattr(self, '_v6_selected_mode', None)
-        sel_label = {'standard': '标准模式', 'fast': '快速模式',
-                     'background': '后台求解模式'}.get(sel or '', '')
-        ctl = self._v6_bg()
-        if ctl is not None:
+        if sel == active:
+            sel = None
+        sel_label = _MODE_LABEL_CN.get(sel or '', '')
+        in_bg_view = active == 'background' or (
+            active is None and getattr(self, '_v6_speed', 'standard') == 'background')
+        ctl = getattr(self, '_v6_bg_controller', None)
+        if in_bg_view and ctl is not None:
             st = getattr(ctl, 'state', 'GUI_IDLE')
             p = getattr(ctl, '_last_progress', None) or {}
             if st == 'BG_RUNNING':
@@ -727,17 +961,19 @@ class V6SpeedMixin:
             lbl.setText(line1 + '\n' + line2)
             lbl.setToolTip('后台指标来自 Worker 最新回传（固定 500ms 一帧）。')
             return
-        running = bool(getattr(self, '_solver_running', False))
-        paused = bool(getattr(self, '_v6_local_paused', False))
-        pausing = bool(getattr(self, '_v6_local_pausing', False))
-        mode = ({'standard': '标准模式', 'fast': '快速模式'}.get(self._v6_speed, '标准模式')
-                if not running else self._v6_active_label())
+        running = active in ('standard', 'fast')
+        paused = running and self._v6_is_paused(active)
+        pausing = running and bool(getattr(self, '_v6_local_pausing', False))
+        mode = _MODE_LABEL_CN.get(active or getattr(self, '_v6_speed', 'standard'), '标准模式')
+        if mode == '后台求解模式':
+            mode = '标准模式'
         steps = int(t.get('steps', 0))
         total = ((perf_counter() - t.get('start', perf_counter())) * 1000.0
                  if running else 0.0)
         if running and paused:
             line1 = '%s已暂停　步 %d' % (mode, steps)
-            line2 = '点「继续」从暂停点恢复（棋盘与 RNG 未变）'
+            line2 = ('点「继续」从暂停点恢复（棋盘与 RNG 未变）' if not sel_label else
+                     '点「切换至%s并继续」完成跨模式安全交接' % sel_label)
         elif running and pausing:
             line1 = '%s正在暂停…' % mode
             line2 = '等待当前计算在安全步边界返回'
@@ -751,7 +987,7 @@ class V6SpeedMixin:
         else:
             line1, line2 = '%s未运行' % mode, '步骤 —　耗时 —'
         if sel_label:
-            line2 = '当前执行：%s｜已选择：%s（未切换）' % (mode, sel_label)
+            line2 = '当前执行：%s｜已选择：%s（暂停后可切换）' % (mode, sel_label)
         lbl.setText(line1 + '\n' + line2)
         lbl.setToolTip('分段累计(ms)  搜索 %.0f | 动画 %.0f | 等待 %.0f | 渲染 %.0f\n'
                        '步数 %d  总耗时 %.1f ms  平均 %.1f ms/步'

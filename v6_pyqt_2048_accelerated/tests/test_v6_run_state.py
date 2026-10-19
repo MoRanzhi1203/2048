@@ -44,6 +44,9 @@ class V6RunStateTest(unittest.TestCase):
 
     def setUp(self):
         import v6_pyqt_2048_accelerated as M
+        import v6_speed as sp
+        self._saved_save_prefs = sp.save_prefs
+        sp.save_prefs = lambda _p: True          # 测试不落盘 run_mode 偏好
         self.win = M.V6MainWindow()
         self.win.model.start_new_game()
         self.win.model.grid = [row[:] for row in BOARD]
@@ -59,6 +62,8 @@ class V6RunStateTest(unittest.TestCase):
         self.win._v6_paused_result = None
 
     def tearDown(self):
+        import v6_speed as sp
+        sp.save_prefs = self._saved_save_prefs
         try:
             ctl = getattr(self.win, '_v6_bg_controller', None)
             if ctl is not None:

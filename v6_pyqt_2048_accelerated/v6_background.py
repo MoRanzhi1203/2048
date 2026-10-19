@@ -275,8 +275,10 @@ class BackgroundController(QObject):
             cta.setEnabled(not want_bg)
             cta.setToolTip('“后台求解”运行方式下请使用下方后台按钮'
                            if want_bg else '开始求解')
-        # 仅在没有活动会话时允许“切走=停止”；活动期间的选项卡切换必须是非破坏性的
-        if (not want_bg and self.state in ('BG_RUNNING', 'BG_PAUSED', 'HANDOFF_PREPARE')
+        # 仅在没有活动会话时允许“切走=停止”；活动期间的选项卡切换必须是非破坏性的；
+        # 跨模式交接（_v6_handoff）期间一律由交接流程独占控制，绝不被模式切换顺带停止。
+        if (getattr(self.win, '_v6_handoff', None) is None
+                and not want_bg and self.state in ('BG_RUNNING', 'BG_PAUSED', 'HANDOFF_PREPARE')
                 and getattr(self.win, '_v6_active_mode', None) is None):
             self.stop()
 
@@ -285,49 +287,164 @@ class BackgroundController(QObject):
                               'BG_STOPPING')
 
     # ------------------------------------------------------------ 启动
-    def start(self):
+    def start(self, snapshot=None, handoff_meta=None):
+        """启动后台求解。
+
+        :param snapshot: 非空表示**跨模式交接**（调用方已把原会话停在安全边界）。
+        此时**不得**先停掉原会话：新 Worker 只有在成功接管所有权后才由调用方收尾，
+        否则交接失败会丢失原暂停会话。
+        :param handoff_meta: 交接元数据（原/新模式、正式游戏 id、会话性别名等），
+        会写入快照与 staging 交接记录，便于审计“前后会话”关系。
+        :returns: bool（是否已受理；最终成败由 ``_confirm_running/_fail_start`` 异步收敛）
+        """
         if not self._transition('HANDOFF_PREPARE'):
-            return
+            return False
         if self.win.solver_mode.currentData() != 'auto':
             self._show('后台求解仅支持“自动连走”；请先把求解模式切到自动连走。')
             self._transition('GUI_IDLE')
-            return
+            return False
         if own.owner_status(self._staging_dir)['state'] == 'alive':
             st = own.owner_status(self._staging_dir)
             self._show('已有活动的后台求解（pid=%s，session=%s）持有本局；请先停止。'
                        % ((st.get('record') or {}).get('pid'),
                           (st.get('record') or {}).get('session_id')))
             self._transition('GUI_IDLE')
-            return
+            return False
+        meta = dict(handoff_meta or {})
+        if snapshot is not None:
+            ok, err = self._spawn_worker(snapshot)
+            if not ok:
+                self._fail_start('后台进程启动失败：%s' % err, meta)
+                return False
+            self._await_ownership(time.monotonic() + 8.0, meta)
+            return True
         # 1) 安全交接：停本机求解 + 等动画结束
         if getattr(self.win, '_solver_running', False):
             self.win._stop_solver('后台接管')
-        self._await_idle_and_spawn(deadline=time.time() + 6.0)
+        self._await_idle_and_spawn(deadline=time.time() + 6.0, meta=meta)
+        return True
 
-    def _await_idle_and_spawn(self, deadline):
+    def _await_idle_and_spawn(self, deadline, meta=None):
         bv = getattr(self.win, 'board_view', None)
         animating = bool(bv.is_animating()) if bv is not None else False
         if animating and time.time() < deadline:
-            QTimer.singleShot(80, lambda: self._await_idle_and_spawn(deadline))
+            QTimer.singleShot(80, lambda: self._await_idle_and_spawn(deadline, meta))
             return
         try:
-            snap = self._build_snapshot()
+            snap = self._build_snapshot(handoff_meta=meta)
         except Exception as exc:                                       # noqa: BLE001
-            self._show('交接失败：%s' % exc)
-            self._transition('BG_ERROR')
+            self._fail_start('交接快照失败：%s' % exc, meta)
             return
         ok, err = self._spawn_worker(snap)
         if not ok:
-            self._show('后台进程启动失败：%s' % err)
-            self._transition('BG_ERROR')
+            self._fail_start('后台进程启动失败：%s' % err, meta)
             return
-        self._transition('BG_RUNNING')
-        self.win._v6_active_mode = 'background'
-        self._show('后台求解已启动（pid=%s）；进度低频刷新。' % self.proc.pid)
+        # 关键：不立即宣告运行中；必须先确认 Worker 已登记所有权（单一写者）
+        self._await_ownership(time.monotonic() + 8.0, meta)
 
-    def _build_snapshot(self):
+    def _await_ownership(self, deadline, meta=None):
+        """确认新 Worker 真正接管游戏所有权（owner.json + pid 匹配）后才进入 BG_RUNNING。"""
+        proc = self.proc
+        if proc is None:
+            self._fail_start('后台进程未创建', meta)
+            return
+        st = own.owner_status(self._staging_dir)
+        rec = st.get('record') or {}
+        if st.get('state') == 'alive' and int(rec.get('pid', -1)) == int(proc.pid):
+            self._confirm_running(meta)
+            return
+        code = proc.poll()
+        if code is not None:
+            self._fail_start('后台进程在接管所有权前退出（exit=%s）' % code, meta)
+            return
+        if time.monotonic() >= deadline:
+            self._fail_start('等待后台 Worker 接管所有权超时（owner=%s）' % st.get('state'), meta)
+            return
+        QTimer.singleShot(50, lambda: self._await_ownership(deadline, meta))
+
+    def _confirm_running(self, meta=None):
+        if not self._transition('BG_RUNNING'):
+            return
+        self.win._v6_active_mode = 'background'
+        self._write_handoff_record(meta)
+        # 先让窗口完成本轮交接收尾（应用新模式效果），再写最终状态文案
+        fn = getattr(self.win, '_v6_on_bg_started', None)
+        if callable(fn):
+            try:
+                fn(dict(meta or {}))
+            except Exception:                                        # noqa: BLE001
+                pass
+        self._show('后台求解已接管本局（pid=%s，session=%s）；进度固定 %dms 低频回传。'
+                   % (self.proc.pid if self.proc is not None else '?', self._game_id,
+                      REPORT_INTERVAL_MS))
+
+    def _fail_start(self, reason, meta=None):
+        """启动/交接失败：清理半启动 Worker，明确回报，绝不静默进入错误模式。"""
+        self._mark('BG_START_FAILED', reason=str(reason))
+        self._show('后台求解启动失败：%s' % reason)
+        self._transition('BG_ERROR')
+        self._cleanup_worker()
+        fn = getattr(self.win, '_v6_on_bg_start_failed', None)
+        if callable(fn):
+            try:
+                fn(str(reason), dict(meta or {}))
+            except Exception:                                        # noqa: BLE001
+                pass
+
+    def _write_handoff_record(self, meta):
+        """写一次交接记录（from/to、正式 game_id、新 session_id），建立前后会话关系。"""
+        if not meta:
+            return
+        rec = dict(meta)
+        rec.update({'session_id': self._game_id,
+                    'at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'pid': self.proc.pid if self.proc is not None else None})
+        try:
+            os.makedirs(self._staging_dir, exist_ok=True)
+            _store.atomic_write_json(
+                os.path.join(self._staging_dir, 'handoff_%s.json' % (self._game_id or 'bg')),
+                rec)
+        except Exception:                                            # noqa: BLE001
+            pass
+
+    def drain_for_handoff(self, on_done, deadline_s=8.0):
+        """后台 → 本机交接：请求 Worker 退出，确认其释放所有权后再回调。
+
+        暂停态下 Worker 常驻等待 ``start``；这里发 ``quit`` 让它协作退出。
+        只有在“进程已退出 + owner 非 alive”后才 ``on_done(True, ...)``，
+        保证本机求解器启动时不会有第二个写者。
+        """
+        t0 = time.monotonic()
+        if self.state not in ('HANDOFF_PREPARE', 'BG_RUNNING', 'BG_PAUSING', 'BG_PAUSED',
+                              'BG_STOPPING'):
+            self._cleanup_worker()
+            on_done(True, 'already_idle')
+            return
+        if self.proc is not None and self.proc.poll() is None:
+            self._signal('quit')
+        else:
+            own.write_control(self._staging_dir, 'quit')
+
+        def poll():
+            proc_done = self.proc is None or self.proc.poll() is not None
+            st = own.owner_status(self._staging_dir).get('state')
+            if proc_done and st != 'alive':
+                self._cleanup_worker()
+                on_done(True, 'released')
+                return
+            if time.monotonic() - t0 >= deadline_s:
+                on_done(False, '等待后台 Worker 释放所有权超时（owner=%s，proc_done=%s）'
+                        % (st, proc_done))
+                return
+            QTimer.singleShot(60, poll)
+
+        QTimer.singleShot(0, poll)
+
+    def _build_snapshot(self, handoff_meta=None):
         model = self.win.model
-        game_id = time.strftime('%Y%m%d_%H%M%S_bg')
+        # 会话 id 必须唯一：跨模式连续交接可能在同一秒内发生两次
+        game_id = '%s_%03d_bg' % (time.strftime('%Y%m%d_%H%M%S'),
+                                  int(time.time() * 1000) % 1000)
         board = [row[:] for row in model.grid]
         snap = core.build_snapshot(
             board, int(model.score), int(getattr(model, 'best_score', model.score)),
@@ -335,6 +452,9 @@ class BackgroundController(QObject):
             self.win.solver_strategy.currentData(),
             self.win.solver_depth.currentData(),
             self.win.solver_mode.currentData())
+        if handoff_meta:
+            # 快照内显式记录交接来源（可审计的前后会话关系；不参与规则计算）
+            snap['handoff'] = dict(handoff_meta)
         # 交接基准：正式历史回放必须从此处的棋盘 + 全局 RNG 逐步重放（等价于正常对局）。
         self._handoff_rng_json = snap['rng_state']
         self._fresh_handoff = True
@@ -826,6 +946,26 @@ class BackgroundController(QObject):
                        msg.get('engine_used'), msg.get('report_reason'),
                        ck.get('steps'), ck.get('revision')))
         elif kind == 'final':
+            # 已被收尾/交接放弃的会话：迟到终态一律丢弃（不得二次采纳官方棋盘/历史）
+            if self._final_seen and self.state in ('GUI_IDLE', 'BG_COMPLETED', 'BG_ERROR'):
+                try:
+                    fn = getattr(self.win, '_log_step', None)
+                    if callable(fn):
+                        fn('[后台] 已丢弃已收尾会话的迟到终态（state=%s）' % self.state)
+                except Exception:                                    # noqa: BLE001
+                    pass
+                return
+            # 跨模式交接后旧 Worker 的迟到终态一律丢弃（不得二次采纳官方棋盘/历史）
+            gid = (msg.get('snapshot') or {}).get('game_id')
+            if gid and self._game_id and gid != self._game_id:
+                try:
+                    fn = getattr(self.win, '_log_step', None)
+                    if callable(fn):
+                        fn('[后台] 已丢弃旧会话迟到终态（session=%s ≠ %s）'
+                           % (gid, self._game_id))
+                except Exception:                                    # noqa: BLE001
+                    pass
+                return
             self._final_seen = True
             self._last_result = msg
             self._mark('GUI_FINAL_RECEIVED', status=msg.get('status'),

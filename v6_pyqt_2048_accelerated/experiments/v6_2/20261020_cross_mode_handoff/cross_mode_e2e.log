@@ -1,0 +1,62 @@
+[05:47:12] WATCH 正式 game_id 变化：20261020_054711_385119 -> 20261020_054712_553753（score=628 over=False）
+[05:47:12] PASS setup — 初始最高分=62188 当前分=628 game=20261020_054712_553753
+[05:47:14] PASS A1_standard_running — 标准本机求解真实运行（steps=2 job=1）
+[05:47:14] TRACE on_run_primary(active=standard speed=standard) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 232, in main
+    win._v6_on_run_primary()                      # 运行中 → 暂停
+[05:47:14] PASS A2_standard_paused — 已暂停：标准模式已暂停，步=2，job=1
+[05:47:14] PASS B1_selection_recorded — 选项卡=fast，执行=standard，按钮=切换至快速模式并继续
+[05:47:15] 截图 p1_standard_paused_selected_fast.png ok=True
+[05:47:15] TRACE on_run_primary(active=standard speed=standard) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 250, in main
+    win._v6_on_run_primary()
+[05:47:15] PASS B2_fast_running_after_handoff — 快速本机求解继续：步 2→5，job=2，anim_off=True
+[05:47:15] PASS B3_preserved — 最高分=62188（>=62188），game=20261020_054712_553753 未变
+[05:47:16] 截图 p2_fast_running_after_handoff.png ok=True
+[05:47:16] TRACE on_run_primary(active=fast speed=fast) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 261, in main
+    win._v6_on_run_primary()
+[05:47:16] PASS C1_fast_paused — 快速模式已暂停
+[05:47:16] PASS C2_bg_selection — 按钮=切换至后台求解模式并继续
+[05:47:16] 截图 p3_fast_paused_selected_background.png ok=True
+[05:47:16] TRACE on_run_primary(active=fast speed=fast) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 272, in main
+    win._v6_on_run_primary()
+[05:47:16] TRACE ctl.start(snapshot=True) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 272, in main
+    win._v6_on_run_primary() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 211, in _primary
+    return _orig_primary() | File "e:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\v6_speed.py", line 604, in _v6_on_run_primary
+    self._v6_begin_handoff(active, target) | File "e:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\v6_speed.py", line 627, in _v6_begin_handoff
+    self._v6_handoff_local_to_background(src, dst) | File "e:\PyQt5_demo\2048\v6_pyqt_2048_accelerated\v6_speed.py", line 672, in _v6_handoff_local_to_background
+    if not ctl.start(snapshot=snap, handoff_meta=meta):
+[05:47:16] PASS C3_worker_took_over — Worker state=BG_RUNNING pid=37776 session=20261020_054716_567_bg active=background
+[05:47:16] PASS C4_ownership — owner=alive pid=37776
+[05:47:17] PASS C5_background_200_steps — 后台真实步数=217 分数=3804 最大=256 后端=reference 引擎=reference
+[05:47:17] PASS C6_background_progress_monotonic — 后台分数 3804 >= 交接前 668
+[05:47:18] 截图 p4_background_running_200plus.png ok=True
+[05:47:18] TRACE on_run_primary(active=background speed=background) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 293, in main
+    win._v6_on_run_primary()                      # 后台运行 → 暂停
+[05:47:18] PASS C7_background_paused_adopted — 暂停后官方棋盘/分数与 Worker 终态一致（rev=319 steps=319）
+[05:47:18] PASS C8_paused_rng_identical — 暂停点全局 RNG 与 Worker 精确一致（version=3）
+[05:47:18] PASS C9_best_not_regressed — 最高分=62188，正式 game=20261020_054712_553753
+[05:47:19] 截图 p5_background_paused.png ok=True
+[05:47:19] PASS D1_bg_selection — 按钮=切换至标准模式并继续
+[05:47:19] 截图 p6_background_paused_selected_standard.png ok=True
+[05:47:19] TRACE on_run_primary(active=background speed=background) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 325, in main
+    win._v6_on_run_primary()
+[05:47:19] PASS D2_local_took_over — active=standard running=True worker_pid=37776 exited=True owner=absent
+[05:47:19] PASS D3_preserved_after_bg — 最高分 62188→62188，game=20261020_054712_553753，撤销栈 329→329
+[05:47:20] 截图 p7_standard_running_after_background.png ok=True
+[05:47:20] TRACE on_run_primary(active=standard speed=standard) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 341, in main
+    win._v6_on_run_primary()
+[05:47:20] TRACE on_run_primary(active=standard speed=standard) <- File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 392, in <module>
+    rc = main() | File "C:\Users\MSIPC\AppData\Local\Temp\v6_cross_mode_probe.py", line 344, in main
+    win._v6_on_run_primary()
+[05:48:20] PASS E1_fast_200_local_steps — 快速本机连续求解 200 步：0→200（job=4）
+[05:48:20] PASS E2_best_monotonic — 最高分=62188 game=20261020_054712_553753
+[05:48:20] 截图 p8_fast_running_200_steps.png ok=True
+[05:48:21] PASS E3_stopped — 停止后 active=None running=False
+[05:48:21] PASS E4_total_over_400 — 后台 217 步 + 本机 202 步 = 419（累计>=400）

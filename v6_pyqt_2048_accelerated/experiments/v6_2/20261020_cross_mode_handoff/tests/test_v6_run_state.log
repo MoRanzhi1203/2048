@@ -1,0 +1,11 @@
+﻿python.exe : ..........
+At line:15 char:3699
++ ... ERSITE='1'; & 'E:\anaconda3\envs\2048\python.exe' -m unittest test_v6 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (..........:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+----------------------------------------------------------------------
+Ran 10 tests in 3.818s
+
+OK
