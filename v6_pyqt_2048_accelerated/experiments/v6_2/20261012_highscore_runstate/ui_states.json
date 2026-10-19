@@ -1,0 +1,126 @@
+{
+  "shots": [
+    {
+      "name": "hs_best_retention.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    },
+    {
+      "name": "hs_standard_running.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    },
+    {
+      "name": "hs_standard_paused.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    },
+    {
+      "name": "hs_fast_running.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    },
+    {
+      "name": "hs_bg_running_selected_fast.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    },
+    {
+      "name": "hs_bg_paused.png",
+      "ok": true,
+      "size": [
+        908,
+        759
+      ]
+    }
+  ],
+  "states": {
+    "best_retention": {
+      "score": "<div style='font-size:11px; color:#f5efe6;'>分数</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>5004</div>",
+      "best": "<div style='font-size:11px; color:#f5efe6;'>最高分</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>62188</div>",
+      "badge": "后台求解模式未运行",
+      "primary": "开始求解",
+      "primary_enabled": true,
+      "stop_visible": false,
+      "summary": [
+        "后台求解模式未运行",
+        "步骤 —　后端 —"
+      ]
+    },
+    "standard_running": {
+      "score": "<div style='font-size:11px; color:#f5efe6;'>分数</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>5004</div>",
+      "best": "<div style='font-size:11px; color:#f5efe6;'>最高分</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>62188</div>",
+      "badge": "标准模式运行中",
+      "primary": "暂停",
+      "primary_enabled": true,
+      "stop_visible": true,
+      "summary": [
+        "标准模式运行中　步 128　32.0 步/秒",
+        "耗时 4001 ms"
+      ]
+    },
+    "standard_paused": {
+      "score": "<div style='font-size:11px; color:#f5efe6;'>分数</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>5004</div>",
+      "best": "<div style='font-size:11px; color:#f5efe6;'>最高分</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>62188</div>",
+      "badge": "标准模式已暂停",
+      "primary": "继续",
+      "primary_enabled": true,
+      "stop_visible": true,
+      "summary": [
+        "标准模式已暂停　步 128",
+        "点「继续」从暂停点恢复（棋盘与 RNG 未变）"
+      ]
+    },
+    "fast_running": {
+      "score": "<div style='font-size:11px; color:#f5efe6;'>分数</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>5004</div>",
+      "best": "<div style='font-size:11px; color:#f5efe6;'>最高分</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>62188</div>",
+      "badge": "快速模式运行中",
+      "primary": "暂停",
+      "primary_enabled": true,
+      "stop_visible": true,
+      "summary": [
+        "快速模式运行中　步 300　149.9 步/秒",
+        "耗时 2002 ms"
+      ]
+    },
+    "bg_running_selected_fast": {
+      "score": "<div style='font-size:11px; color:#f5efe6;'>分数</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>188</div>",
+      "best": "<div style='font-size:11px; color:#f5efe6;'>最高分</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>62188</div>",
+      "badge": "后台求解模式运行中",
+      "primary": "暂停",
+      "primary_enabled": true,
+      "stop_visible": true,
+      "summary": [
+        "后台求解模式运行中　步 29　54.698 步/秒",
+        "当前执行：后台求解模式｜已选择：快速模式（未切换）"
+      ]
+    },
+    "bg_paused": {
+      "score": "<div style='font-size:11px; color:#f5efe6;'>分数</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>416</div>",
+      "best": "<div style='font-size:11px; color:#f5efe6;'>最高分</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>62188</div>",
+      "badge": "后台求解模式已暂停",
+      "primary": "继续",
+      "primary_enabled": true,
+      "stop_visible": true,
+      "summary": [
+        "后台求解模式已暂停　步 29",
+        "当前执行：后台求解模式｜已选择：快速模式（未切换）"
+      ]
+    }
+  }
+}

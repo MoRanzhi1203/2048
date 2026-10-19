@@ -27,7 +27,7 @@ import os
 import time
 from time import perf_counter
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QPushButton,
                              QVBoxLayout, QWidget)
 
@@ -174,6 +174,15 @@ class V6SpeedMixin:
         mode = prefs.get('run_mode')
         self._v6_speed = mode if mode in MODES else 'standard'
         self._v6_pending_tier = None
+        # 统一执行状态源（P2）：
+        #   _v6_speed         = 当前生效/已选择的运行方式（空闲时二者相同）
+        #   _v6_selected_mode = 运行中用户点选、但尚未生效的选项卡（非破坏性）
+        #   _v6_active_mode   = 真正在执行的模式（空闲为 None）
+        self._v6_selected_mode = None
+        self._v6_active_mode = None
+        self._v6_local_paused = False       # 标准/快速：已在安全步边界暂停
+        self._v6_local_pausing = False      # 已请求暂停、等待在途计算返回
+        self._v6_paused_result = None       # 暂停时保留的本步结果（恢复时优先使用）
         self._v6_t = {'search_ms': 0.0, 'anim_ms': 0.0, 'wait_ms': 0.0, 'render_ms': 0.0,
                       'steps': 0, 'start': perf_counter(), 'req_t0': None, 'anim_t0': None,
                       'wait_t0': None, 'metrics_steps': 0}
@@ -347,17 +356,21 @@ class V6SpeedMixin:
     def _v6_on_speed_clicked(self, key):
         if key not in TIERS:
             return
-        if getattr(self, '_solver_running', False):
-            # 运行中：不立即生效，标记为“下一步边界生效”，避免打断在途动画/求解
-            self._v6_pending_tier = key
+        if self._v6_session_active():
+            # 选项卡切换**非破坏性**：只记录“已选择”，绝不暂停/停止/重启活动任务。
+            # 真正切换必须等用户显式暂停或停止后，在新的安全边界完成交接。
+            self._v6_selected_mode = key
             self._v6_update_timing_label()
-        else:
-            self._v6_apply_tier(key)
+            self._v6_sync_run_controls()
+            return
+        self._v6_selected_mode = None
+        self._v6_apply_tier(key)
 
     def _v6_apply_tier(self, tier, persist=True):
         if tier not in MODES:
             tier = 'standard'
         self._v6_speed = tier
+        self._v6_selected_mode = None
         p = MODE_PARAMS[tier]
         self._v5gui.STEP_DELAY_MS = int(p['step_delay_ms'])   # 进程内生效，不改源码文件
         self._v6_anim_off = bool(p['anim_off'])
@@ -439,8 +452,9 @@ class V6SpeedMixin:
                     pass
 
     def _v6_apply_pending_tier(self):
+        """仅在没有活动会话时落实挂起档位；活动期间绝不隐式切换执行模式。"""
         pending = self._v6_pending_tier
-        if pending:
+        if pending and not self._v6_session_active():
             self._v6_pending_tier = None
             self._v6_apply_tier(pending)
 
@@ -453,13 +467,81 @@ class V6SpeedMixin:
 
     # ---------------------------------------------------------- 运行控制：唯一状态源
     def _v6_bg(self):
-        """仅当运行方式为后台时返回后台控制器（否则 None）。"""
+        """活动执行模式为后台（或空闲且选择后台）时返回后台控制器。"""
+        active = getattr(self, '_v6_active_mode', None)
+        if active is not None:
+            return getattr(self, '_v6_bg_controller', None) if active == 'background' else None
         if getattr(self, '_v6_speed', 'standard') != 'background':
             return None
         return getattr(self, '_v6_bg_controller', None)
 
+    def _v6_session_active(self):
+        """是否存在**真实执行中**的求解会话（本机线程或后台 Worker）。"""
+        if getattr(self, '_v6_active_mode', None) is not None:
+            return True
+        if getattr(self, '_solver_running', False):
+            return True
+        ctl = getattr(self, '_v6_bg_controller', None)
+        try:
+            return bool(ctl is not None and ctl.is_active())
+        except Exception:                                            # noqa: BLE001
+            return False
+
+    def _v6_active_label(self):
+        """当前**执行**模式的限定文案（不是选项卡）。"""
+        mode = getattr(self, '_v6_active_mode', None) or getattr(self, '_v6_speed', 'standard')
+        return {'standard': '标准模式', 'fast': '快速模式',
+                'background': '后台求解模式'}.get(mode, '标准模式')
+
+    # ------------------------------------------------ 标准/快速：安全步边界暂停
+    def _v6_start_local(self):
+        """统一入口启动本机求解（标准/快速）。"""
+        self._v6_active_mode = self._v6_speed
+        self._v6_local_paused = False
+        self._v6_local_pausing = False
+        self._v6_paused_result = None
+        self._start_solver()                       # V6 覆盖：落实挂起档位 + 重置计时
+        if not getattr(self, '_solver_running', False):
+            self._v6_active_mode = None
+        self._v6_sync_run_controls()
+
+    def _v6_request_local_pause(self):
+        """请求在**安全步边界**暂停：不打断在途计算，不落子、不生成随机方块。"""
+        if not getattr(self, '_solver_running', False) or getattr(self, '_v6_local_paused', False):
+            return
+        self._v6_local_pausing = True
+        if not getattr(self, '_solve_in_flight', False):
+            # 当前没有在途计算：立即进入暂停态（下一步不会再被请求）
+            self._v6_local_pausing = False
+            self._v6_local_paused = True
+        self._v6_sync_run_controls()
+
+    def _v6_resume_local(self):
+        if not getattr(self, '_solver_running', False):
+            return
+        self._v6_local_paused = False
+        held = getattr(self, '_v6_paused_result', None)
+        self._v6_paused_result = None
+        if held:
+            job_id, result, sig = held
+            if (job_id == getattr(self, '_job_id', None)
+                    and (sig is None or sig == self._board_signature(self.model.grid))):
+                # 暂停期间棋盘未变：直接使用暂停时保留的本步结果，避免重复计算/重复落子
+                super()._on_solver_result(job_id, result)
+                self._v6_sync_run_controls()
+                return
+        self._request_decision()
+        self._v6_sync_run_controls()
+
+    def _v6_stop_local(self, reason='用户停止'):
+        self._v6_local_paused = False
+        self._v6_local_pausing = False
+        self._v6_paused_result = None
+        super()._stop_solver(reason)
+        self._v6_active_mode = None
+
     def _v6_on_run_primary(self):
-        """统一主按钮：标准/快速复用 V5 开始-停止；后台按状态 start/pause/resume。"""
+        """唯一主按钮：开始 / 暂停 / 继续（三模式共用同一状态机）。"""
         ctl = self._v6_bg()
         if ctl is not None:
             st = getattr(ctl, 'state', 'GUI_IDLE')
@@ -473,15 +555,23 @@ class V6SpeedMixin:
             finally:
                 self._v6_sync_run_controls()
             return
-        self.on_solver_clicked()          # 复用既有算法求解入口（开始/停止）
-        self._v6_sync_run_controls()
+        if not getattr(self, '_solver_running', False):
+            self._v6_start_local()
+        elif getattr(self, '_v6_local_paused', False):
+            self._v6_resume_local()
+        else:
+            self._v6_request_local_pause()
 
     def _v6_on_run_stop(self):
-        """统一停止按钮（仅后台需要；标准/快速由主按钮切换为“停止”）。"""
+        """唯一停止按钮（三模式共用）。"""
         ctl = self._v6_bg()
         if ctl is not None:
             ctl.stop()
             self._v6_sync_run_controls()
+            return
+        if getattr(self, '_solver_running', False):
+            self._v6_stop_local('用户停止')
+        self._v6_sync_run_controls()
 
     def _update_solver_buttons(self):
         """V5 更新旧按钮文案后，同步统一控制按钮（避免两套状态不一致）。"""
@@ -508,7 +598,7 @@ class V6SpeedMixin:
             ' padding:2px 9px; font-size:10px; font-weight:bold;' % (bg, fg, bd))
 
     def _v6_sync_run_controls(self):
-        """按“运行方式 + 运行状态”刷新唯一一套控制按钮（信号只连接一次）。"""
+        """唯一控制矩阵：三模式共用 开始/暂停/继续 + 停止，状态文案带模式限定。"""
         primary = getattr(self, 'v6_run_primary', None)
         if primary is None:
             return
@@ -517,41 +607,75 @@ class V6SpeedMixin:
         if ctl is not None:
             st = getattr(ctl, 'state', 'GUI_IDLE')
             text, enabled = '开始求解', True
-            badge = ('idle', '未运行')
+            badge = ('idle', '后台求解模式未运行')
+            show_stop = st in ('HANDOFF_PREPARE', 'BG_RUNNING', 'BG_PAUSING',
+                               'BG_PAUSED', 'BG_STOPPING')
             if st == 'HANDOFF_PREPARE':
-                text, enabled, badge = '开始中…', False, ('stopping', '开始中')
+                text, enabled, badge = '开始中…', False, ('stopping', '后台求解模式启动中')
             elif st == 'BG_RUNNING':
-                text, badge = '暂停', ('running', '运行中')
+                text, badge = '暂停', ('running', '后台求解模式运行中')
             elif st == 'BG_PAUSING':
-                text, enabled, badge = '暂停中…', False, ('stopping', '暂停中')
+                text, enabled, badge = '正在暂停…', False, ('stopping', '后台求解模式正在暂停')
             elif st == 'BG_PAUSED':
-                text, badge = '继续', ('paused', '已暂停')
+                text, badge = '继续', ('paused', '后台求解模式已暂停')
             elif st == 'BG_STOPPING':
-                text, enabled, badge = '正在停止', False, ('stopping', '正在停止')
+                text, enabled, badge = '正在停止', False, ('stopping', '后台求解模式正在停止')
             elif st == 'BG_ERROR':
-                badge = ('error', '出错')
+                badge = ('error', '后台求解模式出错')
             else:
                 lr = getattr(ctl, '_last_result', None) or {}
                 lst = lr.get('status')
                 if lst == 'stopped':
-                    badge = ('idle', '已停止')
+                    badge = ('idle', '后台求解模式已停止')
                 elif lst in ('completed', 'game_over'):
-                    badge = ('idle', '已结束')
+                    badge = ('idle', '后台求解模式已结束')
             primary.setText(text)
             primary.setEnabled(enabled)
             self._v6_set_badge(*badge)
             if stop is not None:
-                stop.setVisible(True)
+                stop.setVisible(show_stop)
                 stop.setEnabled(st in ('BG_RUNNING', 'BG_PAUSED'))
+            if st in ('GUI_IDLE', 'BG_COMPLETED', 'BG_ERROR'):
+                self._v6_active_mode = None
+                self._v6_apply_selected_if_idle()
         else:
             running = bool(getattr(self, '_solver_running', False))
-            primary.setText('停止' if running else '开始求解')
-            primary.setEnabled(True)
-            self._v6_set_badge('running' if running else 'idle',
-                               '运行中' if running else '未运行')
+            paused = bool(getattr(self, '_v6_local_paused', False))
+            pausing = bool(getattr(self, '_v6_local_pausing', False))
+            if running:
+                if not getattr(self, '_v6_active_mode', None):
+                    self._v6_active_mode = self._v6_speed
+                mode = self._v6_active_label()
+                if paused:
+                    primary.setText('继续')
+                    self._v6_set_badge('paused', '%s已暂停' % mode)
+                elif pausing:
+                    primary.setText('正在暂停…')
+                    self._v6_set_badge('stopping', '%s正在暂停' % mode)
+                else:
+                    primary.setText('暂停')
+                    self._v6_set_badge('running', '%s运行中' % mode)
+                primary.setEnabled(not pausing)
+            else:
+                self._v6_active_mode = None
+                primary.setText('开始求解')
+                primary.setEnabled(True)
+                self._v6_set_badge('idle', '%s未运行' % self._v6_active_label())
             if stop is not None:
-                stop.setVisible(False)
+                stop.setVisible(bool(running))
+                stop.setEnabled(bool(running))
+            if not running:
+                self._v6_apply_selected_if_idle()
         self._v6_update_timing_label()
+
+    def _v6_apply_selected_if_idle(self):
+        """运行中选中的选项卡在会话结束后做一次安全交接（仅空闲时生效）。"""
+        sel = getattr(self, '_v6_selected_mode', None)
+        if not sel or sel == getattr(self, '_v6_speed', None):
+            self._v6_selected_mode = None
+            return
+        self._v6_selected_mode = None
+        QTimer.singleShot(0, lambda k=sel: self._v6_apply_tier(k))
 
     # ---------------------------------------------------------- 紧凑性能摘要（P3）
     def _v6_update_timing_label(self):
@@ -563,21 +687,25 @@ class V6SpeedMixin:
         if lbl is None:
             return
         t = getattr(self, '_v6_t', None) or {}
-        mode_name = dict((k, text) for text, k in TIER_LABELS).get(
-            getattr(self, '_v6_speed', 'standard'), '')
+        sel = getattr(self, '_v6_selected_mode', None)
+        sel_label = {'standard': '标准模式', 'fast': '快速模式',
+                     'background': '后台求解模式'}.get(sel or '', '')
         ctl = self._v6_bg()
         if ctl is not None:
             st = getattr(ctl, 'state', 'GUI_IDLE')
             p = getattr(ctl, '_last_progress', None) or {}
             if st == 'BG_RUNNING':
-                line1 = '步 %s　%s 步/秒' % (p.get('steps', '—'), p.get('steps_per_s', '—'))
+                line1 = '后台求解模式运行中　步 %s　%s 步/秒' % (
+                    p.get('steps', '—'), p.get('steps_per_s', '—'))
                 line2 = '分数 %s　最大 %s　后端 %s' % (
                     p.get('score', '—'), p.get('max_tile', '—'), p.get('backend_used') or '—')
             elif st == 'BG_PAUSED':
-                line1 = '步 %s　分数 %s' % (p.get('steps', '—'), p.get('score', '—'))
-                line2 = '最大 %s　继续后从精确 RNG 恢复' % p.get('max_tile', '—')
+                line1 = '后台求解模式已暂停　步 %s' % p.get('steps', '—')
+                line2 = '分数 %s　最大 %s　继续后从精确 RNG 恢复' % (
+                    p.get('score', '—'), p.get('max_tile', '—'))
             elif st in ('BG_PAUSING', 'BG_STOPPING'):
-                line1, line2 = '等待 Worker 提交最终状态…', '界面保持可操作，请稍候'
+                line1 = '后台求解模式%s…' % ('正在暂停' if st == 'BG_PAUSING' else '正在停止')
+                line2 = '等待 Worker 提交最终状态，界面保持可操作'
             else:
                 # 未运行：若已有上一段后台结果，则显示“上次”并与下方 solver_status 一致
                 lr = getattr(ctl, '_last_result', None) or {}
@@ -593,24 +721,38 @@ class V6SpeedMixin:
                         '已结束' if lr.get('status') in ('completed', 'game_over') else '已停止',
                         mt2 if mt2 is not None else '—')
                 else:
-                    line1, line2 = '步骤 —　— 步/秒', '分数 —　最大 —　后端 —'
+                    line1, line2 = '后台求解模式未运行', '步骤 —　后端 —'
+            if sel_label:
+                line2 = '当前执行：后台求解模式｜已选择：%s（未切换）' % sel_label
             lbl.setText(line1 + '\n' + line2)
             lbl.setToolTip('后台指标来自 Worker 最新回传（固定 500ms 一帧）。')
             return
         running = bool(getattr(self, '_solver_running', False))
+        paused = bool(getattr(self, '_v6_local_paused', False))
+        pausing = bool(getattr(self, '_v6_local_pausing', False))
+        mode = ({'standard': '标准模式', 'fast': '快速模式'}.get(self._v6_speed, '标准模式')
+                if not running else self._v6_active_label())
         steps = int(t.get('steps', 0))
         total = ((perf_counter() - t.get('start', perf_counter())) * 1000.0
                  if running else 0.0)
-        if not running and steps == 0:
-            lbl.setText('步骤 —　— 步/秒\n耗时 —　%s求解' % mode_name)
-            lbl.setToolTip('未运行。')
-            return
-        if not running:
-            lbl.setText('上次 %d 步　当前未计时\n%s求解' % (steps, mode_name))
-        else:
+        if running and paused:
+            line1 = '%s已暂停　步 %d' % (mode, steps)
+            line2 = '点「继续」从暂停点恢复（棋盘与 RNG 未变）'
+        elif running and pausing:
+            line1 = '%s正在暂停…' % mode
+            line2 = '等待当前计算在安全步边界返回'
+        elif running:
             sps = (steps / (total / 1000.0)) if total > 0 else 0.0
-            lbl.setText('步 %d　%.1f 步/秒\n耗时 %.0f ms　%s求解'
-                        % (steps, sps, total, mode_name))
+            line1 = '%s运行中　步 %d　%.1f 步/秒' % (mode, steps, sps)
+            line2 = '耗时 %.0f ms' % total
+        elif steps > 0:
+            line1 = '上次 %d 步　当前未计时' % steps
+            line2 = '%s未运行' % mode
+        else:
+            line1, line2 = '%s未运行' % mode, '步骤 —　耗时 —'
+        if sel_label:
+            line2 = '当前执行：%s｜已选择：%s（未切换）' % (mode, sel_label)
+        lbl.setText(line1 + '\n' + line2)
         lbl.setToolTip('分段累计(ms)  搜索 %.0f | 动画 %.0f | 等待 %.0f | 渲染 %.0f\n'
                        '步数 %d  总耗时 %.1f ms  平均 %.1f ms/步'
                        % (t.get('search_ms', 0), t.get('anim_ms', 0), t.get('wait_ms', 0),
@@ -640,7 +782,7 @@ class V6SpeedMixin:
         lag = p.get('render_age_ms')
         try:
             self._set_status(
-                '状态：<b>后台求解中</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+                '状态：<b>后台求解模式运行中</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
                     steps if steps is not None else '—',
                     score if score is not None else '—'),
                 '最大瓦片 <b>%s</b>　%s 步/秒　引擎 <b>%s</b> / %s　rev %s　同步延迟 %sms' % (
@@ -677,20 +819,20 @@ class V6SpeedMixin:
         mt = max((max(r) for r in grid), default=None) if grid else None
         status = msg.get('status')
         if st == 'BG_PAUSED':
-            head = '状态：<b>已暂停</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+            head = '状态：<b>后台求解模式已暂停</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
                 steps if steps is not None else '—', score if score is not None else '—')
             tail = '可点「继续」从精确 RNG 状态恢复；最大瓦片 <b>%s</b>' % (
                 mt if mt is not None else '—')
             action = '已暂停'
         elif status in ('game_over', 'completed'):
-            head = '状态：<b>后台求解结束</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+            head = '状态：<b>后台求解模式已结束</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
                 steps if steps is not None else '—', score if score is not None else '—')
             tail = '最终棋盘已同步；最大瓦片 <b>%s</b>' % (mt if mt is not None else '—')
             action = '已结束'
         elif status == 'error':
-            head, tail, action = '状态：<b>后台求解出错</b>', (msg.get('reason') or ''), '出错'
+            head, tail, action = '状态：<b>后台求解模式出错</b>', (msg.get('reason') or ''), '出错'
         else:
-            head = '状态：<b>后台求解已停止</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
+            head = '状态：<b>后台求解模式已停止</b>　步数 <b>%s</b>　分数 <b>%s</b>' % (
                 steps if steps is not None else '—', score if score is not None else '—')
             tail = '最终棋盘已同步；最大瓦片 <b>%s</b>' % (mt if mt is not None else '—')
             action = '已停止'
@@ -704,12 +846,17 @@ class V6SpeedMixin:
         self._set_metric('score', score if score is not None else '—')
         self._set_metric('max_tile', mt if mt is not None else '—')
         self._set_metric('elapsed', '—')
+        if st in ('GUI_IDLE', 'BG_COMPLETED', 'BG_ERROR'):
+            self._v6_active_mode = None
         self._v6_sync_run_controls()
         self._v6_bg_log('[后台] %s · 步 %s · 分数 %s' % (action, steps, score),
                         key=('final', status, steps))
 
     # ---------------------------------------------------------- 挂钩：搜索
     def _request_decision(self):
+        # 标准/快速：已暂停则不再请求下一步（安全步边界，不打断在途计算）
+        if getattr(self, '_v6_local_paused', False) and getattr(self, '_solver_running', False):
+            return
         t = getattr(self, '_v6_t', None)
         if t is None:
             return super()._request_decision()
@@ -726,6 +873,18 @@ class V6SpeedMixin:
         if t is not None and t['req_t0'] is not None:
             t['search_ms'] += (perf_counter() - t['req_t0']) * 1000.0
             t['req_t0'] = None
+        # 暂停请求已发出：收尾在途标志并**暂存**本步结果，不落子（恢复时优先复用它）
+        if (getattr(self, '_v6_local_pausing', False)
+                and getattr(self, '_solver_running', False)
+                and job_id == getattr(self, '_job_id', None)):
+            self._solve_in_flight = False
+            self.solver_progress.setRange(0, 100)
+            self.solver_progress.setValue(0)
+            self._v6_paused_result = (job_id, result, getattr(self, '_board_sig', None))
+            self._v6_local_pausing = False
+            self._v6_local_paused = True
+            self._v6_sync_run_controls()
+            return
         super()._on_solver_result(job_id, result)
 
     # ---------------------------------------------------------- 挂钩：渲染

@@ -224,6 +224,13 @@ class BackgroundController(QObject):
         self.state = new_state
         if self.panel is not None:
             self.panel._sync_buttons(new_state)
+        # 统一可见控制区的唯一状态源：任何后台状态迁移都同步一次
+        try:
+            fn = getattr(self.win, '_v6_sync_run_controls', None)
+            if callable(fn):
+                fn()
+        except Exception:                                            # noqa: BLE001
+            pass
         return True
 
     def _show(self, text, kind='info'):
@@ -268,7 +275,9 @@ class BackgroundController(QObject):
             cta.setEnabled(not want_bg)
             cta.setToolTip('“后台求解”运行方式下请使用下方后台按钮'
                            if want_bg else '开始求解')
-        if not want_bg and self.state in ('BG_RUNNING', 'BG_PAUSED', 'HANDOFF_PREPARE'):
+        # 仅在没有活动会话时允许“切走=停止”；活动期间的选项卡切换必须是非破坏性的
+        if (not want_bg and self.state in ('BG_RUNNING', 'BG_PAUSED', 'HANDOFF_PREPARE')
+                and getattr(self.win, '_v6_active_mode', None) is None):
             self.stop()
 
     def is_active(self):
@@ -313,6 +322,7 @@ class BackgroundController(QObject):
             self._transition('BG_ERROR')
             return
         self._transition('BG_RUNNING')
+        self.win._v6_active_mode = 'background'
         self._show('后台求解已启动（pid=%s）；进度低频刷新。' % self.proc.pid)
 
     def _build_snapshot(self):
@@ -500,6 +510,9 @@ class BackgroundController(QObject):
             self._reconnected = True
             self._game_id = rec.get('session_id')
             self.state = 'BG_RUNNING'
+            # 启动期重连：活动执行模式以 Worker 为准（选项卡同步为后台）
+            self.win._v6_active_mode = 'background'
+            self.win._v6_speed = 'background'
             self.panel._sync_buttons('BG_RUNNING')
             self._show('已重连活动中的后台求解：pid=%s，session=%s，心跳 %ss 前\n'
                        '（GUI 重启后无管道；可“停止”以协作结束）'
@@ -595,6 +608,7 @@ class BackgroundController(QObject):
             return
         if not self._transition('BG_RUNNING'):
             return
+        self.win._v6_active_mode = 'background'
         # 继续**同一局**：revision 继续单调（不清零），新回传段从暂停点接管。
         # 关键修复：暂停时已置 `_final_seen=True`；若不清除，恢复后的所有 progress 都会被
         # 当作“终态后迟到帧”丢弃，表现为“继续后不再回传”。同时重置方向游标/交接基准，
@@ -645,8 +659,11 @@ class BackgroundController(QObject):
             bv.render([list(r) for r in board])
         try:
             self.win._render_score(self.win.score_label, '分数', msg.get('score'))
+            # 最高分只来自权威持久化存储（model.best_score）：
+            # 绝不能用 Worker 快照里的 best_score/score 覆盖，否则会把“当前分数”
+            # 显示成“历史最高分”（P0 已复现：快照 best==score==5004）。
             self.win._render_score(self.win.best_label, '最高分',
-                                   msg.get('best_score', msg.get('score')))
+                                   int(getattr(self.win.model, 'best_score', 0)))
         except Exception:                                            # noqa: BLE001
             pass
         self._last_render_step = msg.get('step')
@@ -856,6 +873,7 @@ class BackgroundController(QObject):
 
     def _finish_to_idle(self, text):
         self._transition('GUI_IDLE')
+        self.win._v6_active_mode = None
         self._cleanup_worker()
         self._show(text)
 

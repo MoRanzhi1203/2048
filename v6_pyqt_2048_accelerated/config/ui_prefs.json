@@ -1,6 +1,6 @@
 {
-  "updated_at": "2026-10-19 23:57:08",
-  "run_mode": "background",
+  "updated_at": "2026-10-20 05:11:37",
+  "run_mode": "standard",
   "run_mode_migrated_from": null,
   "run_mode_migration_reason": "缺少历史运行方式 -> standard",
   "modes_version": 3,

@@ -1,0 +1,19 @@
+{
+  "steps_at_capture": 271,
+  "state_before_stop": "BG_RUNNING",
+  "badge": "后台求解模式运行中",
+  "summary": [
+    "后台求解模式运行中　步 271　48.238 步/秒",
+    "分数 4228　最大 512　后端 cpp"
+  ],
+  "best_label_score": 62188,
+  "shot_ok": true,
+  "state_after_stop": "GUI_IDLE",
+  "model_score": 4392,
+  "model_best": 62188,
+  "best_label": "<div style='font-size:11px; color:#f5efe6;'>最高分</div><div style='font-size:24px; color:#ffffff; font-weight:bold;'>62188</div>",
+  "best_file": 62188,
+  "undo_depth": 281,
+  "history_rows": 563,
+  "stray_worker": false
+}

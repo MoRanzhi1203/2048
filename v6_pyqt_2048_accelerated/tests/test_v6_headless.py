@@ -343,16 +343,26 @@ class BackgroundHistoryEquivalenceTest(unittest.TestCase):
             self.win._v6_apply_tier('standard', persist=False)
 
     def test_standard_primary_reflects_solver_state(self):
-        """标准/快速：主按钮随 _solver_running 在“开始求解/停止”之间切换，停止按钮隐藏。"""
+        """标准/快速：统一主按钮随状态在 开始求解/暂停/继续 间切换，停止按钮独立。"""
         win = self.win
         win._v6_apply_tier('standard', persist=False)
         win._solver_running = False
+        win._v6_local_paused = False
+        win._v6_local_pausing = False
         win._v6_sync_run_controls()
         self.assertEqual(win.v6_run_primary.text(), '开始求解')
-        self.assertTrue(win.v6_run_stop.isHidden(), '标准模式不应显示独立停止按钮')
+        self.assertTrue(win.v6_run_stop.isHidden(), '空闲时不应显示停止按钮')
+        self.assertIn('标准模式未运行', win.v6_run_badge.text())
         win._solver_running = True
         win._v6_sync_run_controls()
-        self.assertEqual(win.v6_run_primary.text(), '停止')
+        self.assertEqual(win.v6_run_primary.text(), '暂停')
+        self.assertFalse(win.v6_run_stop.isHidden())
+        self.assertIn('标准模式运行中', win.v6_run_badge.text())
+        win._v6_local_paused = True
+        win._v6_sync_run_controls()
+        self.assertEqual(win.v6_run_primary.text(), '继续')
+        self.assertIn('标准模式已暂停', win.v6_run_badge.text())
+        win._v6_local_paused = False
         win._solver_running = False
         win._v6_sync_run_controls()
         self.assertEqual(win.v6_run_primary.text(), '开始求解')
