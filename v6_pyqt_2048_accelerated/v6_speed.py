@@ -51,7 +51,7 @@ MODE_PARAMS = {
                    'particles_off': True,  'flow': False},
 }
 
-PREFS_VERSION = 3                       # ui_prefs 模式版本（运行方式三档 + 固定 1000ms 回传）
+PREFS_VERSION = 3                       # ui_prefs 模式版本（运行方式三档 + 固定 500ms 回传）
 _LEGACY_MODE_MAP = {                    # 旧 speed_tier -> 新 run_mode（一次性、幂等）
     'standard': 'standard',
     'extreme': 'fast',                  # 旧“极限性能”（无动画）＝新“快速”

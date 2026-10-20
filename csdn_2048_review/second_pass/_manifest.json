@@ -1,0 +1,82 @@
+[
+  {
+    "path": "01_incremental_issue_ledger.md",
+    "size": 5587,
+    "sha256": "e2e8de05a18767dc3bfeec40d82923140f2fe760ed207149c197401c20ba15c6"
+  },
+  {
+    "path": "02_article_by_article_changes.md",
+    "size": 6055,
+    "sha256": "112a027778ef894ffd190ed1d937ff0d36ca2e2b29886fbd42d6972e6355aac9"
+  },
+  {
+    "path": "03_technical_consistency_check.md",
+    "size": 5096,
+    "sha256": "b99c233c229ad5e893e078d194da6712f3b25b5482ee629c761adf8050a8af7a"
+  },
+  {
+    "path": "04_csdn_publication_checklist.md",
+    "size": 5879,
+    "sha256": "406660c47a8c385646463c568ac5136d3bf89980d3e8df9e9bc36accaac05562"
+  },
+  {
+    "path": "05_final_review_gates.md",
+    "size": 6025,
+    "sha256": "2c98cb004c1adb688c5235a508bd20dffa5855b5e51f4a1a1c85fa538f193674"
+  },
+  {
+    "path": "06_image_position_check.md",
+    "size": 4666,
+    "sha256": "4c1d568b7edbf7397af1bb666f3bb2518e6c40555c91c91b300770a16f7b0a95"
+  },
+  {
+    "path": "07_formula_typesetting_check.md",
+    "size": 4731,
+    "sha256": "b8a997f4f3b06c758f008cc617bbefadc02cbd8c549732a90aee31cddf7940d7"
+  },
+  {
+    "path": "articles/01_console_math.md",
+    "size": 20645,
+    "sha256": "8e03fa454e071cc823a64cb97070f75f16fbd8ff8cad2c11a60db715e344e241"
+  },
+  {
+    "path": "articles/02_history_recovery.md",
+    "size": 24035,
+    "sha256": "e1452217d620bbe40818fcd7418aaaa6efe448f98ed50d80ebb63a6b57c29b59"
+  },
+  {
+    "path": "articles/03_pyqt_mvc_undo.md",
+    "size": 23153,
+    "sha256": "cc23128f37915ee019e1930e25214cb42c0ef2fe72f5770ce14a71b7e2dc2d55"
+  },
+  {
+    "path": "articles/04_animation_render.md",
+    "size": 19764,
+    "sha256": "592170b5e88f21bb6139227f487c71073e5f1ce990c3dbb2bbb69179d385c422"
+  },
+  {
+    "path": "articles/05a_solver_algorithms.md",
+    "size": 37003,
+    "sha256": "85de51be0a5c3639d20d9fee81bcfee23c00260522e5b03a43596e439fb4bee9"
+  },
+  {
+    "path": "articles/05b_ai_workbench.md",
+    "size": 38936,
+    "sha256": "48d59d159c085f599b9bc44d8870510d7e4742776e3fb613ea7370ddd7d2d15d"
+  },
+  {
+    "path": "articles/06a_backends_benchmarks.md",
+    "size": 21913,
+    "sha256": "483df8c10a03643e44a96921108a60a6f1ba6e1cf1ef47dd613333e549eadd8b"
+  },
+  {
+    "path": "articles/06b_headless_process.md",
+    "size": 22525,
+    "sha256": "b2ff0823492d95327352448ddd87b1fbd09557a50d7e509e8a993e8c520e40c4"
+  },
+  {
+    "path": "articles/06c_cross_mode_handoff.md",
+    "size": 21835,
+    "sha256": "b48c6094637f1cc26fedc6da75129bce62e1477939bda5e50e4b36e0a49af691"
+  }
+]

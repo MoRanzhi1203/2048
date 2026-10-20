@@ -133,10 +133,10 @@ class ReportPolicyTest(unittest.TestCase):
         self.assertLess(time.perf_counter() - t0, 30)
 
     def test_time_policy_reports_first_step_bootstrap(self):
-        """时间策略：首步完成即回传一帧（缩短开始后的空窗），随后恢复 1000ms 节奏。"""
-        res, reports = self._run({'report_policy': {'mode': 'time', 'ms': 1000},
+        """时间策略：首步完成即回传一帧（缩短开始后的空窗），随后恢复 500ms 节奏。"""
+        res, reports = self._run({'report_policy': {'mode': 'time', 'ms': 500},
                                   'max_total_steps': 1, 'time_budget_s': None})
-        self.assertGreaterEqual(len(reports), 1, '首步应立即回传，而非等待满 1000ms')
+        self.assertGreaterEqual(len(reports), 1, '首步应立即回传，而非等待满 500ms')
         self.assertEqual(reports[0]['report_reason'], 'periodic_time')
 
     def test_no_periodic_report_after_pause_requested_mid_solve(self):
@@ -200,7 +200,7 @@ class ReportPolicyTest(unittest.TestCase):
                                    'r', 100, 'expectimax', 'fast')
         reports = []
         res = game_loop.run_session(
-            snap, {'report_policy': {'mode': 'time', 'ms': 1000},
+            snap, {'report_policy': {'mode': 'time', 'ms': 500},
                    'max_total_steps': None, 'time_budget_s': None},
             progress_cb=lambda p: reports.append(p) or True,
             solver_backend='cpp', pause=lambda: len(reports) >= 1)

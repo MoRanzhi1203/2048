@@ -1,0 +1,55 @@
+﻿PASS article: 01_console_math.md
+PASS article: 02_history_recovery.md
+PASS article: 03_pyqt_mvc_undo.md
+PASS article: 04_animation_render.md
+PASS article: 05a_solver_algorithms.md
+PASS article: 05b_ai_workbench.md
+PASS article: 06a_backends_benchmarks.md
+PASS article: 06b_headless_process.md
+PASS article: 06c_cross_mode_handoff.md
+PASS report: 01_incremental_issue_ledger.md
+PASS report: 02_article_by_article_changes.md
+PASS report: 03_technical_consistency_check.md
+PASS report: 04_csdn_publication_checklist.md
+PASS report: 05_final_review_gates.md
+PASS ASCII names in second_pass (bad=[])
+PASS ASCII names in articles (bad=[])
+PASS 01_console_math.md: one H1 (=1)
+PASS 01_console_math.md: fences even (=18)
+PASS 01_console_math.md: links/images exist (broken=[])
+PASS 02_history_recovery.md: one H1 (=1)
+PASS 02_history_recovery.md: fences even (=14)
+PASS 02_history_recovery.md: links/images exist (broken=[])
+PASS 03_pyqt_mvc_undo.md: one H1 (=1)
+PASS 03_pyqt_mvc_undo.md: fences even (=26)
+PASS 03_pyqt_mvc_undo.md: links/images exist (broken=[])
+PASS 04_animation_render.md: one H1 (=1)
+PASS 04_animation_render.md: fences even (=28)
+PASS 04_animation_render.md: links/images exist (broken=[])
+PASS 05a_solver_algorithms.md: one H1 (=1)
+PASS 05a_solver_algorithms.md: fences even (=40)
+PASS 05a_solver_algorithms.md: links/images exist (broken=[])
+PASS 05b_ai_workbench.md: one H1 (=1)
+PASS 05b_ai_workbench.md: fences even (=42)
+PASS 05b_ai_workbench.md: links/images exist (broken=[])
+PASS 06a_backends_benchmarks.md: one H1 (=1)
+PASS 06a_backends_benchmarks.md: fences even (=12)
+PASS 06a_backends_benchmarks.md: links/images exist (broken=[])
+PASS 06b_headless_process.md: one H1 (=1)
+PASS 06b_headless_process.md: fences even (=18)
+PASS 06b_headless_process.md: links/images exist (broken=[])
+PASS 06c_cross_mode_handoff.md: one H1 (=1)
+PASS 06c_cross_mode_handoff.md: fences even (=20)
+PASS 06c_cross_mode_handoff.md: links/images exist (broken=[])
+PASS 500ms constant present
+PASS 500ms release decision present
+PASS 1000ms marked superseded
+PASS no unqualified 60FPS
+PASS no cross-file single atomic commit
+PASS historical measurements labelled
+PASS image references = 24 (actual 24)
+PASS E2E 22/22 retained
+PASS 202 tests retained
+
+images 24
+FAILURES 0

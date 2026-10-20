@@ -1,0 +1,65 @@
+{
+  "01_console_math.md": {
+    "before_lines": 637,
+    "after_lines": 630,
+    "added": 53,
+    "removed": 60,
+    "changed_blocks": 21
+  },
+  "02_history_recovery.md": {
+    "before_lines": 518,
+    "after_lines": 550,
+    "added": 37,
+    "removed": 5,
+    "changed_blocks": 5
+  },
+  "03_pyqt_mvc_undo.md": {
+    "before_lines": 486,
+    "after_lines": 468,
+    "added": 33,
+    "removed": 51,
+    "changed_blocks": 8
+  },
+  "04_animation_render.md": {
+    "before_lines": 363,
+    "after_lines": 382,
+    "added": 45,
+    "removed": 26,
+    "changed_blocks": 7
+  },
+  "05a_solver_algorithms.md": {
+    "before_lines": 631,
+    "after_lines": 665,
+    "added": 53,
+    "removed": 19,
+    "changed_blocks": 14
+  },
+  "05b_ai_workbench.md": {
+    "before_lines": 563,
+    "after_lines": 591,
+    "added": 85,
+    "removed": 57,
+    "changed_blocks": 18
+  },
+  "06a_backends_benchmarks.md": {
+    "before_lines": 327,
+    "after_lines": 341,
+    "added": 58,
+    "removed": 44,
+    "changed_blocks": 11
+  },
+  "06b_headless_process.md": {
+    "before_lines": 370,
+    "after_lines": 394,
+    "added": 51,
+    "removed": 27,
+    "changed_blocks": 12
+  },
+  "06c_cross_mode_handoff.md": {
+    "before_lines": 422,
+    "after_lines": 431,
+    "added": 37,
+    "removed": 28,
+    "changed_blocks": 9
+  }
+}

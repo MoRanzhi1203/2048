@@ -28,41 +28,12 @@
 
 `GameCore` 承载了前两篇的全部逻辑：棋盘、随机方块、移动合并、胜负判断，并在第 2 篇的基础上继续做历史记录持久化。
 
-### 2.1 关键点
+### 2.1 复用规则与方向归约
 
-- **合并规则**：先压缩非零元素，再合并相邻相同值，最后右侧补零；
-- **方向抽象**：上下先转置、左右按需翻转行，四个方向复用同一套逻辑；
-- **历史持久化**：沿用第 2 篇的 `save_game_state` / `update_index`（`best_score.json`、`game_state.json`、`index.json` 同名同结构）；`record_move` 则按 GUI 版需要改写为「步数 / 操作类型 / 当前分数 / 网格状态」四列。
+合并规则（压缩非零、相邻相同合并、右侧补零、每个方块最多合并一次）与第 1 篇完全一致，这里不再重复代码。GUI 版只在此基础上保留两项内容：
 
-### 2.2 代码实现（合并核心）
-
-```python
-def _merge_line(self, line):
-    """
-    合并单行（核心算法）：压缩非零 -> 相邻相同合并 -> 右侧补零。
-    返回 (新行, 是否发生变化)。
-    """
-    original = list(line)
-    compressed = [v for v in line if v != 0]
-
-    merged = []
-    i = 0
-    while i < len(compressed):
-        if i + 1 < len(compressed) and compressed[i] == compressed[i + 1]:
-            merged.append(compressed[i] * 2)
-            self.score += compressed[i] * 2
-            i += 2          # 合并后一次跳过两个元素
-        else:
-            merged.append(compressed[i])
-            i += 1
-
-    merged += [0] * (self.grid_size - len(merged))
-    return merged, merged != original
-```
-
-### 2.3 方向抽象
-
-四个方向不需要写四份逻辑，只要在"行"这一层做统一处理，其余靠转置与翻转复用：
+- **方向抽象**：上下先转置、左右按需翻转行，四个方向复用同一套逐行逻辑；
+- **历史持久化**：沿用第 2 篇的 `save_game_state` / `update_index`；`record_move` 按 GUI 版需要改成「步数 / 操作类型 / 当前分数 / 网格状态」四列，每次成功移动写两行（方向与补块）。
 
 ```python
 def _slide(self, direction):
@@ -189,6 +160,10 @@ class BoardView(QWidget):
 
 ### 3.3 界面效果
 
+![V3 游戏页：QGridLayout + QLabel 棋盘与底部撤销/重做按钮](../v3_pyqt_2048/screenshots/full_game.png)
+
+*V3 游戏页：QGridLayout + QLabel 棋盘与底部撤销/重做按钮*
+
 ```txt
 ┌───────────────────────────────────────┐
 │  2048                分数      最高分   │
@@ -216,7 +191,7 @@ Controller 是 `MainWindow`。它在 `keyPressEvent` 中把按键映射为"意�
 
 - **方向键 / WASD**：四个方向移动；
 - **Ctrl+Z / Ctrl+Y**：撤销和重做；
-- **在窗口层捕获按键**：比让某个子控件持有焦点更稳妥，不会出现"点击按钮后方向键失效"的情况。
+- **在窗口层捕获按键**：本项目选择由主窗口持有焦点，避免出现"点击按钮后方向键失效"；这不是唯一可行方案，也可以在子控件层做事件过滤或统一路由（第 5 篇采用后一种）。
 
 ### 4.2 键盘事件
 
@@ -286,6 +261,20 @@ def refresh(self):
 
 `refresh()` 负责维持 MVC 一致性：**任何一次状态变化都只通过它更新界面**，避免界面出现"一半新一半旧"的中间态。按钮的启用状态被单独抽取为 `_sync_history_buttons()`，仅由历史栈决定（第 4 版同名同职责，便于两版一致维护）。
 
+一次方向键按下的完整调用链：
+
+| 顺序 | 调用 | 所在层 | 职责 |
+| ---: | --- | --- | --- |
+| 1 | `keyPressEvent(Key_Left)` | Controller | 把按键解析为意图 `direction='left'` |
+| 2 | `on_move('left')` | Controller | 检查 `game_over`，拦截非法移动 |
+| 3 | `model.apply_move('left')` | Model | 滑行/合并、计分、写历史、生成新块、判胜负 |
+| 4 | `refresh()` | Controller | 触发一次统一刷新 |
+| 5 | `board_view.render(grid)` | View | 把 16 个格子的值写入 `QLabel` |
+| 6 | `_render_score(...)` / `_sync_history_buttons()` | View/Controller | 更新分数与撤销/重做按钮 |
+| 7 | `show_game_over()` / `show_game_won()` | Controller | 终局提示（仅一次） |
+
+这条链路体现了 MVC 的边界：View 只接收网格并渲染，从不反向调用 Model；Controller 负责把输入翻译成 Model 调用，再统一驱动 View 刷新。
+
 
 
 ## 5 撤销和重做：基于状态快照栈
@@ -352,10 +341,13 @@ def redo(self):
     return True
 ```
 
-> **三个细节**：
+> **四个细节**：
 > 1. `_snapshot` 必须使用 `deepcopy`：棋盘是嵌套列表，浅拷贝会让撤销栈与当前棋盘共享同一块内存，导致撤销失效。
 > 2. **非法移动不生成快照**（`_slide` 返回 `False` 时直接返回），否则连续按下数次无效方向键会挤掉有效历史。
 > 3. 快照中额外保存 `current_move` 与 `history_count`：`_restore()` 会据此重写 `history.csv`，使撤销和重做后的历史文件与棋盘状态保持一致（撤销后再执行新的一步时，会丢弃被撤销掉的那些"未来行"）。
+> 4. 快照**不包含 RNG 状态**。撤销恢复的是棋盘、分数与历史行；恢复之后的新方块仍由当前全局随机数状态生成，因此“撤销后再走同一方向”不保证与第一次走子产生相同的随机方块。若需要逐位复现，必须像第 6 篇那样显式保存 `random.getstate()`。
+
+`best_score` 在撤销/重做路径上只升不降：`_sync_best_score()` 只做 `max` 更新，`_restore()` 也不会把最高分改小，因此撤销不会被用来“刷低”历史纪录。
 
 
 
@@ -363,13 +355,17 @@ def redo(self):
 
 ### 6.1 启动页设计
 
+![V3 启动页：继续上一局 / 开始新游戏](../v3_pyqt_2048/screenshots/full_start.png)
+
+*V3 启动页：继续上一局 / 开始新游戏*
+
 Model 完整保留了第 2 篇的持久化能力，因此 GUI 版自然支持"继续上一局"。为避免每次启动都弹出确认框，采用一个 **启动页**（`QStackedWidget` 的第 0 页）承载该选择：
 
 - `startup()` 读取 `index.json`：有未完成的对局就停在启动页（展示上一局的分数），否则直接进入游戏页；
 - 启动页用「继续上一局」与「开始新游戏」两个按钮完成选择，取代「弹 `QMessageBox` 询问是否续玩」的做法（游戏结束 / 达成 2048 的提示仍使用 `QMessageBox`）；
 - 每走一步写 `history.csv` 与 `game_state.json`，通过 `is_completed`（`game_over or won`）判断对局状态。
 
-这样，第 2 篇积累的 `game_history/` 数据在 GUI 版中继续积累，为后续第 7 篇"用历史数据训练模型"准备样本。
+这样，第 2 篇积累的 `game_history/` 数据在 GUI 版中继续积累，为后续的训练数据或离线分析准备样本。
 
 
 
@@ -430,17 +426,7 @@ QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 ```
 
-随后用 `QT_SCALE_FACTOR` 在 100% / 125% / 150% 三档逐一断言：窗口尺寸不变形、棋盘保持正方形、控件不越界、文字不裁切。
-
-### 7.5 界面截图
-
-整窗截图（含 Windows 原生标题栏，由统一入口 `tools/capture_gui.py --version v3 --scene start|game` 生成）：
-
-![启动页](../v3_pyqt_2048/screenshots/full_start.png)
-
-![游戏页](../v3_pyqt_2048/screenshots/full_game.png)
-
-
+随后可在 100% / 125% / 150% 三档缩放下检查窗口尺寸、棋盘正方形与控件边界。需要说明：当前仓库保留了 V4 的 DPI 对照截图，但 **V3 没有单独的 DPI 截图或自动化断言**，因此本节的“三档视觉无裁切”只能作为适配建议，V3 的实际渲染效果标记为 `UNVERIFIED`；可复用的证据见第 4 篇。
 
 ## 8 运行说明
 
@@ -453,7 +439,7 @@ pip install PyQt5
 ### 8.2 运行与操作
 
 ```bash
-python v3_pyqt_2048/v3_pyqt_2048_with_history.py
+python -m v3_pyqt_2048.v3_pyqt_2048_with_history
 ```
 
 - 方向键 / `WASD`：移动方块；
@@ -474,6 +460,7 @@ python v3_pyqt_2048/v3_pyqt_2048_with_history.py
 当前实现每次移动都是"整盘重绘"，动画表现为瞬移。**下一篇**将针对性能与观感做优化：把棋盘拆分为"静态背景层 + 动画层"，用定时器对每个方块的起止位置做插值，实现平滑的移动与合并动画。
 
 这套 MVC + 快照式撤销和重做适合规则复杂、需要独立测试与替换渲染的桌面应用；若棋盘或数据体积很大，快照成本会随时间线性增长，届时需改用命令模式。第 4 篇的动画版正是直接复用 `GameCore`、仅替换 View。
+
 ---
 
 **上一篇**：[第 2 篇 · 如何实现带历史记录功能的控制台2048游戏](第2篇%20·%20如何实现带历史记录功能的控制台2048游戏.md)

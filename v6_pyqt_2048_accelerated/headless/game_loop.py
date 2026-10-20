@@ -133,14 +133,14 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
     max_total_steps = int(_mts) if _mts else None
     _tb = limits.get('time_budget_s', limits.get('max_seconds'))
     time_budget = float(_tb) if _tb else None
-    # report_policy: {'mode': 'time'|'steps'|'both', 'ms': 1000, 'steps': 200}
+    # report_policy: {'mode': 'time'|'steps'|'both', 'ms': 500, 'steps': 200}
     report_policy = limits.get('report_policy') or {
-        'mode': 'both', 'ms': limits.get('progress_interval_s', 0.4) * 1000.0,
+        'mode': 'both', 'ms': limits.get('progress_interval_s', 0.5) * 1000.0,
         'steps': limits.get('progress_every_steps', 25)}
     _last_report = perf_counter()
     _last_delivered = base_steps
     # 时间策略：首步完成后**立即回传一帧**，缩短“开始后长时间无数据”的空窗；
-    # 之后恢复固定 1000ms 节奏。步数策略保持严格整数倍语义不变。
+    # 之后恢复固定 500ms 节奏。步数策略保持严格整数倍语义不变。
     _bootstrap = report_policy.get('mode') == 'time'
 
     def _report_due(now):
@@ -151,9 +151,9 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
             n = max(1, int(report_policy.get('steps') or 200))
             return (base_steps + steps - _last_delivered) >= n
         if mode == 'time':
-            ms = max(50.0, float(report_policy.get('ms') or 1000.0))
+            ms = max(50.0, float(report_policy.get('ms') or 500.0))
             return (now - _last_report) * 1000.0 >= ms
-        ms = max(50.0, float(report_policy.get('ms') or 400.0))
+        ms = max(50.0, float(report_policy.get('ms') or 500.0))
         n = max(1, int(report_policy.get('steps') or 25))
         return ((now - _last_report) * 1000.0 >= ms) or (steps % n == 0)
 
@@ -262,7 +262,7 @@ def run_session(snapshot, limits, checkpoint=None, progress_cb=None, cancel=None
             total_steps = base_steps + steps
             if progress_cb is not None and _report_due(now):
                 # 关键：暂停/停止请求可能在本步搜索期间到达。此时**不得再发周期回传**，
-                # 直接进入终态并强制 FINAL 同步——避免“点击暂停后仍触发 1000ms 回传”。
+                # 直接进入终态并强制 FINAL 同步——避免“点击暂停后仍触发 500ms 回传”。
                 if cancel is not None and cancel():
                     status = _STATUS_STOPPED
                     break
